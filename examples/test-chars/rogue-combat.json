@@ -1,0 +1,235 @@
+{
+  "format": "gurps-sheet",
+  "version": 1,
+  "character": {
+    "name": "Rogue with equipment (test)",
+    "player": "",
+    "points_budget": 150,
+    "attributes": {
+      "st": 1,
+      "dx": 4,
+      "iq": 1,
+      "ht": 0,
+      "hp": -1,
+      "will": 0,
+      "per": 2,
+      "fp": 0,
+      "basic_speed_quarters": 3,
+      "basic_move": 1
+    },
+    "traits": [
+      {
+        "id": "striking-st",
+        "name": "Striking ST",
+        "category": "advantage",
+        "cost": 0,
+        "cost_per_level": 5,
+        "max_levels": null,
+        "page": "B88",
+        "features": [
+          {
+            "type": "striking_st_bonus",
+            "amount": 1.0,
+            "per_level": true
+          }
+        ],
+        "levels": 2,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "acute-vision",
+        "name": "Acute Vision",
+        "category": "advantage",
+        "cost": 0,
+        "cost_per_level": 2,
+        "max_levels": null,
+        "page": "B35",
+        "features": [],
+        "levels": 2,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "danger-sense",
+        "name": "Danger Sense",
+        "category": "advantage",
+        "cost": 15,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B47",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "greed-12",
+        "name": "Greed (12)",
+        "category": "disadvantage",
+        "cost": -15,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B137",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "impulsiveness-12",
+        "name": "Impulsiveness (12)",
+        "category": "disadvantage",
+        "cost": -10,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B139",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      }
+    ],
+    "equipment": [
+      {
+        "id": "small-knife",
+        "name": "Small Knife",
+        "weight": 0.5,
+        "cost": 30.0,
+        "page": "B272",
+        "quantity": 3,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "leather-jacket",
+        "name": "Leather Jacket",
+        "weight": 4.0,
+        "cost": 50.0,
+        "stats": "DR 1",
+        "page": "B283",
+        "quantity": 1,
+        "source": "basic-set-sample"
+      }
+    ],
+    "notes": "Golden test character (data from GM agent). Page refs unverified.",
+    "skills": [
+      {
+        "id": "knife",
+        "name": "Knife",
+        "attribute": "DX",
+        "difficulty": "E",
+        "page": "B208",
+        "defaults": [
+          {
+            "attribute": "DX",
+            "modifier": -4
+          }
+        ],
+        "points": 2,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "climbing",
+        "name": "Climbing",
+        "attribute": "DX",
+        "difficulty": "A",
+        "page": "B183",
+        "defaults": [
+          {
+            "attribute": "DX",
+            "modifier": -5
+          }
+        ],
+        "points": 0,
+        "source": "basic-set-sample"
+      }
+    ],
+    "techniques": [],
+    "weapons": [
+      {
+        "id": "small-knife",
+        "name": "Small Knife",
+        "equipment": "small-knife",
+        "skill": "knife",
+        "page": "B272",
+        "attacks": [
+          {
+            "mode": "thrust",
+            "damage": "thr-1",
+            "damage_type": "imp",
+            "reach": "C,1",
+            "parry": -1,
+            "defaults": [
+              {
+                "attribute": "DX",
+                "modifier": -4
+              }
+            ]
+          },
+          {
+            "mode": "swing",
+            "damage": "sw-3",
+            "damage_type": "cut",
+            "reach": "C,1",
+            "parry": -1,
+            "defaults": [
+              {
+                "attribute": "DX",
+                "modifier": -4
+              }
+            ]
+          }
+        ],
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "punch",
+        "name": "Punch",
+        "skill": "brawling",
+        "page": "B271",
+        "attacks": [
+          {
+            "mode": "punch",
+            "damage": "thr-1",
+            "damage_type": "cr",
+            "reach": "C",
+            "parry": 0,
+            "defaults": [
+              {
+                "attribute": "DX",
+                "modifier": 0
+              }
+            ],
+            "skill_damage_bonus": {
+              "min_relative": 2,
+              "per_die": 1
+            }
+          }
+        ],
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "kick",
+        "name": "Kick",
+        "skill": "brawling",
+        "page": "B271",
+        "attacks": [
+          {
+            "mode": "kick",
+            "damage": "thr",
+            "damage_type": "cr",
+            "reach": "C,1",
+            "skill_modifier": -2,
+            "technique": "kicking",
+            "defaults": [
+              {
+                "attribute": "DX",
+                "modifier": -2
+              }
+            ],
+            "skill_damage_bonus": {
+              "min_relative": 2,
+              "per_die": 1
+            }
+          }
+        ],
+        "source": "basic-set-sample"
+      }
+    ]
+  }
+}

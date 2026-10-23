@@ -152,6 +152,7 @@ fn fixtures_match_plugin_library() {
     let skills = gurps_plugins::skill_library(&plugins);
     let techs = gurps_plugins::technique_library(&plugins);
     let equip = gurps_plugins::equipment_library(&plugins);
+    let weapons = gurps_plugins::weapon_library(&plugins);
     for name in [
         "warrior",
         "mage",
@@ -160,6 +161,8 @@ fn fixtures_match_plugin_library() {
         "rogue-skills",
         "warrior-equipment",
         "rogue-equipment",
+        "warrior-combat",
+        "rogue-combat",
     ] {
         let ch = gurps_io::load(root().join(format!("examples/test-chars/{name}.json"))).unwrap();
         for t in &ch.traits {
@@ -183,6 +186,15 @@ fn fixtures_match_plugin_library() {
             let mut d = d.clone();
             d.description = None;
             assert_eq!(s.def, d, "{name}: skill {} differs from library", s.def.id);
+        }
+        for w in &ch.weapons {
+            let (_, d) = weapons
+                .iter()
+                .find(|(_, d)| d.id == w.def.id)
+                .unwrap_or_else(|| panic!("{name}: weapon {} not in library", w.def.id));
+            let mut d = d.clone();
+            d.description = None;
+            assert_eq!(w.def, d, "{name}: weapon {} differs", w.def.id);
         }
         for t in &ch.techniques {
             let (_, d) = techs
@@ -309,4 +321,142 @@ fn not_carried_pack_drops_encumbrance() {
     let e = compute_sheet(&ch).encumbrance;
     assert_eq!((e.carried_weight, e.total_weight, e.level), (34.0, 46.0, 0));
     assert_eq!(e.move_value, 7);
+}
+
+fn attack<'a>(s: &'a Sheet, weapon: &str, mode: &str) -> &'a gurps_rules::combat::AttackRow {
+    s.weapons
+        .iter()
+        .find(|w| w.id == weapon)
+        .unwrap_or_else(|| panic!("weapon {weapon}"))
+        .attacks
+        .iter()
+        .find(|a| a.mode == mode)
+        .unwrap_or_else(|| panic!("{weapon} {mode}"))
+}
+
+fn dmg(a: &gurps_rules::combat::AttackRow) -> String {
+    format!("{} {}", a.damage, a.damage_type)
+}
+
+#[test]
+fn warrior_weapons_and_defences() {
+    let s = sheet("warrior-combat");
+    // GM: Broadsword sw+1 cut = 2d cut, thr+1 cr = 1d+1 cr; Kick 1d cr; Punch 1d-1 cr
+    assert_eq!(dmg(attack(&s, "broadsword", "swing")), "2d cut");
+    assert_eq!(dmg(attack(&s, "broadsword", "thrust")), "1d+1 cr");
+    assert_eq!(
+        dmg(attack(&s, "kick", "kick")),
+        "1d cr",
+        "no Brawling bonus at DX+0"
+    );
+    assert_eq!(dmg(attack(&s, "punch", "punch")), "1d-1 cr");
+    assert_eq!(
+        attack(&s, "kick", "kick").level,
+        Some(11),
+        "Kicking technique"
+    );
+    assert_eq!(attack(&s, "kick", "kick").parry, None);
+    assert_eq!(attack(&s, "broadsword", "swing").parry, Some(11));
+    let d = &s.defenses;
+    assert_eq!(
+        d.parry.as_ref().map(|p| (p.value, p.from.as_str())),
+        Some((11, "Broadsword"))
+    );
+    assert_eq!(d.block.as_ref().map(|b| b.value), Some(11));
+    assert_eq!(d.dodge.value, 9, "Dodge 10 with CR, -1 Light encumbrance");
+    assert_eq!(d.db, 2);
+    assert_eq!(
+        d.dodge.value + d.db,
+        11,
+        "GM: Dodge CR + encumbered + DB = 11"
+    );
+    assert_eq!(d.bonus, 1);
+    assert!(d
+        .armor
+        .iter()
+        .any(|a| a.item == "Mail Shirt" && a.dr == "4/2*" && a.value == 4));
+    assert_eq!(s.points.total, 134, "weapons do not change points");
+}
+
+#[test]
+fn warrior_defences_unencumbered_and_without_cr() {
+    let p = root().join("examples/test-chars/warrior-combat.json");
+    let mut ch = gurps_io::load(&p).unwrap();
+    // drop the backpack (and its contents): 46 - 10 - 1 - 1 = 34 lb <= BL 45
+    ch.equipment.retain(|e| e.def.id != "backpack-frame");
+    let s = compute_sheet(&ch);
+    assert_eq!(s.encumbrance.level, 0);
+    assert_eq!(
+        s.defenses.dodge.value, 10,
+        "GM: Dodge 10 unencumbered with CR"
+    );
+    ch.traits.retain(|t| t.def.id != "combat-reflexes");
+    let s = compute_sheet(&ch);
+    let d = &s.defenses;
+    // GM: without CR 10/10/9 (Parry/Block/Dodge)
+    assert_eq!(
+        (
+            d.parry.as_ref().unwrap().value,
+            d.block.as_ref().unwrap().value,
+            d.dodge.value
+        ),
+        (10, 10, 9)
+    );
+}
+
+#[test]
+fn rogue_weapons_and_defences() {
+    let s = sheet("rogue-combat");
+    assert_eq!(dmg(attack(&s, "small-knife", "thrust")), "1d-1 imp");
+    assert_eq!(dmg(attack(&s, "small-knife", "swing")), "2d-4 cut");
+    let d = &s.defenses;
+    assert_eq!(
+        d.parry.as_ref().map(|p| (p.value, p.from.as_str())),
+        Some((9, "Small Knife")),
+        "floor(15/2)+3-1"
+    );
+    assert_eq!(d.dodge.value, 9);
+    assert!(d.block.is_none());
+    assert_eq!(d.db, 0);
+    // unarmed parry from plain DX: floor(14/2)+3 = 10 (shown on the row, not as the sheet's Parry)
+    assert_eq!(attack(&s, "punch", "punch").parry, Some(10));
+    assert!(d
+        .armor
+        .iter()
+        .any(|a| a.item == "Leather Jacket" && a.value == 1));
+    assert_eq!(s.points.total, 144);
+}
+
+#[test]
+fn brawling_damage_bonus_at_dx_plus_2() {
+    let p = root().join("examples/test-chars/warrior-combat.json");
+    let mut ch = gurps_io::load(&p).unwrap();
+    let b = ch
+        .skills
+        .iter_mut()
+        .find(|s| s.def.id == "brawling")
+        .unwrap();
+    b.points = 4; // DX/E 4 pt = DX+2 = 14
+    let s = compute_sheet(&ch);
+    assert_eq!(
+        dmg(attack(&s, "punch", "punch")),
+        "1d cr",
+        "1d-1 +1 per die"
+    );
+    assert_eq!(dmg(attack(&s, "kick", "kick")), "1d+1 cr");
+    b_reset(&mut ch);
+    let s = compute_sheet(&ch);
+    assert_eq!(
+        dmg(attack(&s, "punch", "punch")),
+        "1d-1 cr",
+        "DX+1 is not enough"
+    );
+}
+
+fn b_reset(ch: &mut gurps_core::Character) {
+    ch.skills
+        .iter_mut()
+        .find(|s| s.def.id == "brawling")
+        .unwrap()
+        .points = 2; // DX+1
 }

@@ -87,6 +87,10 @@ impl Weapon {
     }
 }
 
+fn is_zero(v: &i32) -> bool {
+    *v == 0
+}
+
 /// Parsed damage expression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DamageExpr {
@@ -165,8 +169,4 @@ mod tests {
         assert_eq!(parse_dr("DR 4/2*"), Some(("4/2*".into(), 4)));
         assert_eq!(parse_dr("DB 2, DR 1"), Some(("1".into(), 1)));
     }
-}
-
-fn is_zero(v: &i32) -> bool {
-    *v == 0
 }

@@ -68,7 +68,7 @@ pub struct ArmorRow {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Defenses {
     pub dodge: Defense,
-    /// Best Parry among ready weapons.
+    /// Best Parry among ready armed weapons (unarmed only if there are none).
     pub parry: Option<Defense>,
     pub block: Option<Defense>,
     /// Shield DB (frontal attacks only), 0 without a carried shield.
@@ -347,9 +347,14 @@ pub fn compute_defenses(
     }
     dodge_explain.push(format!("= {dodge_v}"));
 
+    // Best Parry: armed weapons first; unarmed only when no ready weapon can parry
+    // (a bare-handed parry is shown on the Punch row anyway).
+    let armed = weapons
+        .iter()
+        .any(|w| w.ready && w.equipment.is_some() && w.attacks.iter().any(|a| a.parry.is_some()));
     let parry = weapons
         .iter()
-        .filter(|w| w.ready)
+        .filter(|w| w.ready && (!armed || w.equipment.is_some()))
         .flat_map(|w| w.attacks.iter().map(move |a| (w, a)))
         .filter_map(|(w, a)| a.parry.map(|p| (p, w, a)))
         .max_by_key(|x| x.0)

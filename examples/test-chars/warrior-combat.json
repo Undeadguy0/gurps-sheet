@@ -1,0 +1,450 @@
+{
+  "format": "gurps-sheet",
+  "version": 1,
+  "character": {
+    "name": "Warrior with equipment (test)",
+    "player": "",
+    "points_budget": 150,
+    "attributes": {
+      "st": 3,
+      "dx": 2,
+      "iq": 0,
+      "ht": 2,
+      "hp": 2,
+      "will": 0,
+      "per": 0,
+      "fp": 0,
+      "basic_speed_quarters": 0,
+      "basic_move": 1
+    },
+    "traits": [
+      {
+        "id": "combat-reflexes",
+        "name": "Combat Reflexes",
+        "category": "advantage",
+        "cost": 15,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B43",
+        "features": [
+          {
+            "type": "defense_bonus",
+            "amount": 1.0
+          }
+        ],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "high-pain-threshold",
+        "name": "High Pain Threshold",
+        "category": "advantage",
+        "cost": 10,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B59",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "lifting-st",
+        "name": "Lifting ST",
+        "category": "advantage",
+        "cost": 0,
+        "cost_per_level": 3,
+        "max_levels": null,
+        "page": "B65",
+        "features": [
+          {
+            "type": "lifting_st_bonus",
+            "amount": 1.0,
+            "per_level": true
+          }
+        ],
+        "levels": 2,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "bad-temper-12",
+        "name": "Bad Temper (12)",
+        "category": "disadvantage",
+        "cost": -10,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B124",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "honesty-12",
+        "name": "Honesty (12)",
+        "category": "disadvantage",
+        "cost": -10,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B138",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "overconfidence-12",
+        "name": "Overconfidence (12)",
+        "category": "disadvantage",
+        "cost": -5,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B148",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "outdoorsman",
+        "name": "Outdoorsman",
+        "category": "advantage",
+        "cost_per_level": 10,
+        "max_levels": 4,
+        "page": "B90",
+        "features": [
+          {
+            "type": "skill_bonus",
+            "skills": [
+              "camouflage",
+              "fishing",
+              "mimicry",
+              "naturalist",
+              "navigation",
+              "survival",
+              "tracking",
+              "weather-sense"
+            ],
+            "amount": 1,
+            "per_level": true
+          }
+        ],
+        "levels": 1,
+        "source": "basic-set-sample"
+      }
+    ],
+    "equipment": [
+      {
+        "id": "broadsword",
+        "name": "Broadsword",
+        "weight": 3.0,
+        "cost": 500.0,
+        "page": "B271",
+        "quantity": 1,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "medium-shield",
+        "name": "Medium Shield",
+        "weight": 15.0,
+        "cost": 60.0,
+        "stats": "DB 2",
+        "page": "B287",
+        "quantity": 1,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "mail-shirt",
+        "name": "Mail Shirt",
+        "weight": 16.0,
+        "cost": 150.0,
+        "stats": "DR 4/2*",
+        "page": "B283",
+        "quantity": 1,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "backpack-frame",
+        "name": "Backpack, Frame",
+        "weight": 10.0,
+        "cost": 100.0,
+        "container": true,
+        "page": "B288",
+        "quantity": 1,
+        "contents": [
+          {
+            "id": "personal-basics",
+            "name": "Personal Basics",
+            "weight": 1.0,
+            "cost": 5.0,
+            "page": "B288",
+            "quantity": 1,
+            "source": "basic-set-sample"
+          },
+          {
+            "id": "small-knife",
+            "name": "Small Knife",
+            "weight": 0.5,
+            "cost": 30.0,
+            "page": "B272",
+            "quantity": 2,
+            "source": "basic-set-sample"
+          }
+        ],
+        "source": "basic-set-sample"
+      }
+    ],
+    "notes": "Golden test character (data from GM agent). Page refs unverified.",
+    "skills": [
+      {
+        "id": "broadsword",
+        "name": "Broadsword",
+        "attribute": "DX",
+        "difficulty": "A",
+        "page": "B208",
+        "defaults": [
+          {
+            "attribute": "DX",
+            "modifier": -5
+          },
+          {
+            "skill": "shortsword",
+            "modifier": -2
+          }
+        ],
+        "points": 8,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "shield",
+        "name": "Shield",
+        "attribute": "DX",
+        "difficulty": "E",
+        "page": "B220",
+        "defaults": [
+          {
+            "attribute": "DX",
+            "modifier": -4
+          }
+        ],
+        "points": 4,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "brawling",
+        "name": "Brawling",
+        "attribute": "DX",
+        "difficulty": "E",
+        "page": "B182",
+        "defaults": [],
+        "points": 1,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "survival",
+        "name": "Survival",
+        "attribute": "Per",
+        "difficulty": "A",
+        "page": "B223",
+        "defaults": [
+          {
+            "attribute": "Per",
+            "modifier": -5
+          },
+          {
+            "skill": "naturalist",
+            "modifier": -3
+          }
+        ],
+        "specialization_required": true,
+        "specializations": [
+          "Woodlands",
+          "Desert",
+          "Mountain",
+          "Arctic",
+          "Jungle",
+          "Plains",
+          "Swampland",
+          "Island/Beach"
+        ],
+        "points": 2,
+        "specialization": "Woodlands",
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "tracking",
+        "name": "Tracking",
+        "attribute": "Per",
+        "difficulty": "A",
+        "page": "B226",
+        "defaults": [
+          {
+            "attribute": "Per",
+            "modifier": -5
+          },
+          {
+            "skill": "naturalist",
+            "modifier": -5
+          }
+        ],
+        "points": 2,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "stealth",
+        "name": "Stealth",
+        "attribute": "DX",
+        "difficulty": "A",
+        "page": "B222",
+        "defaults": [
+          {
+            "attribute": "DX",
+            "modifier": -5
+          },
+          {
+            "attribute": "IQ",
+            "modifier": -5
+          }
+        ],
+        "points": 0,
+        "source": "basic-set-sample"
+      }
+    ],
+    "techniques": [
+      {
+        "id": "kicking",
+        "name": "Kicking",
+        "skill": "brawling",
+        "difficulty": "H",
+        "modifier": -2,
+        "max": 0,
+        "page": "B231",
+        "points": 2,
+        "source": "basic-set-sample"
+      }
+    ],
+    "weapons": [
+      {
+        "id": "broadsword",
+        "name": "Broadsword",
+        "equipment": "broadsword",
+        "skill": "broadsword",
+        "page": "B271",
+        "attacks": [
+          {
+            "mode": "swing",
+            "damage": "sw+1",
+            "damage_type": "cut",
+            "reach": "1",
+            "parry": 0,
+            "defaults": [
+              {
+                "attribute": "DX",
+                "modifier": -5
+              }
+            ]
+          },
+          {
+            "mode": "thrust",
+            "damage": "thr+1",
+            "damage_type": "cr",
+            "reach": "1",
+            "parry": 0,
+            "defaults": [
+              {
+                "attribute": "DX",
+                "modifier": -5
+              }
+            ]
+          }
+        ],
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "small-knife",
+        "name": "Small Knife",
+        "equipment": "small-knife",
+        "skill": "knife",
+        "page": "B272",
+        "attacks": [
+          {
+            "mode": "thrust",
+            "damage": "thr-1",
+            "damage_type": "imp",
+            "reach": "C,1",
+            "parry": -1,
+            "defaults": [
+              {
+                "attribute": "DX",
+                "modifier": -4
+              }
+            ]
+          },
+          {
+            "mode": "swing",
+            "damage": "sw-3",
+            "damage_type": "cut",
+            "reach": "C,1",
+            "parry": -1,
+            "defaults": [
+              {
+                "attribute": "DX",
+                "modifier": -4
+              }
+            ]
+          }
+        ],
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "punch",
+        "name": "Punch",
+        "skill": "brawling",
+        "page": "B271",
+        "attacks": [
+          {
+            "mode": "punch",
+            "damage": "thr-1",
+            "damage_type": "cr",
+            "reach": "C",
+            "parry": 0,
+            "defaults": [
+              {
+                "attribute": "DX",
+                "modifier": 0
+              }
+            ],
+            "skill_damage_bonus": {
+              "min_relative": 2,
+              "per_die": 1
+            }
+          }
+        ],
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "kick",
+        "name": "Kick",
+        "skill": "brawling",
+        "page": "B271",
+        "attacks": [
+          {
+            "mode": "kick",
+            "damage": "thr",
+            "damage_type": "cr",
+            "reach": "C,1",
+            "skill_modifier": -2,
+            "technique": "kicking",
+            "defaults": [
+              {
+                "attribute": "DX",
+                "modifier": -2
+              }
+            ],
+            "skill_damage_bonus": {
+              "min_relative": 2,
+              "per_die": 1
+            }
+          }
+        ],
+        "source": "basic-set-sample"
+      }
+    ]
+  }
+}
