@@ -14,6 +14,6 @@ const emit = defineEmits<{ select: [string] }>();
       <span class="nav-rail__icon" aria-hidden="true">{{ s.icon }}</span>
       <span class="nav-rail__label">{{ s.label }}</span>
     </button>
-    <span class="nav-rail__hint">Alt+1..6</span>
+    <span class="nav-rail__hint">Alt+1..7</span>
   </nav>
 </template>

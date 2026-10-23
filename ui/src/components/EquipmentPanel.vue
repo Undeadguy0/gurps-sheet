@@ -75,7 +75,7 @@ const count = computed(() => props.items.reduce((a, v) => a + v.quantity, 0));
         </tbody>
       </table>
       <ul class="skill-details__explain num muted"><li v-for="(l, i) in enc.explain" :key="i">{{ tx(l) }}</li></ul>
-      <p class="muted encumbrance__note">Уклонение без Боевых рефлексов, щита и прочих бонусов — они появятся на этапе защит.</p>
+      <p class="muted encumbrance__note">Здесь Уклонение только от нагрузки. Итог с Боевыми рефлексами и щитом — в блоке «Защиты» на вкладке «Оружие».</p>
     </div>
 
     <div v-if="!items.length" class="empty-state">
