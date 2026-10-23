@@ -35,7 +35,7 @@ const kind = (e: SpellLibEntry) => `${e.attribute ?? 'IQ'}/${e.difficulty ?? 'H'
         <ul v-if="items.length" class="library-list" role="listbox">
           <li v-for="e in items" :key="e.id" class="library-list__item library-list__item--skill" role="option" :aria-selected="preview?.id === e.id"
             :title="excerpt(e.explanation) || undefined" :class="{ 'is-preview': preview?.id === e.id }" @click="previewId = e.id" @dblclick="emit('add', e.id)">
-            <span class="library-list__name">{{ e.translated_name ?? e.name }}<span v-if="e.translated_name" class="muted original-name"> ({{ e.name }})</span></span>
+            <span class="library-list__name">{{ e.translated_name ?? e.name }}<span v-if="e.translated_name" class="muted original-name"> ({{ e.name }})</span><span v-if="e.plugin === 'custom'" class="badge badge--custom">своё</span></span>
             <span class="muted num">{{ kind(e) }}</span>
             <span class="muted">{{ e.page }}</span>
           </li>

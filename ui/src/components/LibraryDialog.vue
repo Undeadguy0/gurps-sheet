@@ -56,7 +56,7 @@ function reset() { query.value = ''; cat.value = ''; }
           <li v-for="e in items" :key="e.id" class="library-list__item" role="option" :aria-selected="selected.has(e.id)" :title="excerpt(e.explanation) || undefined"
             :class="{ 'is-preview': preview?.id === e.id }" @click="previewId = e.id">
             <input type="checkbox" :checked="selected.has(e.id)" :aria-label="`Выбрать ${e.name}`" @click.stop="toggle(e.id)" />
-            <span class="library-list__name">{{ e.translated_name ?? e.name }}<span v-if="e.translated_name" class="muted original-name"> ({{ e.name }})</span></span>
+            <span class="library-list__name">{{ e.translated_name ?? e.name }}<span v-if="e.translated_name" class="muted original-name"> ({{ e.name }})</span><span v-if="e.plugin === 'custom'" class="badge badge--custom">своё</span></span>
             <span class="muted">{{ CATEGORY_LABEL[e.category] }}</span>
             <span class="num">{{ costText(e) }}</span>
             <span class="muted">{{ e.page }}</span>

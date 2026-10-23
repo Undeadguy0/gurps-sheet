@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { api, inTauri } from './api';
-import type { LibraryEntry, LocaleInfo, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, WeaponLibEntry, SpellLibEntry, ModifierLibEntry } from './types';
+import type { LibraryEntry, LocaleInfo, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, WeaponLibEntry, SpellLibEntry, ModifierLibEntry, LedgerInput, CustomKind } from './types';
 import { loadLocalePref, saveLocalePref } from './i18n';
 import AppHeader from './components/AppHeader.vue';
 import NavRail, { type Section } from './components/NavRail.vue';
@@ -19,6 +19,8 @@ import WeaponLibraryDialog from './components/WeaponLibraryDialog.vue';
 import SpellsPanel from './components/SpellsPanel.vue';
 import SpellLibraryDialog from './components/SpellLibraryDialog.vue';
 import NotesPanel from './components/NotesPanel.vue';
+import PointsPanel from './components/PointsPanel.vue';
+import CustomPanel from './components/CustomPanel.vue';
 import TablePanel from './components/TablePanel.vue';
 import ModifierLibraryDialog from './components/ModifierLibraryDialog.vue';
 import { ROLLABLE } from './labels';
@@ -32,6 +34,8 @@ const sections: Section[] = [
   { id: 'magic', label: 'Магия', icon: '✧', ready: true },
   { id: 'equipment', label: 'Снаряж.', icon: '⚒', ready: true },
   { id: 'combat', label: 'Оружие', icon: '⚔', ready: true },
+  { id: 'points', label: 'Очки', icon: '★', ready: true },
+  { id: 'custom', label: 'Своё', icon: '✚', ready: true },
   { id: 'notes', label: 'Заметки', icon: '✎', ready: true },
   { id: 'table', label: 'За столом', icon: '⚄', ready: true },
 ];
@@ -101,6 +105,15 @@ async function load(path: string) {
 const rename = (n: string) => run(api.setName(n));
 const newChar = () => run(api.newCharacter(), false);
 const setNotes = (t: string) => run(api.setNotes(t));
+const addLedger = (e: LedgerInput) => run(api.addLedgerEntry(e));
+const updateLedger = (id: number, e: LedgerInput) => run(api.updateLedgerEntry(id, e));
+const removeLedger = (id: number) => run(api.removeLedgerEntry(id));
+const setDisLimit = (l: number | null) => run(api.setDisadvantageLimit(l));
+const saveCustom = (k: CustomKind, d: Record<string, unknown>) => run(api.saveCustom(k, d));
+const removeCustom = (k: CustomKind, id: string) => run(api.removeCustom(k, id));
+async function exportCustom() {
+  try { const path = await api.exportCustomPlugin(); savedStatus.value = `Плагин записан: ${path}`; error.value = null; } catch (e) { error.value = String(e); }
+}
 const undo = () => { if (view.value?.history?.can_undo) run(api.undo()); };
 const redo = () => { if (view.value?.history?.can_redo) run(api.redo()); };
 const setCurrent = (stat: 'HP' | 'FP', v: number | null) => run(api.setCurrent(stat, v));
@@ -174,7 +187,7 @@ function onKey(e: KeyboardEvent) {
     if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); return; }
   }
   if (e.key === 'Escape') { libraryOpen.value = false; skillLibraryOpen.value = false; weaponLibraryOpen.value = false; spellLibraryOpen.value = false; modifierTarget.value = null; equipmentTarget.value = null; explainKey.value = null; helpOpen.value = false; return; }
-  if (e.altKey && /^[1-8]$/.test(e.key)) { section.value = sections[+e.key - 1].id; e.preventDefault(); return; }
+  if (e.altKey && /^[0-9]$/.test(e.key)) { section.value = sections[(+e.key + 9) % 10].id; e.preventDefault(); return; }
   if (typing) return;
   if (e.key === '?') helpOpen.value = !helpOpen.value;
   else if (e.key === '/') { e.preventDefault(); traitsPanel.value?.focusFilter(); }
@@ -230,7 +243,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
         <WeaponsPanel v-if="section === 'sheet' || section === 'combat'" class="sheet-grid__full" :weapons="view.weapons ?? []"
           @add="openWeaponLibrary" @remove="removeWeapon" @set-explanation="setWeaponExplanation" />
         <NotesPanel v-if="section === 'sheet'" class="sheet-grid__full" :notes="view.notes ?? ''" @save="setNotes" />
+        <PointsPanel v-if="section === 'sheet' && view.pool" class="sheet-grid__full print-only" :pool="view.pool" :skills="view.skills" />
       </div>
+      <PointsPanel v-else-if="section === 'points' && view.pool" :pool="view.pool" :skills="view.skills"
+        @add="addLedger" @update="updateLedger" @remove="removeLedger" @set-limit="setDisLimit" />
+      <CustomPanel v-else-if="section === 'custom'" :custom="view.custom ?? {}" :can-export="inTauri"
+        @save="saveCustom" @remove="removeCustom" @export="exportCustom" />
       <NotesPanel v-else-if="section === 'notes'" :notes="view.notes ?? ''" @save="setNotes" />
       <template v-else-if="section === 'table'">
         <TablePanel :view="view" @set-current="setCurrent" />
@@ -258,7 +276,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
           <dt><kbd>/</kbd></dt><dd>Фильтр черт</dd>
           <dt><kbd>P</kbd></dt><dd>Откуда взялось число (строка в фокусе)</dd>
           <dt><kbd>R</kbd></dt><dd>Бросок 3d6 по строке в фокусе</dd>
-          <dt><kbd>Alt</kbd>+<kbd>1..8</kbd></dt><dd>Разделы</dd>
+          <dt><kbd>Alt</kbd>+<kbd>1..9, 0</kbd></dt><dd>Разделы</dd>
           <dt><kbd>Ctrl</kbd>+<kbd>S</kbd></dt><dd>Сохранить</dd>
           <dt><kbd>Ctrl</kbd>+<kbd>Z</kbd></dt><dd>Отменить последнее изменение</dd>
           <dt><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></dt><dd>Повторить</dd>
