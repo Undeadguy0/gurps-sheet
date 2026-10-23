@@ -176,6 +176,9 @@ kbd { font-family: var(--font-num); padding: 0 var(--xs); border: 1px solid var(
   .field--title { border: 0; }
 }
 
+/* Cost per level hint next to attribute points */
+.cost-hint { margin-left: var(--xs); font-size: 0.8em; }
+
 /* Explanations (пояснения): rendered Markdown + editor. Theme tokens only. */
 .md { line-height: 1.5; overflow-wrap: anywhere; }
 .md > :first-child { margin-top: 0; }

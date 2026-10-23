@@ -7,7 +7,8 @@ import type {
 
 interface MockTrait { def: TraitDef; levels: number; source: string; explanation?: string }
 
-const COST: Record<string, number> = {
+/** Points per step (B15-B17); Basic Speed per 0.25. Mirrors gurps_rules::points::cost_per_step. */
+export const COST: Record<string, number> = {
   ST: 10, DX: 20, IQ: 20, HT: 10, HP: 2, Will: 5, Per: 5, FP: 3, BasicSpeed: 5, BasicMove: 5,
 };
 const LABEL: Record<string, string> = { BasicSpeed: 'Basic Speed', BasicMove: 'Basic Move', BasicLift: 'Basic Lift' };
@@ -60,7 +61,7 @@ export class MockBackend {
     const total = v.base + v.contributions.reduce((a, c) => a + c.amount, 0);
     const explain = [`base ${fmt(v.base)} (${v.base_reason})`,
       ...v.contributions.map((c) => `${c.amount >= 0 ? '+' : ''}${fmt(c.amount)} ${c.reason}`), `= ${fmt(total)}`];
-    return { key, label: LABEL[key] ?? key, level, points: level * (COST[key] ?? 0), total, value: v, explain };
+    return { key, label: LABEL[key] ?? key, level, step: key === 'BasicSpeed' ? 0.25 : 1, cost_per_step: COST[key] ?? 0, points: level * (COST[key] ?? 0), total, value: v, explain };
   }
 
   private value(key: string, base: number, reason: string): Value {

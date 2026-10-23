@@ -12,7 +12,12 @@ export interface Value { base: number; base_reason: string; contributions: Contr
 export interface StatRow {
   key: string;
   label: string;
+  /** Purchased steps (Basic Speed: quarter steps). */
   level: number;
+  /** Stat units per step (Basic Speed 0.25, else 1). */
+  step: number;
+  /** Character points per step; 0 = not buyable. */
+  cost_per_step: number;
   points: number;
   total: number;
   value: Value;

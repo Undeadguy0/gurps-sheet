@@ -45,7 +45,8 @@ const table = useVueTable({
 });
 
 function step(r: Row, d: number) { emit('setLevel', r.key, r.level + d); }
-function stepLabel(r: Row) { return r.key === 'BasicSpeed' ? '0.25' : '1'; }
+function stepLabel(r: Row) { return fmt(r.step); }
+const costHint = (r: Row) => r.step === 1 ? `${r.cost_per_step}/ур.` : `${r.cost_per_step}/${fmt(r.step)}`;
 const heading = (g: Row['group']) => ({ primary: 'Атрибуты', secondary: 'Вторичные характеристики', derived: 'Производные' })[g];
 </script>
 
@@ -77,13 +78,14 @@ const heading = (g: Row['group']) => ({ primary: 'Атрибуты', secondary: 
               <template v-if="cell.column.id === 'level'">
                 <span v-if="row.original.buyable" class="stepper">
                   <button class="btn btn--step" type="button" :aria-label="`−${stepLabel(row.original)} ${row.original.label}`" @click="step(row.original, -1)">−</button>
-                  <span class="stepper__value num">{{ signed(row.original.level) }}</span>
+                  <span class="stepper__value num" :title="`${row.original.level} шаг(ов) × ${fmt(row.original.step)}`">{{ signed(row.original.level * row.original.step) }}</span>
                   <button class="btn btn--step" type="button" :aria-label="`+${stepLabel(row.original)} ${row.original.label}`" @click="step(row.original, 1)">+</button>
                 </span>
                 <span v-else class="muted">—</span>
               </template>
               <template v-else-if="cell.column.id === 'points'">
                 <span class="num">[{{ row.original.points }}]</span>
+                <small v-if="row.original.cost_per_step" class="muted num cost-hint">{{ costHint(row.original) }}</small>
               </template>
               <template v-else-if="cell.column.id === 'total'">
                 <span class="tooltip-host">

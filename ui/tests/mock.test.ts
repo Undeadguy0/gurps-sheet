@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MockBackend, localize, outcome } from '../src/mock';
+import { COST, MockBackend, localize, outcome } from '../src/mock';
 import type { SheetView } from '../src/types';
 
 describe('browser preview backend', () => {
@@ -43,5 +43,21 @@ describe('browser preview backend', () => {
     expect(localize('plain')).toBe('plain');
     expect(localize('  ')).toBeNull();
     expect(localize(undefined)).toBeNull();
+  });
+  it.each([
+    ['ST', 10, 1], ['DX', 20, 1], ['IQ', 20, 1], ['HT', 10, 1], ['HP', 2, 1], ['Will', 5, 1],
+    ['Per', 5, 1], ['FP', 3, 1], ['BasicSpeed', 5, 0.25], ['BasicMove', 5, 1],
+  ] as const)('attribute cost %s = %i per %f', (key, cost, step) => {
+    expect(COST[key]).toBe(cost);
+    for (const lv of [1, 3, -2]) {
+      const m = new MockBackend();
+      const v = m.invoke('set_attribute', { key, level: lv }) as SheetView;
+      const r = [...v.sheet.attributes, ...v.sheet.secondary].find((x) => x.key === key)!;
+      expect(r.cost_per_step).toBe(cost);
+      expect(r.step).toBe(step);
+      expect(r.points).toBe(cost * lv);
+      expect(v.sheet.points.total).toBe(cost * lv);
+      expect(r.value.contributions[0].amount).toBe(lv * step);
+    }
   });
 });
