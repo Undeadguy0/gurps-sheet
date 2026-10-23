@@ -3,8 +3,13 @@
 // rules is the Rust crate `gurps-rules`; this is a simplified mirror of it.
 import type {
   LibraryEntry, LocaleInfo, LocalizedText, RollResult, SheetView, StatRow, TraitDef, TraitView, Value, Outcome,
+  SkillDef, SkillLibrary, SkillView, TechniqueDef, TechniqueView,
 } from './types';
+import { SKILL_CATALOG_RU, SKILL_DEFS, TALENT_DEF, TECHNIQUE_DEFS } from './mockSkills';
+import { computeSkills, computeTechniques, signedInt } from './skills';
 
+interface MockSkill { def: SkillDef; points: number; specialization?: string | null; explanation?: string }
+interface MockTech { def: TechniqueDef; points: number; explanation?: string }
 interface MockTrait { def: TraitDef; levels: number; source: string; explanation?: string }
 
 /** Points per step (B15-B17); Basic Speed per 0.25. Mirrors gurps_rules::points::cost_per_step. */
@@ -35,6 +40,7 @@ const RAW_LIBRARY: Omit<LibraryEntry, 'explanation'>[] = [
   { plugin: 'basic-set-sample', id: 'overconfidence', name: 'Overconfidence', category: 'disadvantage', cost: -5, cost_per_level: 0, page: 'B148', features: [],
     description: "The character believes they can handle anything and consistently underestimates risk. When a sensible person would back off, plan or ask for help, they tend to charge ahead instead, unless they manage to resist the urge.\n\nIt makes for bold, memorable characters (young heroes, braggarts, star pilots), but the player should actually play the recklessness. Others may find them inspiring or insufferable." },
 ];
+RAW_LIBRARY.push({ plugin: 'basic-set-sample', ...TALENT_DEF } as Omit<LibraryEntry, 'explanation'>);
 const LIBRARY = RAW_LIBRARY;
 
 /** Mirror of plugins/lang-ru/locales/ru/basic-set-sample.ftl (subset). Keys: `<kind>-<id>`. */
@@ -58,6 +64,8 @@ export function outcome(roll: number, skill: number): Outcome {
   return roll <= skill ? 'success' : 'failure';
 }
 
+Object.assign(CATALOG.ru, SKILL_CATALOG_RU);
+
 export class MockBackend {
   name = 'Пример (браузер)';
   levels: Record<string, number> = {};
@@ -65,9 +73,51 @@ export class MockBackend {
   locale = 'ru';
   originalOnly = false;
 
-  private tr(id: string) {
+  skills: MockSkill[] = [];
+  techniques: MockTech[] = [];
+  private tr(id: string, kind = 'trait') {
     if (this.originalOnly) return undefined;
-    return (CATALOG[this.locale] ?? CATALOG[this.locale.split(/[-_]/)[0]])?.[`trait-${id}`];
+    return (CATALOG[this.locale] ?? CATALOG[this.locale.split(/[-_]/)[0]])?.[`${kind}-${id}`];
+  }
+  private text(kind: string, id: string, own?: LocalizedText | null) {
+    return this.tr(id, kind)?.description ?? localize(own, this.originalOnly ? 'en' : this.locale);
+  }
+  private skillName(id: string) {
+    return this.tr(id, 'skill')?.name ?? SKILL_DEFS.find((d) => d.id === id)?.name ?? id;
+  }
+  skillLibrary(): SkillLibrary {
+    return {
+      skills: SKILL_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('skill', d.id, d.description), translated_name: this.tr(d.id, 'skill')?.name ?? null })),
+      techniques: TECHNIQUE_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('technique', d.id, d.description),
+        translated_name: this.tr(d.id, 'technique')?.name ?? null, skill_name: this.skillName(d.skill) })),
+    };
+  }
+  private skillViews(tot: Record<string, number>): [SkillView[], TechniqueView[], number] {
+    const talents: Record<string, [string, number][]> = {};
+    for (const t of this.traits) for (const f of t.def.features) if (f.type === 'skill_bonus')
+      for (const id of f.skills) (talents[id] ??= []).push([this.name_(t), Math.floor(f.per_level ? f.amount * Math.max(1, t.levels) : f.amount)]);
+    const rows = computeSkills(this.skills, (k) => tot[k] ?? 10, talents);
+    const trows = computeTechniques(this.techniques, this.skills, rows);
+    const sv: SkillView[] = this.skills.map((s, index) => {
+      const r = rows[index]; const n = this.tr(s.def.id, 'skill')?.name;
+      const shown = n ? (s.specialization?.trim() ? `${n} (${s.specialization.trim()})` : n) : null;
+      const dflt = this.text('skill', s.def.id, s.def.description);
+      return { index, id: s.def.id, name: shown ?? r.name, original_name: shown ? r.name : null, attribute: s.def.attribute, difficulty: s.def.difficulty,
+        points: s.points, level: r.level, relative: r.relative, from_default: r.from_default, bonus: r.bonus, explain: r.explain,
+        defaults: (s.def.defaults ?? []).map((d) => ('attribute' in d ? `${d.attribute}${signedInt(d.modifier)}` : `${this.skillName(d.skill)}${signedInt(d.modifier)}`)),
+        specialization: s.specialization ?? null, specialization_required: !!s.def.specialization_required, specializations: s.def.specializations ?? [],
+        page: s.def.page, source: 'basic-set-sample', explanation: s.explanation?.trim() ? s.explanation : dflt, default_explanation: dflt, custom_explanation: !!s.explanation?.trim() };
+    });
+    const tv: TechniqueView[] = this.techniques.map((t, index) => {
+      const r = trows[index]; const n = this.tr(t.def.id, 'technique')?.name; const sk = this.skillName(t.def.skill);
+      const dflt = this.text('technique', t.def.id, t.def.description);
+      return { index, id: t.def.id, name: n ? `${n} (${sk})` : r.name, original_name: n ? r.name : null, skill: t.def.skill, difficulty: t.def.difficulty,
+        modifier: t.def.modifier, max: t.def.max, points: t.points, level: r.level, max_level: r.max_level,
+        relative: r.level === null || r.parent === null ? null : `${sk}${signedInt(r.level - r.parent)}`, explain: r.explain, page: t.def.page, source: 'basic-set-sample',
+        explanation: t.explanation?.trim() ? t.explanation : dflt, default_explanation: dflt, custom_explanation: !!t.explanation?.trim() };
+    });
+    const pts = this.skills.reduce((a, s) => a + Math.max(0, s.points), 0) + this.techniques.reduce((a, t) => a + Math.max(0, t.points), 0);
+    return [sv, tv, pts];
   }
   private plugText(def: TraitDef) { return this.tr(def.id)?.description ?? localize(def.description, this.originalOnly ? 'en' : this.locale); }
   private shown(t: MockTrait) { const n = this.tr(t.def.id)?.name; return n ? (t.def.cost_per_level ? `${n} ${t.levels}` : n) : undefined; }
@@ -119,7 +169,9 @@ export class MockBackend {
     const cat = (c: string) => this.traits.filter((t) => t.def.category === c).reduce((a, t) => a + this.cost(t), 0);
     const p = { attributes: sum(PRIMARY), secondary: sum(SECONDARY), advantages: cat('advantage'), perks: cat('perk'),
       disadvantages: cat('disadvantage'), quirks: cat('quirk'), skills: 0, total: 0, budget: 150, unspent: 0 };
-    p.total = p.attributes + p.secondary + p.advantages + p.perks + p.disadvantages + p.quirks;
+    const [skills, techniques, skillPts] = this.skillViews(tot);
+    p.skills = skillPts;
+    p.total = p.attributes + p.secondary + p.advantages + p.perks + p.disadvantages + p.quirks + p.skills;
     p.unspent = p.budget - p.total;
     const traits: TraitView[] = this.traits.map((t, index) => ({ index, id: t.def.id, name: this.shown(t) ?? this.name_(t),
       original_name: this.shown(t) ? this.name_(t) : null, category: t.def.category,
@@ -129,14 +181,20 @@ export class MockBackend {
     return {
       sheet: { name: this.name, attributes, secondary, basic_lift: this.row('BasicLift', blv),
         damage: { thrust: '—', swing: '—', based_on_st: tot.ST }, points: p },
-      traits, issues: p.unspent < 0 ? [{ severity: 'warning', message: `over budget by ${-p.unspent} points` }] : [],
+      traits, skills, techniques,
+      issues: [...(p.unspent < 0 ? [{ severity: 'warning' as const, message: `over budget by ${-p.unspent} points` }] : []),
+        ...this.skills.filter((s) => s.def.specialization_required && !s.specialization?.trim())
+          .map((s) => ({ severity: 'warning' as const, message: `skill '${s.def.name}' needs a specialization` }))],
       path: null, budget: 150,
     };
   }
 
+  private skill(a: Record<string, unknown>) { const s = this.skills[a.index as number]; if (!s) throw new Error('no such skill'); return s; }
+  private tech(a: Record<string, unknown>) { const t = this.techniques[a.index as number]; if (!t) throw new Error('no such technique'); return t; }
+
   invoke(cmd: string, a: Record<string, unknown>): unknown {
     switch (cmd) {
-      case 'new_character': this.levels = {}; this.traits = []; this.name = (a.name as string) ?? 'New character'; return this.view();
+      case 'new_character': this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.name = (a.name as string) ?? 'New character'; return this.view();
       case 'get_sheet': return this.view();
       case 'set_name': this.name = a.name as string; return this.view();
       case 'set_attribute': this.levels[a.key as string] = a.level as number; return this.view();
@@ -151,7 +209,24 @@ export class MockBackend {
       }
       case 'remove_trait': this.traits.splice(a.index as number, 1); return this.view();
       case 'list_library': return this.library();
-      case 'plugin_status': case 'reload_plugins': return { dir: null, plugins: ['basic-set-sample (встроенная копия)', 'lang-ru (встроенная копия)'], errors: [], traits: LIBRARY.length };
+      case 'list_skill_library': return this.skillLibrary();
+      case 'add_skill': {
+        const def = SKILL_DEFS.find((d) => d.id === a.id); if (!def) throw new Error('unknown skill');
+        const sp = a.specialization as string | null | undefined;
+        this.skills.push({ def, points: Math.max(0, (a.points as number) ?? 1), specialization: sp?.trim() ? sp : null }); return this.view();
+      }
+      case 'set_skill_points': this.skill(a).points = Math.max(0, a.points as number); return this.view();
+      case 'set_skill_specialization': { const sp = a.specialization as string | null; this.skill(a).specialization = sp?.trim() ? sp : null; return this.view(); }
+      case 'set_skill_explanation': { const t = a.text as string | null; this.skill(a).explanation = t?.trim() ? t : undefined; return this.view(); }
+      case 'remove_skill': this.skill(a); this.skills.splice(a.index as number, 1); return this.view();
+      case 'add_technique': {
+        const def = TECHNIQUE_DEFS.find((d) => d.id === a.id); if (!def) throw new Error('unknown technique');
+        this.techniques.push({ def, points: Math.max(0, (a.points as number) ?? 0) }); return this.view();
+      }
+      case 'set_technique_points': this.tech(a).points = Math.max(0, a.points as number); return this.view();
+      case 'set_technique_explanation': { const t = a.text as string | null; this.tech(a).explanation = t?.trim() ? t : undefined; return this.view(); }
+      case 'remove_technique': this.tech(a); this.techniques.splice(a.index as number, 1); return this.view();
+      case 'plugin_status': case 'reload_plugins': return { dir: null, plugins: ['basic-set-sample (встроенная копия)', 'lang-ru (встроенная копия)'], errors: [], traits: LIBRARY.length, skills: SKILL_DEFS.length + TECHNIQUE_DEFS.length };
       case 'get_locales': return this.locales();
       case 'set_locale': if ((a.locale as string)?.trim()) this.locale = a.locale as string; this.originalOnly = !!a.originalOnly; return this.view();
       case 'roll': {

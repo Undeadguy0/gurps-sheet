@@ -24,5 +24,6 @@ export function featureText(f: Feature): string {
     case 'attribute_bonus': return `${STAT_LABEL[f.target] ?? f.target}: ${amt}${per}`;
     case 'lifting_st_bonus': return `ST для подъёма и переноски (базовый груз): ${amt}${per}`;
     case 'striking_st_bonus': return `ST для урона (толчок/замах): ${amt}${per}`;
+    case 'skill_bonus': return `Навыки (${f.skills.join(', ')}): ${amt}${per}`;
   }
 }

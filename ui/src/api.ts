@@ -1,6 +1,6 @@
 // Backend facade: Tauri commands when running inside the app, an in-browser
 // preview backend (mock.ts) when opened with plain `npm run dev`.
-import type { LibraryEntry, LocaleInfo, PluginStatus, RollResult, SheetView } from './types';
+import type { LibraryEntry, LocaleInfo, PluginStatus, RollResult, SheetView, SkillLibrary } from './types';
 import { MockBackend } from './mock';
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -32,5 +32,15 @@ export const api = {
   reloadPlugins: () => call<PluginStatus>('reload_plugins'),
   getSheet: () => call<SheetView>('get_sheet'),
   listLibrary: () => call<LibraryEntry[]>('list_library'),
+  listSkillLibrary: () => call<SkillLibrary>('list_skill_library'),
+  addSkill: (id: string, specialization?: string | null, points?: number) => call<SheetView>('add_skill', { id, specialization, points }),
+  setSkillPoints: (index: number, points: number) => call<SheetView>('set_skill_points', { index, points }),
+  setSkillSpecialization: (index: number, specialization: string | null) => call<SheetView>('set_skill_specialization', { index, specialization }),
+  setSkillExplanation: (index: number, text: string | null) => call<SheetView>('set_skill_explanation', { index, text }),
+  removeSkill: (index: number) => call<SheetView>('remove_skill', { index }),
+  addTechnique: (id: string, points?: number) => call<SheetView>('add_technique', { id, points }),
+  setTechniquePoints: (index: number, points: number) => call<SheetView>('set_technique_points', { index, points }),
+  setTechniqueExplanation: (index: number, text: string | null) => call<SheetView>('set_technique_explanation', { index, text }),
+  removeTechnique: (index: number) => call<SheetView>('remove_technique', { index }),
   roll: (target: number, modifier = 0) => call<RollResult>('roll', { target, modifier }),
 };

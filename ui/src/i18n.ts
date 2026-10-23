@@ -2,7 +2,7 @@
 import type { LibraryEntry } from './types';
 
 /** Library search: matches the translated name, the original name and the id. */
-export function matchesLibrary(e: LibraryEntry, q: string): boolean {
+export function matchesLibrary(e: Pick<LibraryEntry, 'name' | 'id'> & { translated_name?: string | null }, q: string): boolean {
   const s = q.trim().toLowerCase();
   return !s || [e.translated_name ?? '', e.name, e.id].some((n) => n.toLowerCase().includes(s));
 }
