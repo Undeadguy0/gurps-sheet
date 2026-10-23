@@ -1,0 +1,103 @@
+{
+  "format": "gurps-sheet",
+  "version": 1,
+  "character": {
+    "name": "Warrior (test)",
+    "player": "",
+    "points_budget": 150,
+    "attributes": {
+      "st": 3,
+      "dx": 2,
+      "iq": 0,
+      "ht": 2,
+      "hp": 2,
+      "will": 0,
+      "per": 0,
+      "fp": 0,
+      "basic_speed_quarters": 0,
+      "basic_move": 1
+    },
+    "traits": [
+      {
+        "id": "combat-reflexes",
+        "name": "Combat Reflexes",
+        "category": "advantage",
+        "cost": 15,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B43",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "high-pain-threshold",
+        "name": "High Pain Threshold",
+        "category": "advantage",
+        "cost": 10,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B59",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "lifting-st",
+        "name": "Lifting ST",
+        "category": "advantage",
+        "cost": 0,
+        "cost_per_level": 3,
+        "max_levels": null,
+        "page": "B65",
+        "features": [
+          {
+            "type": "lifting_st_bonus",
+            "amount": 1.0,
+            "per_level": true
+          }
+        ],
+        "levels": 2,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "bad-temper-12",
+        "name": "Bad Temper (12)",
+        "category": "disadvantage",
+        "cost": -10,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B124",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "honesty-12",
+        "name": "Honesty (12)",
+        "category": "disadvantage",
+        "cost": -10,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B138",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "overconfidence-12",
+        "name": "Overconfidence (12)",
+        "category": "disadvantage",
+        "cost": -5,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B148",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      }
+    ],
+    "equipment": [],
+    "notes": "Golden test character (data from GM agent). Page refs unverified."
+  }
+}

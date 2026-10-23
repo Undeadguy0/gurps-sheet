@@ -1,0 +1,91 @@
+{
+  "format": "gurps-sheet",
+  "version": 1,
+  "character": {
+    "name": "Rogue (test)",
+    "player": "",
+    "points_budget": 150,
+    "attributes": {
+      "st": 1,
+      "dx": 4,
+      "iq": 1,
+      "ht": 0,
+      "hp": -1,
+      "will": 0,
+      "per": 2,
+      "fp": 0,
+      "basic_speed_quarters": 3,
+      "basic_move": 1
+    },
+    "traits": [
+      {
+        "id": "striking-st",
+        "name": "Striking ST",
+        "category": "advantage",
+        "cost": 0,
+        "cost_per_level": 5,
+        "max_levels": null,
+        "page": "B88",
+        "features": [
+          {
+            "type": "striking_st_bonus",
+            "amount": 1.0,
+            "per_level": true
+          }
+        ],
+        "levels": 2,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "acute-vision",
+        "name": "Acute Vision",
+        "category": "advantage",
+        "cost": 0,
+        "cost_per_level": 2,
+        "max_levels": null,
+        "page": "B35",
+        "features": [],
+        "levels": 2,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "danger-sense",
+        "name": "Danger Sense",
+        "category": "advantage",
+        "cost": 15,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B47",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "greed-12",
+        "name": "Greed (12)",
+        "category": "disadvantage",
+        "cost": -15,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B137",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "impulsiveness-12",
+        "name": "Impulsiveness (12)",
+        "category": "disadvantage",
+        "cost": -10,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B139",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      }
+    ],
+    "equipment": [],
+    "notes": "Golden test character (data from GM agent). Page refs unverified."
+  }
+}

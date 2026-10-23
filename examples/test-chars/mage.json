@@ -1,0 +1,86 @@
+{
+  "format": "gurps-sheet",
+  "version": 1,
+  "character": {
+    "name": "Mage (test)",
+    "player": "",
+    "points_budget": 150,
+    "attributes": {
+      "st": -1,
+      "dx": 0,
+      "iq": 4,
+      "ht": 1,
+      "hp": 2,
+      "will": 1,
+      "per": -2,
+      "fp": 3,
+      "basic_speed_quarters": 0,
+      "basic_move": 0
+    },
+    "traits": [
+      {
+        "id": "magery",
+        "name": "Magery",
+        "category": "advantage",
+        "cost": 5,
+        "cost_per_level": 10,
+        "max_levels": null,
+        "page": "B66",
+        "features": [],
+        "min_levels": 0,
+        "levels": 2,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "eidetic-memory",
+        "name": "Eidetic Memory",
+        "category": "advantage",
+        "cost": 5,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B51",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "pacifism-self-defense",
+        "name": "Pacifism: Self-Defense Only",
+        "category": "disadvantage",
+        "cost": -15,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B148",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "curious-12",
+        "name": "Curious (12)",
+        "category": "disadvantage",
+        "cost": -5,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B129",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "skinny",
+        "name": "Skinny",
+        "category": "disadvantage",
+        "cost": -5,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B18",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      }
+    ],
+    "equipment": [],
+    "notes": "Golden test character (data from GM agent). Page refs unverified."
+  }
+}
