@@ -4,9 +4,10 @@ Open-source GURPS 4e character editor: Rust core + Tauri v2 + Vue 3.
 Редактор листа персонажа GURPS 4e с открытым исходным кодом: ядро на Rust, оболочка Tauri v2, интерфейс Vue 3.
 
 > GURPS is a trademark of Steve Jackson Games. This project is unofficial and ships
-> no rules text — plugins contain only names, point costs and page references.
+> no rules text — plugins contain names, point costs, page references and short
+> explanations written in our own words.
 > GURPS — торговая марка Steve Jackson Games. Проект неофициальный; плагины содержат
-> только названия, стоимость и ссылки на страницы, без текста правил.
+> названия, стоимость, ссылки на страницы и краткие пояснения своими словами, без текста правил.
 
 ## Русский
 
@@ -17,7 +18,29 @@ Open-source GURPS 4e character editor: Rust core + Tauri v2 + Vue 3.
 Темы: «Инструмент» (по умолчанию), «Стол мастера», «Бумажный лист» (и для печати/PDF).
 Генерируются из `ui/src/styles/tokens.json` в `ui/src/styles/themes.css` (`npm run gen:themes`).
 
+**Пояснения.** У черт (а в схеме данных — и у навыков, заклинаний, снаряжения, оружия,
+модификаторов) есть необязательное многострочное пояснение в Markdown. Текст из плагина можно
+заменить своим прямо в листе (▸ у строки → «Изменить», предпросмотр, «Сбросить к плагину»);
+своё пояснение сохраняется в JSON персонажа в поле `explanation` (пустое не записывается).
+Markdown выводится безопасно: HTML экранируется, ссылки только http(s)/mailto.
+
+**Языки.** Переводы — файлы Fluent `locales/<язык>/*.ftl` в любом плагине или в отдельном
+языковом пакете (`plugins/lang-ru`). Ключи — id записей (`trait-combat-reflexes`), не английский
+текст. В шапке: выбор языка и «Только оригинал»; названия показываются как «Перевод (Оригинал)»,
+поиск в библиотеке ищет по обоим. Формат данных: [plugins/README.md](plugins/README.md).
+
 ## English
+
+**Explanations.** Traits (and, in the data schema, skills, spells, equipment, weapons, modifiers)
+have an optional multi-line Markdown `description` in plugin data. Users can override it per
+entry in the sheet; the override is stored as `explanation` in the character JSON (omitted
+when empty, old files load unchanged). Rendering is sanitised (HTML escaped).
+
+**Languages.** Translations are Fluent `.ftl` files under `locales/<lang>/` of any plugin or a
+standalone language pack (`plugins/lang-ru`), keyed by stable ids. The header has a language
+switcher and an "original only" mode; names show as "Translation (Original)" and library search
+matches both. See [plugins/README.md](plugins/README.md).
+
 
 Each derived value is `base + contributions`, so the UI can show *where a number came from*
 (e.g. ST 13 = base 10 + 2 purchased + 1 from a trait). Themes are CSS custom properties
