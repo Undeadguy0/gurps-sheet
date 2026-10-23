@@ -469,7 +469,11 @@ mod tests {
                 assert_eq!(r.cost_per_step, cost, "{stat}");
                 assert_eq!(r.step, step, "{stat}");
                 assert_eq!(r.points, cost * lv, "{stat} x{lv}");
-                let (a, b) = if primary { (cost * lv, 0) } else { (0, cost * lv) };
+                let (a, b) = if primary {
+                    (cost * lv, 0)
+                } else {
+                    (0, cost * lv)
+                };
                 assert_eq!((s.points.attributes, s.points.secondary), (a, b), "{stat}");
                 assert_eq!(s.points.total, cost * lv, "{stat}");
             }

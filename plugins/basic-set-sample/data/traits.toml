@@ -1,6 +1,7 @@
 # Sample data only: names, point costs and page references.
 # No rules text is reproduced here; see the GURPS Basic Set for the actual rules.
 # `description` fields are short summaries in our own words (Markdown), not book text.
+# Translations live in Fluent files (see plugins/lang-ru).
 # Page references are from memory and UNVERIFIED.
 
 [[traits]]
@@ -10,12 +11,7 @@ category = "advantage"
 cost_per_level = 3
 page = "B65"
 features = [{ type = "lifting_st_bonus", amount = 1, per_level = true }]
-[traits.description]
-ru = '''
-Добавочная сила **только для подъёма и переноски** грузов.
-Влияет на базовый груз, но не на урон и не на HP.
-'''
-en = '''
+description = '''
 Extra strength **only for lifting and carrying**.
 Raises Basic Lift, but not damage or HP.
 '''
@@ -27,7 +23,7 @@ category = "advantage"
 cost_per_level = 10
 page = "example"
 features = [{ type = "attribute_bonus", target = "ST", amount = 1, per_level = true }]
-description = { ru = "Пример черты: каждый уровень даёт **+1 ST** (и всё, что от ST зависит).", en = "Example trait: each level gives **+1 ST** (and everything derived from ST)." }
+description = "Example trait: each level gives **+1 ST** (and everything derived from ST)."
 
 [[traits]]
 id = "combat-reflexes"
@@ -35,13 +31,7 @@ name = "Combat Reflexes"
 category = "advantage"
 cost = 15
 page = "B43"
-[traits.description]
-ru = '''
-Быстрая реакция в бою:
-- реже теряется от неожиданности;
-- небольшие бонусы к защите и готовности.
-'''
-en = '''
+description = '''
 Fast reactions in a fight:
 - rarely caught off guard;
 - small bonuses to defence and readiness.
@@ -70,7 +60,6 @@ cost = -5
 page = "B148"
 description = '''
 Character believes they can handle anything and *underestimates risk*.
-Персонаж уверен, что справится с чем угодно, и *недооценивает риск*.
 '''
 
 [[traits]]

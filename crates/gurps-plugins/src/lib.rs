@@ -440,7 +440,24 @@ description = "m"
             .find(|(_, t)| t.id == "combat-reflexes")
             .unwrap()
             .1;
-        assert!(cr.explanation("ru").is_some() && cr.explanation("en").is_some());
-        assert_ne!(cr.explanation("ru"), cr.explanation("en"));
+        assert!(cr.explanation("en").unwrap().starts_with("Fast reactions"));
+        // Russian comes from the standalone language pack (Fluent).
+        let plugins = load_all(&root).unwrap();
+        let pack = plugins.iter().find(|p| p.manifest.id == "lang-ru").unwrap();
+        assert!(pack.traits.is_empty());
+        let cat = translations(&plugins);
+        assert_eq!(cat.languages(), vec!["ru"]);
+        assert_eq!(
+            cat.name("ru", "trait", "combat-reflexes"),
+            Some("Боевые рефлексы")
+        );
+        assert!(cat
+            .description("ru", "trait", "combat-reflexes")
+            .unwrap()
+            .contains("- реже"));
+        // every sample trait has a Russian name; keys are ids, not English text
+        for (_, t) in &lib {
+            assert!(cat.name("ru", "trait", &t.id).is_some(), "{}", t.id);
+        }
     }
 }
