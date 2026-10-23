@@ -169,6 +169,12 @@ pub enum Feature {
         #[serde(default)]
         per_level: bool,
     },
+    /// Adds to ST only for the purpose of basic damage thr/sw (e.g. Striking ST).
+    StrikingStBonus {
+        amount: f64,
+        #[serde(default)]
+        per_level: bool,
+    },
 }
 
 /// Trait definition (from a plugin library).
@@ -186,6 +192,9 @@ pub struct TraitDef {
     pub cost_per_level: i32,
     #[serde(default)]
     pub max_levels: Option<u32>,
+    /// Minimum levels for leveled traits (default 1; e.g. Magery allows 0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_levels: Option<u32>,
     /// Page reference, e.g. "B65".
     #[serde(default)]
     pub page: Option<String>,
@@ -196,6 +205,12 @@ pub struct TraitDef {
 impl TraitDef {
     pub fn is_leveled(&self) -> bool {
         self.cost_per_level != 0
+    }
+
+    /// Effective minimum level (1 for leveled traits unless overridden, else 0).
+    pub fn min_level(&self) -> u32 {
+        self.min_levels
+            .unwrap_or(if self.is_leveled() { 1 } else { 0 })
     }
 }
 
@@ -302,6 +317,7 @@ mod tests {
             cost: 0,
             cost_per_level: 3,
             max_levels: None,
+            min_levels: None,
             page: Some("B65".into()),
             features: vec![],
         };

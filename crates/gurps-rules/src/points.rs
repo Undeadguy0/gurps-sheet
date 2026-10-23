@@ -93,6 +93,7 @@ mod tests {
                 cost,
                 cost_per_level: 0,
                 max_levels: None,
+                min_levels: None,
                 page: None,
                 features: vec![],
             },

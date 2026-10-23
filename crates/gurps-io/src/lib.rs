@@ -82,6 +82,7 @@ mod tests {
                 cost: 0,
                 cost_per_level: 10,
                 max_levels: None,
+                min_levels: None,
                 page: Some("example".into()),
                 features: vec![Feature::AttributeBonus {
                     target: Stat::ST,
