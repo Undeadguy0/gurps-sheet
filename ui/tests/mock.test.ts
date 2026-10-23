@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { COST, MockBackend, localize, outcome } from '../src/mock';
 import { matchesLibrary } from '../src/i18n';
+import { featureText } from '../src/labels';
 import type { LibraryEntry, LocaleInfo } from '../src/types';
 import type { SheetView } from '../src/types';
 
@@ -82,5 +83,10 @@ describe('browser preview backend', () => {
     expect((m.invoke('list_library', {}) as LibraryEntry[]).every((e) => !e.translated_name)).toBe(true);
     v = m.invoke('set_locale', { locale: 'en', originalOnly: false }) as SheetView;
     expect(v.traits[0].name).toBe('Lifting ST 2');
+  });
+  it('featureText is readable', () => {
+    expect(featureText({ type: 'attribute_bonus', target: 'ST', amount: 1, per_level: true })).toBe('ST — Сила: +1 за уровень');
+    expect(featureText({ type: 'lifting_st_bonus', amount: 2 })).toContain('базовый груз): +2');
+    expect(featureText({ type: 'striking_st_bonus', amount: -1, per_level: true })).toContain('-1 за уровень');
   });
 });

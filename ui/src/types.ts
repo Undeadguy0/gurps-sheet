@@ -84,3 +84,6 @@ export interface RollResult {
   target: number; modifier: number; effective: number; dice: [number, number, number];
   roll: number; margin: number; outcome: Outcome;
 }
+
+/** Where the library came from (plugin_status command). */
+export interface PluginStatus { dir?: string | null; plugins: string[]; errors: string[]; traits: number }

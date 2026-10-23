@@ -151,6 +151,7 @@ export class MockBackend {
       }
       case 'remove_trait': this.traits.splice(a.index as number, 1); return this.view();
       case 'list_library': return this.library();
+      case 'plugin_status': case 'reload_plugins': return { dir: null, plugins: ['basic-set-sample (встроенная копия)', 'lang-ru (встроенная копия)'], errors: [], traits: LIBRARY.length };
       case 'get_locales': return this.locales();
       case 'set_locale': if ((a.locale as string)?.trim()) this.locale = a.locale as string; this.originalOnly = !!a.originalOnly; return this.view();
       case 'roll': {

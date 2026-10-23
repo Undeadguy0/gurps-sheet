@@ -80,6 +80,9 @@ async function setLocale(locale: string, originalOnly: boolean) {
   saveLocalePref({ locale, originalOnly });
   [locales.value, library.value] = await Promise.all([api.getLocales(), api.listLibrary()]);
 }
+async function reloadLibrary() {
+  [library.value, locales.value, view.value] = await Promise.all([api.listLibrary(), api.getLocales(), api.getSheet()]);
+}
 const setTraitExplanation = (i: number, t: string | null) => run(api.setTraitExplanation(i, t));
 
 function onKey(e: KeyboardEvent) {
@@ -138,7 +141,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
     </main>
 
     <ProvenancePanel v-if="explainRow" :row="explainRow" @close="explainKey = null" />
-    <LibraryDialog v-if="libraryOpen" :library="library" @close="libraryOpen = false" @add="addTraits" />
+    <LibraryDialog v-if="libraryOpen" :library="library" @close="libraryOpen = false" @add="addTraits" @reloaded="reloadLibrary" />
 
     <div v-if="helpOpen" class="modal-backdrop" @click.self="helpOpen = false">
       <div class="modal help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
