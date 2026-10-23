@@ -1,8 +1,8 @@
 mod state;
 
 use gurps_rules::dice::RollResult;
-use state::LibraryEntry;
 pub use state::{AppState, SheetView};
+use state::{LibraryEntry, LocaleInfo};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::State;
@@ -63,13 +63,23 @@ fn set_trait_explanation(
 }
 
 #[tauri::command]
+fn get_locales(state: S) -> LocaleInfo {
+    lock(&state).locale_info()
+}
+
+#[tauri::command]
+fn set_locale(state: S, locale: String, original_only: bool) -> SheetView {
+    lock(&state).set_locale(locale, original_only)
+}
+
+#[tauri::command]
 fn get_sheet(state: S) -> SheetView {
     lock(&state).view()
 }
 
 #[tauri::command]
 fn list_library(state: S) -> Vec<LibraryEntry> {
-    lock(&state).library.clone()
+    lock(&state).library_view()
 }
 
 #[tauri::command]
@@ -101,6 +111,8 @@ pub fn run() {
             set_trait_levels,
             remove_trait,
             set_trait_explanation,
+            get_locales,
+            set_locale,
             get_sheet,
             list_library,
             roll

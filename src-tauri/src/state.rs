@@ -12,7 +12,10 @@ use std::path::PathBuf;
 pub struct TraitView {
     pub index: usize,
     pub id: String,
+    /// Display name in the UI language (with level), falls back to the original.
     pub name: String,
+    /// Original (plugin) display name when `name` is a translation.
+    pub original_name: Option<String>,
     pub category: TraitCategory,
     pub levels: u32,
     pub leveled: bool,
@@ -35,6 +38,17 @@ pub struct LibraryEntry {
     pub def: TraitDef,
     /// Plugin explanation resolved for the UI locale.
     pub explanation: Option<String>,
+    /// Translated name (None when showing originals or no translation exists).
+    pub translated_name: Option<String>,
+}
+
+/// Language settings for the UI switcher.
+#[derive(Debug, Clone, Serialize)]
+pub struct LocaleInfo {
+    /// Languages with translations, plus "en" for the original data.
+    pub available: Vec<String>,
+    pub locale: String,
+    pub original_only: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -54,6 +68,10 @@ pub struct AppState {
     pub plugin_errors: Vec<String>,
     /// UI locale used to resolve localized plugin text (default "ru").
     pub locale: String,
+    /// Show plugin originals only (no translations).
+    pub original_only: bool,
+    /// Merged Fluent translations of all plugins.
+    pub catalog: gurps_plugins::Catalog,
 }
 
 pub const DEFAULT_LOCALE: &str = "ru";
@@ -66,6 +84,8 @@ impl Default for AppState {
             path: None,
             plugin_errors: Vec::new(),
             locale: DEFAULT_LOCALE.into(),
+            original_only: false,
+            catalog: Default::default(),
         }
     }
 }
@@ -76,11 +96,13 @@ impl AppState {
         if let Some(dir) = dir {
             match gurps_plugins::load_all(&dir) {
                 Ok(plugins) => {
+                    s.catalog = gurps_plugins::translations(&plugins);
                     s.library = gurps_plugins::trait_library(&plugins)
                         .into_iter()
                         .map(|(plugin, def)| LibraryEntry {
                             plugin,
-                            explanation: def.explanation(DEFAULT_LOCALE).map(str::to_owned),
+                            explanation: None,
+                            translated_name: None,
                             def,
                         })
                         .collect();
@@ -102,7 +124,17 @@ impl AppState {
                 .map(|(index, t)| TraitView {
                     index,
                     id: t.def.id.clone(),
-                    name: t.display_name(),
+                    name: self
+                        .translated(&t.def.id)
+                        .map(|n| {
+                            if t.def.is_leveled() {
+                                format!("{n} {}", t.levels)
+                            } else {
+                                n.to_owned()
+                            }
+                        })
+                        .unwrap_or_else(|| t.display_name()),
+                    original_name: self.translated(&t.def.id).map(|_| t.display_name()),
                     category: t.def.category,
                     levels: t.levels,
                     leveled: t.def.is_leveled(),
@@ -191,14 +223,75 @@ impl AppState {
         Ok(self.view())
     }
 
-    /// Plugin text for a taken trait: current library entry if present, else the snapshot.
+    /// Locale used for the plugin's own (TOML) text.
+    fn data_locale(&self) -> &str {
+        if self.original_only {
+            "en"
+        } else {
+            &self.locale
+        }
+    }
+
+    /// Translated trait name for the current language, unless showing originals.
+    fn translated(&self, id: &str) -> Option<&str> {
+        if self.original_only {
+            return None;
+        }
+        self.catalog.name(&self.locale, "trait", id)
+    }
+
+    /// Plugin explanation for a trait id: Fluent translation, else the plugin's
+    /// own text (current library entry, else the snapshot `fallback`).
+    fn explanation_for(&self, id: &str, fallback: Option<&TraitDef>) -> Option<String> {
+        let tr = (!self.original_only)
+            .then(|| self.catalog.description(&self.locale, "trait", id))
+            .flatten();
+        tr.or_else(|| {
+            self.library
+                .iter()
+                .find(|e| e.def.id == id)
+                .map(|e| &e.def)
+                .or(fallback)
+                .and_then(|d| d.explanation(self.data_locale()))
+        })
+        .map(str::to_owned)
+    }
+
     fn plugin_explanation(&self, t: &Trait) -> Option<String> {
+        self.explanation_for(&t.def.id, Some(&t.def))
+    }
+
+    /// Library with names/explanations resolved for the current language.
+    pub fn library_view(&self) -> Vec<LibraryEntry> {
         self.library
             .iter()
-            .find(|e| e.def.id == t.def.id)
-            .and_then(|e| e.def.explanation(&self.locale))
-            .or_else(|| t.def.explanation(&self.locale))
-            .map(str::to_owned)
+            .map(|e| LibraryEntry {
+                explanation: self.explanation_for(&e.def.id, None),
+                translated_name: self.translated(&e.def.id).map(str::to_owned),
+                ..e.clone()
+            })
+            .collect()
+    }
+
+    pub fn locale_info(&self) -> LocaleInfo {
+        let mut available = self.catalog.languages();
+        if !available.iter().any(|l| l == "en") {
+            available.push("en".into());
+        }
+        available.sort();
+        LocaleInfo {
+            available,
+            locale: self.locale.clone(),
+            original_only: self.original_only,
+        }
+    }
+
+    pub fn set_locale(&mut self, locale: String, original_only: bool) -> SheetView {
+        if !locale.trim().is_empty() {
+            self.locale = locale;
+        }
+        self.original_only = original_only;
+        self.view()
     }
 
     /// Sets (or with `None`/blank text, resets to plugin default) a trait's explanation.
@@ -269,7 +362,7 @@ mod tests {
         let plugin = v.traits[0].explanation.clone().expect("plugin text");
         assert_eq!(v.traits[0].default_explanation.as_ref(), Some(&plugin));
         assert!(!v.traits[0].custom_explanation);
-        assert!(s.library.iter().any(|e| e.explanation.is_some()));
+        assert!(s.library_view().iter().any(|e| e.explanation.is_some()));
 
         let v = s
             .set_trait_explanation(0, Some("**Моё** пояснение".into()))
@@ -294,5 +387,46 @@ mod tests {
         assert_eq!(v.traits[0].explanation, Some(plugin));
         assert!(!v.traits[0].custom_explanation);
         assert!(s2.set_trait_explanation(9, None).is_err());
+    }
+
+    #[test]
+    fn localization_switch() {
+        let mut s = state();
+        assert!(s.locale_info().available.contains(&"ru".to_string()));
+        let v = s.add_trait("combat-reflexes", None).unwrap();
+        assert_eq!(v.traits[0].name, "Боевые рефлексы");
+        assert_eq!(
+            v.traits[0].original_name.as_deref(),
+            Some("Combat Reflexes")
+        );
+        assert!(v.traits[0]
+            .explanation
+            .as_deref()
+            .unwrap()
+            .starts_with("Быстрая"));
+        let lib = s.library_view();
+        let e = lib.iter().find(|e| e.def.id == "combat-reflexes").unwrap();
+        assert_eq!(e.translated_name.as_deref(), Some("Боевые рефлексы"));
+        assert_eq!(e.def.name, "Combat Reflexes");
+
+        let v = s.set_locale("ru".into(), true);
+        assert_eq!(v.traits[0].name, "Combat Reflexes");
+        assert_eq!(v.traits[0].original_name, None);
+        assert!(v.traits[0]
+            .explanation
+            .as_deref()
+            .unwrap()
+            .starts_with("Fast"));
+        assert!(s.library_view().iter().all(|e| e.translated_name.is_none()));
+
+        let v = s.set_locale("en".into(), false);
+        assert_eq!(v.traits[0].name, "Combat Reflexes");
+        s.set_locale("ru".into(), false);
+        // leveled traits keep their level after the translated name
+        let v2 = s.add_trait("lifting-st", Some(2)).unwrap();
+        assert_eq!(v2.traits[1].name, "Подъёмная сила 2");
+        // user override wins over the translation
+        let v = s.set_trait_explanation(0, Some("своё".into())).unwrap();
+        assert_eq!(v.traits[0].explanation.as_deref(), Some("своё"));
     }
 }
