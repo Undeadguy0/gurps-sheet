@@ -25,6 +25,24 @@ pub fn validate(ch: &Character) -> Vec<Issue> {
             message: format!("over budget by {}", crate::pts(-b.unspent)),
         });
     }
+    let carried: f64 = ch
+        .equipment
+        .iter()
+        .map(gurps_core::Equipment::carried_weight)
+        .sum();
+    if carried > 0.0 {
+        let sheet = crate::compute_sheet(ch);
+        if sheet.encumbrance.overloaded {
+            out.push(Issue {
+                severity: Severity::Warning,
+                message: format!(
+                    "carried {} lb is more than 10×BL ({} lb): the character cannot move",
+                    crate::value::fmt_num(carried),
+                    crate::value::fmt_num(sheet.basic_lift.total * 10.0)
+                ),
+            });
+        }
+    }
     for t in &ch.traits {
         if t.def.is_leveled() && t.levels < t.def.min_level() {
             out.push(Issue {

@@ -7,6 +7,7 @@
 #![cfg_attr(test, allow(clippy::field_reassign_with_default))]
 
 pub mod dice;
+pub mod encumbrance;
 pub mod points;
 pub mod sheet;
 pub mod skills;

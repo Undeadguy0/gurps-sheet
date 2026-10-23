@@ -1,3 +1,4 @@
+use crate::encumbrance::Encumbrance;
 use crate::points::{self, PointsBreakdown};
 use crate::skills::{compute_skills, compute_techniques, SkillRow, TechniqueRow};
 use crate::value::{fmt_num, SourceKind, Value};
@@ -45,6 +46,7 @@ pub struct Sheet {
     pub skills: Vec<SkillRow>,
     #[serde(default)]
     pub techniques: Vec<TechniqueRow>,
+    pub encumbrance: Encumbrance,
     pub points: PointsBreakdown,
 }
 
@@ -240,6 +242,13 @@ pub fn compute_sheet(ch: &Character) -> Sheet {
         .collect();
     let skills = compute_skills(ch, &|s| totals.get(&s).copied().unwrap_or(10.0));
     let techniques = compute_techniques(ch, &skills);
+    let tot = |s: Stat| totals.get(&s).copied().unwrap_or(0.0);
+    let encumbrance = crate::encumbrance::compute(
+        &ch.equipment,
+        basic_lift_row.total,
+        tot(Stat::BasicMove),
+        tot(Stat::BasicSpeed),
+    );
     Sheet {
         name: ch.name.clone(),
         attributes,
@@ -254,6 +263,7 @@ pub fn compute_sheet(ch: &Character) -> Sheet {
         },
         skills,
         techniques,
+        encumbrance,
         points: points::breakdown(ch),
     }
 }
