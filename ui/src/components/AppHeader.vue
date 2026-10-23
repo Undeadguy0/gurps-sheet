@@ -7,7 +7,7 @@ import { inTauri } from '../api';
 
 const props = defineProps<{ view: SheetView; dirty: boolean; status: string; locales?: LocaleInfo | null }>();
 const emit = defineEmits<{
-  rename: [string]; setLocale: [string, boolean]; save: [string | undefined]; load: [string]; 'new': []; help: []; setRounding: [NegativeRounding];
+  rename: [string]; setLocale: [string, boolean]; save: [string | undefined]; load: [string]; 'new': []; help: []; undo: []; redo: []; setRounding: [NegativeRounding];
 }>();
 
 const name = ref(props.view.sheet.name);
@@ -50,6 +50,12 @@ watch(() => props.view.path, (p) => { if (p) path.value = p; });
     </div>
 
     <div class="app-header__file">
+      <button class="btn" type="button" data-test="undo" :disabled="!view.history?.can_undo"
+        :title="view.history?.undo_label ? `Отменить: ${view.history.undo_label} (Ctrl+Z)` : 'Нечего отменять'"
+        :aria-label="view.history?.undo_label ? `Отменить: ${view.history.undo_label}` : 'Отменить'" @click="emit('undo')">↶ Отменить</button>
+      <button class="btn" type="button" data-test="redo" :disabled="!view.history?.can_redo"
+        :title="view.history?.redo_label ? `Повторить: ${view.history.redo_label} (Ctrl+Shift+Z, Ctrl+Y)` : 'Нечего повторять'"
+        :aria-label="view.history?.redo_label ? `Повторить: ${view.history.redo_label}` : 'Повторить'" @click="emit('redo')">↷ Вернуть</button>
       <button class="btn" type="button" @click="emit('new')">Новый</button>
       <input v-if="inTauri" v-model="path" class="field field--path" aria-label="Путь к файлу" />
       <button v-if="inTauri" class="btn" type="button" @click="emit('load', path)">Открыть</button>

@@ -1,6 +1,6 @@
 // Backend facade: Tauri commands when running inside the app, an in-browser
 // preview backend (mock.ts) when opened with plain `npm run dev`.
-import type { LibraryEntry, LocaleInfo, PluginStatus, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, WeaponLibEntry, SpellLibEntry, ModifierLibEntry } from './types';
+import type { DamageRoll, LibraryEntry, LocaleInfo, PluginStatus, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, WeaponLibEntry, SpellLibEntry, ModifierLibEntry } from './types';
 import { MockBackend } from './mock';
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -63,5 +63,10 @@ export const api = {
   setModifierExplanation: (traitIndex: number, index: number, text: string | null) =>
     call<SheetView>('set_modifier_explanation', { traitIndex, index, text }),
   setNegativeRounding: (mode: string) => call<SheetView>('set_negative_rounding', { mode }),
-  roll: (target: number, modifier = 0) => call<RollResult>('roll', { target, modifier }),
+  roll: (target: number, modifier = 0, seed?: number) => call<RollResult>('roll', { target, modifier, seed }),
+  rollDamage: (expr: string, crushing = false, seed?: number) => call<DamageRoll>('roll_damage', { expr, crushing, seed }),
+  undo: () => call<SheetView>('undo'),
+  redo: () => call<SheetView>('redo'),
+  /** null = reset to max. */
+  setCurrent: (stat: 'HP' | 'FP', value: number | null) => call<SheetView>('set_current', { stat, value }),
 };

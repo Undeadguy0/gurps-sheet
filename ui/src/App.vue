@@ -18,6 +18,7 @@ import DefensesPanel from './components/DefensesPanel.vue';
 import WeaponLibraryDialog from './components/WeaponLibraryDialog.vue';
 import SpellsPanel from './components/SpellsPanel.vue';
 import SpellLibraryDialog from './components/SpellLibraryDialog.vue';
+import TablePanel from './components/TablePanel.vue';
 import ModifierLibraryDialog from './components/ModifierLibraryDialog.vue';
 import { ROLLABLE } from './labels';
 import { engineLocale, engineNames, namesFrom, tx } from './engineRu';
@@ -31,7 +32,7 @@ const sections: Section[] = [
   { id: 'equipment', label: 'Снаряж.', icon: '⚒', ready: true },
   { id: 'combat', label: 'Оружие', icon: '⚔', ready: true },
   { id: 'notes', label: 'Заметки', icon: '✎', ready: false },
-  { id: 'table', label: 'За столом', icon: '⚄', ready: false },
+  { id: 'table', label: 'За столом', icon: '⚄', ready: true },
 ];
 
 const view = ref<SheetView | null>(null);
@@ -55,16 +56,17 @@ const modifierTargetTrait = computed(() => (modifierTarget.value === null ? null
 const helpOpen = ref(false);
 const explainKey = ref<string | null>(null);
 const focusKey = ref<string | null>(null);
-const dirty = ref(false);
-const status = ref(inTauri ? 'Не сохранено' : 'Предпросмотр в браузере');
+const dirty = computed(() => !!view.value?.history?.dirty);
+/** Last save/open message; shown while there are no unsaved edits. */
+const savedStatus = ref(inTauri ? 'Не сохранено' : 'Предпросмотр в браузере');
+const status = computed(() => (dirty.value ? 'Есть несохранённые изменения' : savedStatus.value));
 const error = ref<string | null>(null);
 const traitsPanel = ref<InstanceType<typeof TraitsPanel> | null>(null);
 
-async function run(p: Promise<SheetView>, changes = true) {
+async function run(p: Promise<SheetView>, _changes = true) {
   try {
     view.value = await p;
     error.value = null;
-    if (changes) { dirty.value = true; status.value = 'Есть несохранённые изменения'; }
   } catch (e) {
     error.value = String(e);
   }
@@ -86,18 +88,20 @@ async function addTraits(ids: string[]) {
 async function save(path?: string) {
   try {
     const p = await api.save(path);
-    dirty.value = false;
-    status.value = `Сохранено ${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} · ${p}`;
+    savedStatus.value = `Сохранено ${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} · ${p}`;
     view.value = await api.getSheet();
   } catch (e) { error.value = String(e); }
 }
 async function load(path: string) {
   await run(api.load(path), false);
-  if (!error.value) { dirty.value = false; status.value = `Открыт ${path}`; }
+  if (!error.value) savedStatus.value = `Открыт ${path}`;
 }
 
 const rename = (n: string) => run(api.setName(n));
 const newChar = () => run(api.newCharacter(), false);
+const undo = () => { if (view.value?.history?.can_undo) run(api.undo()); };
+const redo = () => { if (view.value?.history?.can_redo) run(api.redo()); };
+const setCurrent = (stat: 'HP' | 'FP', v: number | null) => run(api.setCurrent(stat, v));
 const setLevel = (k: string, l: number) => run(api.setAttribute(k, l));
 const removeTrait = (i: number) => run(api.removeTrait(i));
 const setTraitLevels = (i: number, l: number) => run(api.setTraitLevels(i, l));
@@ -160,6 +164,13 @@ function onKey(e: KeyboardEvent) {
   const typing = t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA');
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); libraryOpen.value = true; return; }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (inTauri) save(view.value?.path ?? undefined); return; }
+  const mod = e.ctrlKey || e.metaKey;
+  // Ctrl+Z inside a text field keeps the field's own undo.
+  if (mod && !typing && !e.altKey) {
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+    if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); return; }
+  }
   if (e.key === 'Escape') { libraryOpen.value = false; skillLibraryOpen.value = false; weaponLibraryOpen.value = false; spellLibraryOpen.value = false; modifierTarget.value = null; equipmentTarget.value = null; explainKey.value = null; helpOpen.value = false; return; }
   if (e.altKey && /^[1-8]$/.test(e.key)) { section.value = sections[+e.key - 1].id; e.preventDefault(); return; }
   if (typing) return;
@@ -188,7 +199,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
   <div v-if="view" class="app-shell" :class="{ 'has-side-panel': explainRow }">
     <AppHeader :view="view" :dirty="dirty" :status="status" :locales="locales" @set-locale="setLocale"
       @rename="rename" @save="save" @load="load"
-      @new="newChar" @set-rounding="setRounding" @help="helpOpen = !helpOpen" />
+      @new="newChar" @undo="undo" @redo="redo" @set-rounding="setRounding" @help="helpOpen = !helpOpen" />
     <NavRail :sections="sections" :active="section" @select="(s) => (section = s)" />
 
     <main class="app-main" :data-section="section">
@@ -217,6 +228,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
         <WeaponsPanel v-if="section === 'sheet' || section === 'combat'" class="sheet-grid__full" :weapons="view.weapons ?? []"
           @add="openWeaponLibrary" @remove="removeWeapon" @set-explanation="setWeaponExplanation" />
       </div>
+      <TablePanel v-else-if="section === 'table'" :view="view" @set-current="setCurrent" />
       <section v-else class="panel empty-state">
         <h2 class="panel__title">{{ sections.find((s) => s.id === section)?.label }}</h2>
         <p class="muted">Раздел появится в следующих версиях.</p>
@@ -241,6 +253,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
           <dt><kbd>R</kbd></dt><dd>Бросок 3d6 по строке в фокусе</dd>
           <dt><kbd>Alt</kbd>+<kbd>1..8</kbd></dt><dd>Разделы</dd>
           <dt><kbd>Ctrl</kbd>+<kbd>S</kbd></dt><dd>Сохранить</dd>
+          <dt><kbd>Ctrl</kbd>+<kbd>Z</kbd></dt><dd>Отменить последнее изменение</dd>
+          <dt><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></dt><dd>Повторить</dd>
           <dt><kbd>Esc</kbd></dt><dd>Закрыть панель</dd>
           <dt><kbd>?</kbd></dt><dd>Эта шпаргалка</dd>
         </dl>

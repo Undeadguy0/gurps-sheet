@@ -189,7 +189,7 @@ export interface SkillView extends ExplainedView {
 }
 export interface TechniqueView extends ExplainedView { skill: string; modifier: number; max: number; max_level?: number | null }
 
-export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; weapons?: WeaponView[]; spells?: SpellView[]; rules?: RulesOptions; issues: Issue[]; path?: string | null; budget: number }
+export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; weapons?: WeaponView[]; spells?: SpellView[]; rules?: RulesOptions; session?: SessionView; history?: HistoryView; issues: Issue[]; path?: string | null; budget: number }
 
 export type Outcome = 'critical_success' | 'success' | 'failure' | 'critical_failure';
 export interface RollResult {
@@ -199,3 +199,11 @@ export interface RollResult {
 
 /** Where the library came from (plugin_status command). */
 export interface PluginStatus { dir?: string | null; plugins: string[]; errors: string[]; traits: number; skills?: number; equipment?: number; weapons?: number; spells?: number; modifiers?: number }
+
+/** Current HP/FP at the table (session state, separate from build points). */
+export interface SessionView { hp: number; hp_max: number; fp: number; fp_max: number }
+/** Undo/redo state; labels name the action in Russian. */
+export interface HistoryView {
+  can_undo: boolean; can_redo: boolean; undo_label?: string | null; redo_label?: string | null; undo_depth: number; dirty: boolean;
+}
+export interface DamageRoll { expr: string; dice: number[]; adds: number; total: number }

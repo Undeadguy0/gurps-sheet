@@ -2,7 +2,7 @@
 // so designers can work on the UI without the Rust app. The source of truth for all
 // rules is the Rust crate `gurps-rules`; this is a simplified mirror of it.
 import type {
-  LibraryEntry, LocaleInfo, LocalizedText, RollResult, SheetView, StatRow, TraitDef, TraitView, Value, Outcome,
+  LibraryEntry, LocaleInfo, LocalizedText, RollResult, DamageRoll, SheetView, StatRow, TraitDef, TraitView, Value, Outcome,
   SkillDef, SkillLibrary, SkillView, TechniqueDef, TechniqueView, EquipmentItem, EquipmentLibEntry, EquipmentView,
   WeaponDef, WeaponLibEntry, WeaponView, ModifierDef, ModifierLibEntry, NegativeRounding, ModifierView, SpellDef, SpellLibEntry, SpellView,
 } from './types';
@@ -85,7 +85,104 @@ CATALOG.ru['trait-magery'] = MAGERY_RU;
 for (const [k, v] of Object.entries(SPELL_CATALOG_RU)) CATALOG.ru[`spell-${k}`] = v;
 for (const [k, v] of Object.entries(MODIFIER_CATALOG_RU)) CATALOG.ru[`modifier-${k}`] = v;
 
+/** SplitMix64, bit-identical to gurps-rules (same seed, same dice as the app). */
+export class SplitMix {
+  private s: bigint;
+  constructor(seed: number | bigint) { this.s = BigInt.asUintN(64, BigInt(seed)); }
+  next(): bigint {
+    const M = (x: bigint) => BigInt.asUintN(64, x);
+    this.s = M(this.s + 0x9E3779B97F4A7C15n);
+    let z = this.s;
+    z = M((z ^ (z >> 30n)) * 0xBF58476D1CE4E5B9n);
+    z = M((z ^ (z >> 27n)) * 0x94D049BB133111EBn);
+    return z ^ (z >> 31n);
+  }
+  d6(): number { return Number(this.next() % 6n) + 1; }
+}
+
+/** "2d-1" style damage; minimum 0 for crushing, else 1 (B378, # unverified). */
+export function damageRoll(expr: string, crushing: boolean, rng: SplitMix): DamageRoll {
+  const m = /^\s*(\d+)\s*d\s*([+-]\s*\d+)?\s*$/i.exec(expr);
+  if (!m) throw new Error(`cannot parse dice '${expr}'`);
+  const dice = Array.from({ length: +m[1] }, () => rng.d6());
+  const adds = m[2] ? parseInt(m[2].replace(/\s/g, ''), 10) : 0;
+  return { expr, dice, adds, total: Math.max(crushing ? 0 : 1, dice.reduce((x, y) => x + y, 0) + adds) };
+}
+
+/** Russian action labels for undoable commands (same as src-tauri/src/lib.rs). */
+const ACTION: Record<string, string> = {
+  set_negative_rounding: 'правило округления', set_name: 'переименование',
+  add_trait: 'добавление черты', set_trait_levels: 'уровень черты', remove_trait: 'удаление черты', set_trait_explanation: 'пояснение черты',
+  add_skill: 'добавление навыка', set_skill_points: 'очки навыка', set_skill_specialization: 'специализация навыка',
+  set_skill_explanation: 'пояснение навыка', remove_skill: 'удаление навыка',
+  add_technique: 'добавление приёма', set_technique_points: 'очки приёма', set_technique_explanation: 'пояснение приёма', remove_technique: 'удаление приёма',
+  add_equipment: 'добавление снаряжения', set_equipment_quantity: 'количество снаряжения', set_equipment_carried: 'при себе / оставлено',
+  set_equipment_explanation: 'пояснение снаряжения', remove_equipment: 'удаление снаряжения',
+  add_weapon: 'добавление оружия', remove_weapon: 'удаление оружия', set_weapon_explanation: 'пояснение оружия',
+  add_spell: 'добавление заклинания', set_spell_points: 'очки заклинания', set_spell_explanation: 'пояснение заклинания', remove_spell: 'удаление заклинания',
+  add_trait_modifier: 'добавление модификатора', remove_trait_modifier: 'удаление модификатора', set_modifier_explanation: 'пояснение модификатора',
+};
+export const HISTORY_LIMIT = 200;
+type Snap = Record<string, unknown>;
+const SNAP_KEYS = ['name', 'levels', 'traits', 'skills', 'techniques', 'spells', 'equipment', 'weapons', 'rounding', 'session'] as const;
+
 export class MockBackend {
+  session: { hp: number | null; fp: number | null } = { hp: null, fp: null };
+  rng = new SplitMix(Date.now());
+  private undoStack: [string, Snap][] = [];
+  private redoStack: [string, Snap][] = [];
+  private saved: string = '';
+  private snap(): Snap { return structuredClone(Object.fromEntries(SNAP_KEYS.map((k) => [k, (this as unknown as Snap)[k]]))); }
+  private restore(s: Snap) { Object.assign(this, structuredClone(s)); }
+  private key(s: Snap) { return JSON.stringify(s); }
+  /** «name» of the list item an edit touched (added/removed/changed). */
+  private changedItem(before: Snap, after: Snap): string | null {
+    for (const k of ['traits', 'skills', 'techniques', 'spells', 'equipment', 'weapons']) {
+      type It = { id?: string; name?: string; def?: { id: string; name: string } };
+      const a = before[k] as It[]; const b = after[k] as It[];
+      for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        if (JSON.stringify(a[i]) === JSON.stringify(b[i])) continue;
+        const it = a.length > b.length ? a[i] : (b[i] ?? a[i]);
+        const d = it.def ?? { id: it.id ?? '', name: it.name ?? '' };
+        return this.tr(d.id, k === 'equipment' ? k : k.slice(0, -1))?.name ?? d.name;
+      }
+    }
+    return null;
+  }
+  historyView() {
+    return { can_undo: this.undoStack.length > 0, can_redo: this.redoStack.length > 0,
+      undo_label: this.undoStack[this.undoStack.length - 1]?.[0] ?? null, redo_label: this.redoStack[this.redoStack.length - 1]?.[0] ?? null,
+      undo_depth: this.undoStack.length, dirty: this.key(this.snap()) !== this.saved };
+  }
+  private resetHistory() { this.undoStack = []; this.redoStack = []; this.saved = this.key(this.snap()); }
+  private withMeta(r: unknown) {
+    if (r && typeof r === 'object' && 'sheet' in r) (r as SheetView).history = this.historyView();
+    return r;
+  }
+
+  invoke(cmd: string, a: Record<string, unknown>): unknown {
+    if (!this.saved) this.saved = this.key(this.snap());
+    if (cmd === 'undo' || cmd === 'redo') {
+      const [from, to] = cmd === 'undo' ? [this.undoStack, this.redoStack] : [this.redoStack, this.undoStack];
+      const e = from.pop(); if (!e) throw new Error(cmd === 'undo' ? 'nothing to undo' : 'nothing to redo');
+      to.push([e[0], this.snap()]); this.restore(e[1]);
+      return this.withMeta(this.view());
+    }
+    let label = ACTION[cmd] ?? (cmd === 'set_attribute' ? `изменение ${a.key}` : null);
+    if (cmd === 'set_current') label = `${a.value == null ? 'сброс' : 'текущие'} ${a.stat}`;
+    if (!label) { const r = this.exec(cmd, a); if (cmd === 'new_character') this.resetHistory(); return this.withMeta(r); }
+    const before = this.snap();
+    try { this.exec(cmd, a); } catch (e) { this.restore(before); throw e; }
+    const after = this.snap();
+    if (this.key(after) !== this.key(before)) {
+      const item = this.changedItem(before, after);
+      this.undoStack.push([item ? `${label} «${item}»` : label, before]);
+      if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
+      this.redoStack = [];
+    }
+    return this.withMeta(this.view());
+  }
+
   name = 'Пример (браузер)';
   levels: Record<string, number> = {};
   traits: MockTrait[] = [];
@@ -309,15 +406,16 @@ export class MockBackend {
         ...(encumbrance.carried_weight > bl(liftSt) * 10 + 1e-9
           ? [{ severity: 'warning' as const, message: `carried ${encumbrance.carried_weight} lb is more than 10×BL (${bl(liftSt) * 10} lb): the character cannot move` }] : [])],
       path: null, budget: 150, rules: { negative_rounding: this.rounding },
+      session: { hp: this.session.hp ?? Math.floor(tot.HP), hp_max: Math.floor(tot.HP), fp: this.session.fp ?? Math.floor(tot.FP), fp_max: Math.floor(tot.FP) },
     };
   }
 
   private skill(a: Record<string, unknown>) { const s = this.skills[a.index as number]; if (!s) throw new Error('no such skill'); return s; }
   private tech(a: Record<string, unknown>) { const t = this.techniques[a.index as number]; if (!t) throw new Error('no such technique'); return t; }
 
-  invoke(cmd: string, a: Record<string, unknown>): unknown {
+  private exec(cmd: string, a: Record<string, unknown>): unknown {
     switch (cmd) {
-      case 'new_character': this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.spells = []; this.equipment = []; this.weapons = unarmed(); this.name = (a.name as string) ?? 'New character'; return this.view();
+      case 'new_character': this.session = { hp: null, fp: null }; this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.spells = []; this.equipment = []; this.weapons = unarmed(); this.name = (a.name as string) ?? 'New character'; return this.view();
       case 'get_sheet': return this.view();
       case 'set_negative_rounding': {
         if (a.mode !== 'toward_positive' && a.mode !== 'by_magnitude') throw new Error(`unknown rounding mode ${a.mode}`);
@@ -334,7 +432,7 @@ export class MockBackend {
         const t = this.traits[a.index as number]; if (!t) throw new Error('no such trait');
         const text = a.text as string | null; t.explanation = text && text.trim() ? text : undefined; return this.view();
       }
-      case 'remove_trait': this.traits.splice(a.index as number, 1); return this.view();
+      case 'remove_trait': if (!this.traits[a.index as number]) throw new Error('no such trait'); this.traits.splice(a.index as number, 1); return this.view();
       case 'list_library': return this.library();
       case 'list_skill_library': return this.skillLibrary();
       case 'list_spell_library': return this.spellLibrary();
@@ -408,10 +506,19 @@ export class MockBackend {
       case 'get_locales': return this.locales();
       case 'set_locale': if ((a.locale as string)?.trim()) this.locale = a.locale as string; this.originalOnly = !!a.originalOnly; return this.view();
       case 'roll': {
-        const dice = [0, 0, 0].map(() => 1 + Math.floor(Math.random() * 6)) as [number, number, number];
+        const rng = a.seed != null ? new SplitMix(a.seed as number) : this.rng;
+        const dice = [rng.d6(), rng.d6(), rng.d6()] as [number, number, number];
         const roll = dice[0] + dice[1] + dice[2]; const effective = (a.target as number) + ((a.modifier as number) ?? 0);
         const r: RollResult = { target: a.target as number, modifier: (a.modifier as number) ?? 0, effective, dice, roll, margin: effective - roll, outcome: outcome(roll, effective) };
         return r;
+      }
+      case 'roll_damage': return damageRoll(a.expr as string, !!a.crushing, a.seed != null ? new SplitMix(a.seed as number) : this.rng);
+      case 'set_current': {
+        const st = a.stat as string; const v = a.value as number | null;
+        if (st !== 'HP' && st !== 'FP') throw new Error(`unknown session stat '${st}'`);
+        const ss = this.view().session!; const max = st === 'HP' ? ss.hp_max : ss.fp_max;
+        const c = v == null ? max : Math.min(max, Math.max(st === 'HP' ? -5 * max : -max, v));
+        this.session[st === 'HP' ? 'hp' : 'fp'] = c === max ? null : c; return this.view();
       }
       case 'load': case 'save': throw new Error('Файлы доступны только в приложении Tauri');
       default: throw new Error(`unknown command ${cmd}`);
