@@ -50,9 +50,11 @@ impl Sheet {
     }
 }
 
+type Named = Vec<(String, f64)>;
+
 /// Bonus contributions from traits, grouped by target.
-fn trait_bonuses(ch: &Character) -> (BTreeMap<Stat, Vec<(String, f64)>>, Vec<(String, f64)>) {
-    let mut by_stat: BTreeMap<Stat, Vec<(String, f64)>> = BTreeMap::new();
+fn trait_bonuses(ch: &Character) -> (BTreeMap<Stat, Named>, Named) {
+    let mut by_stat: BTreeMap<Stat, Named> = BTreeMap::new();
     let mut lifting = Vec::new();
     for t in &ch.traits {
         let lv = t.levels.max(1) as f64;
@@ -79,12 +81,7 @@ fn trait_bonuses(ch: &Character) -> (BTreeMap<Stat, Vec<(String, f64)>>, Vec<(St
     (by_stat, lifting)
 }
 
-fn apply_common(
-    v: &mut Value,
-    stat: Stat,
-    ch: &Character,
-    bonuses: &BTreeMap<Stat, Vec<(String, f64)>>,
-) {
+fn apply_common(v: &mut Value, stat: Stat, ch: &Character, bonuses: &BTreeMap<Stat, Named>) {
     let purchased = ch.attributes.purchased(stat);
     let amount = purchased as f64 * stat.step();
     v.add(

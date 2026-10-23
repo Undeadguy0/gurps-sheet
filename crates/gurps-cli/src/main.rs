@@ -4,6 +4,7 @@
 //!   calc <file.json>
 //!   roll <target> [--mod N] [--seed S]
 //!   validate <file.json>
+#![cfg_attr(test, allow(clippy::field_reassign_with_default))]
 
 use gurps_rules::dice::{success_roll, SplitMix};
 use serde_json::{json, Value};

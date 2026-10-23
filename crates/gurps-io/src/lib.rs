@@ -1,4 +1,5 @@
 //! Character file format: `{ "format": "gurps-sheet", "version": 1, "character": {...} }`.
+#![cfg_attr(test, allow(clippy::field_reassign_with_default))]
 
 use gurps_core::Character;
 use serde::{Deserialize, Serialize};

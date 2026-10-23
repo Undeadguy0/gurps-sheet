@@ -9,6 +9,7 @@
 //! ```
 //! and any number of `data/*.toml` files with `[[traits]]` tables
 //! (see [`gurps_core::TraitDef`]).
+#![cfg_attr(test, allow(clippy::field_reassign_with_default))]
 
 pub mod script;
 
