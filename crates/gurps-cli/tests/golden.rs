@@ -143,7 +143,8 @@ fn rogue() {
     assert_eq!(s.damage.explain.last().unwrap(), "= 13");
 }
 
-/// Fixture trait snapshots must match the sample plugin library.
+/// Fixture trait snapshots must match the sample plugin library
+/// (explanation text is presentation only and is not part of the snapshot).
 #[test]
 fn fixtures_match_plugin_library() {
     let plugins = gurps_plugins::load_all(&root().join("plugins")).unwrap();
@@ -151,12 +152,14 @@ fn fixtures_match_plugin_library() {
     for name in ["warrior", "mage", "rogue"] {
         let ch = gurps_io::load(root().join(format!("examples/test-chars/{name}.json"))).unwrap();
         for t in &ch.traits {
-            let (_, def) = lib
+            let (_, lib_def) = lib
                 .iter()
                 .find(|(_, d)| d.id == t.def.id)
                 .unwrap_or_else(|| panic!("{name}: trait {} not in library", t.def.id));
+            let mut def = lib_def.clone();
+            def.description = None;
             assert_eq!(
-                &t.def, def,
+                t.def, def,
                 "{name}: trait {} differs from library",
                 t.def.id
             );
