@@ -58,10 +58,27 @@ pub fn load(path: impl AsRef<Path>) -> Result<Character, IoError> {
     from_str(&std::fs::read_to_string(path)?)
 }
 
+/// Atomic save: writes `<name>.tmp` next to the target, flushes it, then renames
+/// it over the target, so a failed or interrupted save never truncates the old file.
 pub fn save(path: impl AsRef<Path>, ch: &Character) -> Result<(), IoError> {
+    use std::io::Write;
+    let path = path.as_ref();
     let mut s = to_string(ch)?;
     s.push('\n');
-    std::fs::write(path, s)?;
+    let mut tmp_name = path.file_name().unwrap_or_default().to_os_string();
+    tmp_name.push(".tmp");
+    let tmp = path.with_file_name(tmp_name);
+    let res = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(s.as_bytes())?;
+        f.sync_all()?;
+        drop(f);
+        std::fs::rename(&tmp, path)
+    })();
+    if res.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    res?;
     Ok(())
 }
 
@@ -69,6 +86,20 @@ pub fn save(path: impl AsRef<Path>, ch: &Character) -> Result<(), IoError> {
 mod tests {
     use super::*;
     use gurps_core::{Equipment, EquipmentDef, Feature, Stat, Trait, TraitCategory, TraitDef};
+
+    #[test]
+    fn atomic_save_replaces_and_leaves_no_temp() {
+        let dir = std::env::temp_dir().join(format!("gurps-io-atomic-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("c.gurps.json");
+        std::fs::write(&p, "old").unwrap();
+        save(&p, &sample()).unwrap();
+        assert_eq!(load(&p).unwrap().name, "Test");
+        assert!(!dir.join("c.gurps.json.tmp").exists());
+        // failure (missing directory) is an error, not a panic, and the old file is untouched
+        assert!(save(dir.join("nope/c.json"), &sample()).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     fn sample() -> Character {
         let mut ch = Character::new("Test");
