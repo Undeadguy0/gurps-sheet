@@ -1,0 +1,28 @@
+{
+  "name": "gurps-sheet-ui",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run gen:themes && vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "gen:themes": "node scripts/gen-themes.mjs",
+    "test": "vitest run",
+    "predev": "npm run gen:themes"
+  },
+  "dependencies": {
+    "@tanstack/vue-table": "^8.21.3",
+    "@tauri-apps/api": "^2.12.4",
+    "vue": "^3.5.44"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "typescript": "~5.9",
+    "vite": "^8.3.5",
+    "vitest": "^4.1.12",
+    "vue-tsc": "^3.3.13"
+  }
+}
