@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { tx } from '../engineRu';
 import { createColumnHelper, FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table';
 import type { Encumbrance, EquipmentView } from '../types';
 import { LEVEL_LABEL_RU, lb, money } from '../encumbrance';
@@ -73,7 +74,7 @@ const count = computed(() => props.items.reduce((a, v) => a + v.quantity, 0));
           </tr>
         </tbody>
       </table>
-      <ul class="skill-details__explain num muted"><li v-for="(l, i) in enc.explain" :key="i">{{ l }}</li></ul>
+      <ul class="skill-details__explain num muted"><li v-for="(l, i) in enc.explain" :key="i">{{ tx(l) }}</li></ul>
       <p class="muted encumbrance__note">Уклонение без Боевых рефлексов, щита и прочих бонусов — они появятся на этапе защит.</p>
     </div>
 

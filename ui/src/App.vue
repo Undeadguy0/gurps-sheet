@@ -14,6 +14,8 @@ import EquipmentLibraryDialog from './components/EquipmentLibraryDialog.vue';
 import SkillLibraryDialog from './components/SkillLibraryDialog.vue';
 import ProvenancePanel from './components/ProvenancePanel.vue';
 import { ROLLABLE } from './labels';
+import { engineLocale, engineNames, namesFrom, tx } from './engineRu';
+import { watchEffect } from 'vue';
 
 const sections: Section[] = [
   { id: 'sheet', label: 'Лист', icon: '▦', ready: true },
@@ -84,6 +86,13 @@ const setLevel = (k: string, l: number) => run(api.setAttribute(k, l));
 const removeTrait = (i: number) => run(api.removeTrait(i));
 const setTraitLevels = (i: number, l: number) => run(api.setTraitLevels(i, l));
 const locales = ref<LocaleInfo | null>(null);
+// Engine lines are English; show them in Russian unless the user wants originals.
+watchEffect(() => {
+  const l = locales.value;
+  engineLocale.value = l && (!l.locale.startsWith('ru') || l.original_only) ? 'en' : 'ru';
+  const v = view.value;
+  engineNames.value = v ? namesFrom([v.traits, v.skills, v.techniques, v.equipment, v.weapons]) : new Map();
+});
 async function setLocale(locale: string, originalOnly: boolean) {
   await run(api.setLocale(locale, originalOnly), false);
   saveLocalePref({ locale, originalOnly });
@@ -154,7 +163,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
     <main class="app-main" :data-section="section">
       <div v-if="error" class="alert alert--error" role="alert"><span aria-hidden="true">⚠</span> {{ error }}</div>
       <div v-for="(i, n) in view.issues" :key="n" class="alert" :class="`alert--${i.severity}`" role="status">
-        <span aria-hidden="true">{{ i.severity === 'error' ? '⚠' : 'ℹ' }}</span> {{ i.message }}
+        <span aria-hidden="true">{{ i.severity === 'error' ? '⚠' : 'ℹ' }}</span> {{ tx(i.message) }}
       </div>
 
       <div v-if="['sheet', 'traits', 'skills', 'equipment'].includes(section)" class="sheet-grid">

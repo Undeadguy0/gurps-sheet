@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { STEPS, SOURCES, plural, pts } from '../plural';
 import { computed, h, ref } from 'vue';
+import { tx } from '../engineRu';
 import { createColumnHelper, FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table';
 import type { RollResult, Sheet, StatRow } from '../types';
 import { OUTCOME_LABEL, ROLLABLE, STAT_LABEL, fmt, signed } from '../labels';
@@ -94,7 +95,7 @@ const heading = (g: Row['group']) => ({ primary: 'Атрибуты', secondary: 
                     title="Откуда взялось число (P)" @click="emit('explain', row.id)">{{ fmt(row.original.total) }}</button>
                   <span :id="`tip-${row.id}`" role="tooltip" class="tooltip">
                     <strong>{{ row.original.label }} = {{ fmt(row.original.total) }}</strong>
-                    <span v-for="(l, j) in row.original.explain" :key="j" class="tooltip__line">{{ l }}</span>
+                    <span v-for="(l, j) in row.original.explain" :key="j" class="tooltip__line">{{ tx(l) }}</span>
                     <small class="muted">P или клик — подробно</small>
                   </span>
                 </span>
@@ -122,9 +123,9 @@ const heading = (g: Row['group']) => ({ primary: 'Атрибуты', secondary: 
           <tr v-if="expanded.has(row.id)" class="data-table__detail">
             <td :colspan="columns.length">
               <ol class="explain-list">
-                <li class="explain-list__item"><span>{{ row.original.value.base_reason === 'default' ? 'База' : `База ${row.original.value.base_reason}` }}</span><span class="num">{{ fmt(row.original.value.base) }}</span></li>
+                <li class="explain-list__item"><span>{{ row.original.value.base_reason === 'default' ? 'База' : `База ${tx(row.original.value.base_reason)}` }}</span><span class="num">{{ fmt(row.original.value.base) }}</span></li>
                 <li v-for="(c, j) in row.original.value.contributions" :key="j" class="explain-list__item" :data-kind="c.source.kind">
-                  <span>{{ c.reason }}</span><span class="num">{{ signed(c.amount) }}</span>
+                  <span>{{ tx(c.reason) }}</span><span class="num">{{ signed(c.amount) }}</span>
                 </li>
                 <li class="explain-list__item explain-list__item--total"><span>Итого</span><span class="num">{{ fmt(row.original.total) }}</span></li>
               </ol>
@@ -133,7 +134,7 @@ const heading = (g: Row['group']) => ({ primary: 'Атрибуты', secondary: 
         </template>
       </tbody>
     </table>
-    <p class="panel__footnote muted" :title="sheet.damage.explain?.join('\n')">
+    <p class="panel__footnote muted" :title="sheet.damage.explain?.map(tx).join('\n')">
       Урон: толчок <span class="num">{{ sheet.damage.thrust }}</span> · замах <span class="num">{{ sheet.damage.swing }}</span>
       (ST {{ sheet.damage.based_on_st }})
     </p>

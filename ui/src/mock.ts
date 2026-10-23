@@ -9,7 +9,7 @@ import type {
 import { WEAPON_CATALOG_RU, WEAPON_DEFS } from './mockWeapons';
 import { basicDamage, computeDefenses, computeWeapons, diceStr, type CombatCtx, type Owned } from './combat';
 import { EQUIPMENT_CATALOG_RU, EQUIPMENT_DEFS } from './mockEquipment';
-import { carriedWeight, computeEncumbrance, totalCost, totalWeight } from './encumbrance';
+import { computeEncumbrance, totalCost, totalWeight } from './encumbrance';
 import { SKILL_CATALOG_RU, SKILL_DEFS, TALENT_DEF, TECHNIQUE_DEFS } from './mockSkills';
 import { computeSkills, computeTechniques, signedInt, enPts } from './skills';
 
@@ -261,8 +261,8 @@ export class MockBackend {
       issues: [...(p.unspent < 0 ? [{ severity: 'warning' as const, message: `over budget by ${enPts(-p.unspent)}` }] : []),
         ...this.skills.filter((s) => s.def.specialization_required && !s.specialization?.trim())
           .map((s) => ({ severity: 'warning' as const, message: `skill '${s.def.name}' needs a specialization` })),
-        ...(this.equipment.reduce((a, e) => a + carriedWeight(e), 0) > bl(liftSt) * 10 + 1e-9
-          ? [{ severity: 'warning' as const, message: 'carried weight is more than 10×BL: the character cannot move' }] : [])],
+        ...(encumbrance.carried_weight > bl(liftSt) * 10 + 1e-9
+          ? [{ severity: 'warning' as const, message: `carried ${encumbrance.carried_weight} lb is more than 10×BL (${bl(liftSt) * 10} lb): the character cannot move` }] : [])],
       path: null, budget: 150,
     };
   }

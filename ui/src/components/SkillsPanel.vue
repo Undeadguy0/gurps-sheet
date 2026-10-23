@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { pts } from '../plural';
 import { computed, ref } from 'vue';
+import { tx } from '../engineRu';
 import { createColumnHelper, FlexRender, getCoreRowModel, getSortedRowModel, useVueTable, type SortingState } from '@tanstack/vue-table';
 import type { SkillView, TechniqueView } from '../types';
 import { DIFF_LABEL, nextPoints, nextTechniquePoints, prevPoints, prevTechniquePoints } from '../skills';
@@ -55,7 +56,7 @@ function step(r: Row, dir: 1 | -1) {
   emit('setPoints', r.kind, r.v.index, p);
 }
 const atCap = (r: Row) => r.kind === 'technique' && r.v.level != null && r.v.max_level != null && r.v.level >= r.v.max_level;
-const tip = (r: Row) => [r.v.explain.join('\n'), excerpt(r.v.explanation)].filter(Boolean).join('\n\n') || undefined;
+const tip = (r: Row) => [r.v.explain.map(tx).join('\n'), excerpt(r.v.explanation)].filter(Boolean).join('\n\n') || undefined;
 const specDraft = ref<Record<number, string>>({});
 function saveSpec(v: SkillView) {
   const t = specDraft.value[v.index];
@@ -141,7 +142,7 @@ function saveSpec(v: SkillView) {
                 <p v-if="row.original.kind === 'technique'" class="muted">
                   Умолчание: {{ row.original.v.modifier }} от навыка; максимум: навык{{ row.original.v.max ? (row.original.v.max > 0 ? '+' : '') + row.original.v.max : '' }}<template v-if="row.original.v.max_level != null"> ({{ row.original.v.max_level }})</template>
                 </p>
-                <ul class="skill-details__explain num"><li v-for="(l, i) in row.original.v.explain" :key="i">{{ l }}</li></ul>
+                <ul class="skill-details__explain num"><li v-for="(l, i) in row.original.v.explain" :key="i">{{ tx(l) }}</li></ul>
               </div>
               <ExplanationEditor :text="row.original.v.explanation" :default-text="row.original.v.default_explanation"
                 :custom="row.original.v.custom_explanation" :label="row.original.v.name"

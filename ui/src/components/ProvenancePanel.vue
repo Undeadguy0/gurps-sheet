@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { StatRow } from '../types';
 import { fmt, signed } from '../labels';
+import { tx } from '../engineRu';
 
 const props = defineProps<{ row: StatRow }>();
 const emit = defineEmits<{ close: [] }>();
@@ -11,7 +12,7 @@ function sourceText(kind: string, ref?: string) {
   return ref ?? kind;
 }
 async function copy() {
-  const text = props.row.explain.join('\n');
+  const text = props.row.explain.map(tx).join('\n');
   try { await navigator.clipboard.writeText(`${props.row.label}\n${text}`); } catch { /* ignore */ }
 }
 </script>
@@ -27,10 +28,10 @@ async function copy() {
     <ol class="provenance__chain">
       <li class="provenance__step">
         <div class="provenance__step-head"><span>База</span><strong class="num">{{ fmt(row.value.base) }}</strong></div>
-        <small class="muted">{{ row.value.base_reason === 'default' ? 'значение по умолчанию' : row.value.base_reason }}</small>
+        <small class="muted">{{ row.value.base_reason === 'default' ? 'значение по умолчанию' : tx(row.value.base_reason) }}</small>
       </li>
       <li v-for="(c, i) in row.value.contributions" :key="i" class="provenance__step" :data-kind="c.source.kind">
-        <div class="provenance__step-head"><span>{{ c.reason }}</span><strong class="num">{{ signed(c.amount) }}</strong></div>
+        <div class="provenance__step-head"><span>{{ tx(c.reason) }}</span><strong class="num">{{ signed(c.amount) }}</strong></div>
         <small class="muted">Источник: {{ sourceText(c.source.kind, 'ref' in c.source ? c.source.ref : undefined) }}</small>
       </li>
     </ol>
