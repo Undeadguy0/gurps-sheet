@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "src-tauri"]
-default-members = ["crates/*"]
+members = ["crates/gurps-core"]
+
 
 [workspace.package]
 version = "0.1.0"

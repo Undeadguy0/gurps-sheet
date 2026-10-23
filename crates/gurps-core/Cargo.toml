@@ -1,0 +1,9 @@
+[package]
+name = "gurps-core"
+description = "GURPS 4e domain model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
