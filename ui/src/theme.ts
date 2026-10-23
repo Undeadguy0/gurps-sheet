@@ -12,9 +12,12 @@ export const THEMES: { id: ThemeId; label: string }[] = [
 const KEY_T = 'gurps.theme';
 const KEY_S = 'gurps.scheme';
 
+// URL override (?theme=paper&scheme=dark) is handy for previews/screenshots.
+const params = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
+
 function read<T extends string>(k: string, fallback: T, allowed: readonly string[]): T {
   try {
-    const v = localStorage.getItem(k);
+    const v = params.get(k.replace('gurps.', '')) ?? localStorage.getItem(k);
     return v && allowed.includes(v) ? (v as T) : fallback;
   } catch {
     return fallback;
