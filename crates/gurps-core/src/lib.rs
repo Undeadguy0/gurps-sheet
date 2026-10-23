@@ -60,7 +60,11 @@ impl Stat {
     }
 
     pub fn parse(s: &str) -> Option<Stat> {
-        let all = [Stat::PRIMARY.as_slice(), Stat::SECONDARY.as_slice(), &[Stat::BasicLift]];
+        let all = [
+            Stat::PRIMARY.as_slice(),
+            Stat::SECONDARY.as_slice(),
+            &[Stat::BasicLift],
+        ];
         all.iter()
             .flat_map(|x| x.iter())
             .copied()

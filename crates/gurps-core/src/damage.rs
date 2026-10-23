@@ -85,7 +85,10 @@ mod tests {
         let (t, s) = basic_damage(13);
         assert_eq!((t.to_string(), s.to_string()), ("1d".into(), "2d-1".into()));
         let (t, s) = basic_damage(20);
-        assert_eq!((t.to_string(), s.to_string()), ("2d-1".into(), "3d+2".into()));
+        assert_eq!(
+            (t.to_string(), s.to_string()),
+            ("2d-1".into(), "3d+2".into())
+        );
         assert_eq!(basic_damage(0), basic_damage(1));
         assert_eq!(basic_damage(99), basic_damage(40));
     }

@@ -1,0 +1,13 @@
+[package]
+name = "gurps-rules"
+description = "GURPS 4e calculations: value graph with explanations, point costs, dice"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+gurps-core.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
