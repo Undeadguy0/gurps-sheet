@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { COST, MockBackend, localize, outcome } from '../src/mock';
+import { matchesLibrary } from '../src/i18n';
+import type { LibraryEntry, LocaleInfo } from '../src/types';
 import type { SheetView } from '../src/types';
 
 describe('browser preview backend', () => {
@@ -59,5 +61,26 @@ describe('browser preview backend', () => {
       expect(v.sheet.points.total).toBe(cost * lv);
       expect(r.value.contributions[0].amount).toBe(lv * step);
     }
+  });
+  it('localization: translation (original), original-only, search both', () => {
+    const m = new MockBackend();
+    expect((m.invoke('get_locales', {}) as LocaleInfo).available).toEqual(['en', 'ru']);
+    let v = m.invoke('add_trait', { id: 'lifting-st', levels: 2 }) as SheetView;
+    expect(v.traits[0].name).toBe('Подъёмная сила 2');
+    expect(v.traits[0].original_name).toBe('Lifting ST 2');
+    expect(v.traits[0].explanation).toContain('только для подъёма');
+    const lib = m.invoke('list_library', {}) as LibraryEntry[];
+    const cr = lib.find((e) => e.id === 'combat-reflexes')!;
+    expect(cr.translated_name).toBe('Боевые рефлексы');
+    expect(matchesLibrary(cr, 'рефлекс')).toBe(true);
+    expect(matchesLibrary(cr, 'reflexes')).toBe(true);
+    expect(matchesLibrary(cr, 'nope')).toBe(false);
+    v = m.invoke('set_locale', { locale: 'ru', originalOnly: true }) as SheetView;
+    expect(v.traits[0].name).toBe('Lifting ST 2');
+    expect(v.traits[0].original_name).toBeNull();
+    expect(v.traits[0].explanation).toContain('only for lifting');
+    expect((m.invoke('list_library', {}) as LibraryEntry[]).every((e) => !e.translated_name)).toBe(true);
+    v = m.invoke('set_locale', { locale: 'en', originalOnly: false }) as SheetView;
+    expect(v.traits[0].name).toBe('Lifting ST 2');
   });
 });

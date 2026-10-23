@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { api, inTauri } from './api';
-import type { LibraryEntry, RollResult, SheetView } from './types';
+import type { LibraryEntry, LocaleInfo, RollResult, SheetView } from './types';
+import { loadLocalePref, saveLocalePref } from './i18n';
 import AppHeader from './components/AppHeader.vue';
 import NavRail, { type Section } from './components/NavRail.vue';
 import AttributesPanel from './components/AttributesPanel.vue';
@@ -73,6 +74,12 @@ const newChar = () => run(api.newCharacter(), false);
 const setLevel = (k: string, l: number) => run(api.setAttribute(k, l));
 const removeTrait = (i: number) => run(api.removeTrait(i));
 const setTraitLevels = (i: number, l: number) => run(api.setTraitLevels(i, l));
+const locales = ref<LocaleInfo | null>(null);
+async function setLocale(locale: string, originalOnly: boolean) {
+  await run(api.setLocale(locale, originalOnly), false);
+  saveLocalePref({ locale, originalOnly });
+  [locales.value, library.value] = await Promise.all([api.getLocales(), api.listLibrary()]);
+}
 const setTraitExplanation = (i: number, t: string | null) => run(api.setTraitExplanation(i, t));
 
 function onKey(e: KeyboardEvent) {
@@ -95,15 +102,18 @@ function onKey(e: KeyboardEvent) {
 
 onMounted(async () => {
   window.addEventListener('keydown', onKey);
+  const pref = loadLocalePref();
+  if (pref) await api.setLocale(pref.locale, pref.originalOnly);
   view.value = await api.getSheet();
   library.value = await api.listLibrary();
+  locales.value = await api.getLocales();
 });
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 </script>
 
 <template>
   <div v-if="view" class="app-shell" :class="{ 'has-side-panel': explainRow }">
-    <AppHeader :view="view" :dirty="dirty" :status="status"
+    <AppHeader :view="view" :dirty="dirty" :status="status" :locales="locales" @set-locale="setLocale"
       @rename="rename" @save="save" @load="load"
       @new="newChar" @help="helpOpen = !helpOpen" />
     <NavRail :sections="sections" :active="section" @select="(s) => (section = s)" />

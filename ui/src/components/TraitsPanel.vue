@@ -16,6 +16,11 @@ function toggle(i: number) {
   if (s.has(i)) s.delete(i); else s.add(i);
   expanded.value = s;
 }
+// Filter matches the translated and the original name.
+const shown = computed(() => {
+  const q = filter.value.trim().toLowerCase();
+  return q ? props.traits.filter((t) => [t.name, t.original_name ?? ''].some((n) => n.toLowerCase().includes(q))) : props.traits;
+});
 const tip = (t: TraitView) => excerpt(t.explanation) || undefined;
 
 const filter = ref('');
@@ -30,10 +35,9 @@ const columns = [
   col.display({ id: 'actions', header: '' }),
 ];
 const table = useVueTable({
-  get data() { return props.traits; },
+  get data() { return shown.value; },
   columns,
   state: {
-    get globalFilter() { return filter.value; },
     get sorting() { return sorting.value; },
   },
   onSortingChange: (u) => { sorting.value = typeof u === 'function' ? u(sorting.value) : u; },
@@ -94,6 +98,7 @@ const summary = computed(() => `Преим ${props.points.advantages + props.poi
                 :aria-label="`Пояснение: ${row.original.name}`" :title="expanded.has(row.original.index) ? 'Скрыть пояснение' : 'Показать пояснение'"
                 @click="toggle(row.original.index)">{{ expanded.has(row.original.index) ? '▾' : '▸' }}</button>
               <span>{{ row.original.name }}</span>
+              <span v-if="row.original.original_name" class="muted original-name"> ({{ row.original.original_name }})</span>
               <span v-if="row.original.explanation" class="explanation-mark" :class="{ 'is-custom': row.original.custom_explanation }"
                 aria-hidden="true" title="">ⓘ</span>
             </template>

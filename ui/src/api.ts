@@ -1,6 +1,6 @@
 // Backend facade: Tauri commands when running inside the app, an in-browser
 // preview backend (mock.ts) when opened with plain `npm run dev`.
-import type { LibraryEntry, RollResult, SheetView } from './types';
+import type { LibraryEntry, LocaleInfo, RollResult, SheetView } from './types';
 import { MockBackend } from './mock';
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -26,6 +26,8 @@ export const api = {
   /** `null` or blank text resets to the plugin default. */
   setTraitExplanation: (index: number, text: string | null) => call<SheetView>('set_trait_explanation', { index, text }),
   removeTrait: (index: number) => call<SheetView>('remove_trait', { index }),
+  getLocales: () => call<LocaleInfo>('get_locales'),
+  setLocale: (locale: string, originalOnly: boolean) => call<SheetView>('set_locale', { locale, originalOnly }),
   getSheet: () => call<SheetView>('get_sheet'),
   listLibrary: () => call<LibraryEntry[]>('list_library'),
   roll: (target: number, modifier = 0) => call<RollResult>('roll', { target, modifier }),

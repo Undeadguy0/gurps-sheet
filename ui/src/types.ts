@@ -53,10 +53,20 @@ export interface TraitDef {
 }
 export type LocalizedText = string | Record<string, string>;
 /** `explanation` is the plugin text resolved for the UI locale. */
-export interface LibraryEntry extends TraitDef { plugin: string; explanation?: string | null }
+export interface LibraryEntry extends TraitDef {
+  plugin: string; explanation?: string | null;
+  /** Name in the UI language; null when showing originals or untranslated. `name` is the original. */
+  translated_name?: string | null;
+}
+export interface LocaleInfo { available: string[]; locale: string; original_only: boolean }
 
 export interface TraitView {
-  index: number; id: string; name: string; category: TraitCategory; levels: number;
+  index: number; id: string;
+  /** Display name in the UI language (with level). */
+  name: string;
+  /** Original plugin name when `name` is a translation. */
+  original_name?: string | null;
+  category: TraitCategory; levels: number;
   leveled: boolean; min_level: number; cost: number; page?: string | null; source?: string | null;
   /** Effective explanation (user text, else plugin text), Markdown. */
   explanation?: string | null;

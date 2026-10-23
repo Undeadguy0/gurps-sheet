@@ -1,17 +1,24 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import type { SheetView } from '../types';
+import type { LocaleInfo, SheetView } from '../types';
 import { THEMES, theme, scheme } from '../theme';
 import { inTauri } from '../api';
 
-const props = defineProps<{ view: SheetView; dirty: boolean; status: string }>();
+const props = defineProps<{ view: SheetView; dirty: boolean; status: string; locales?: LocaleInfo | null }>();
 const emit = defineEmits<{
-  rename: [string]; save: [string | undefined]; load: [string]; 'new': []; help: [];
+  rename: [string]; setLocale: [string, boolean]; save: [string | undefined]; load: [string]; 'new': []; help: [];
 }>();
 
 const name = ref(props.view.sheet.name);
 watch(() => props.view.sheet.name, (n) => (name.value = n));
 const print = () => window.print();
+const LANG_LABEL: Record<string, string> = { ru: 'Русский', en: 'English' };
+const ORIGINAL = '__original__';
+const langValue = () => (props.locales?.original_only ? ORIGINAL : props.locales?.locale ?? 'ru');
+function onLang(v: string) {
+  if (v === ORIGINAL) emit('setLocale', props.locales?.locale ?? 'ru', true);
+  else emit('setLocale', v, false);
+}
 const path = ref(props.view.path ?? 'character.gurps.json');
 watch(() => props.view.path, (p) => { if (p) path.value = p; });
 </script>
@@ -51,6 +58,12 @@ watch(() => props.view.path, (p) => { if (p) path.value = p; });
     </div>
 
     <div class="app-header__prefs">
+      <label class="visually-hidden" for="lang-select">Язык данных</label>
+      <select v-if="locales" id="lang-select" class="field field--select" :value="langValue()" title="Язык названий и пояснений"
+        @change="onLang(($event.target as HTMLSelectElement).value)">
+        <option v-for="l in locales.available" :key="l" :value="l">{{ LANG_LABEL[l] ?? l }}</option>
+        <option :value="ORIGINAL">Только оригинал</option>
+      </select>
       <label class="visually-hidden" for="theme-select">Тема</label>
       <select id="theme-select" v-model="theme" class="field field--select">
         <option v-for="t in THEMES" :key="t.id" :value="t.id">{{ t.label }}</option>
