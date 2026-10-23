@@ -189,7 +189,7 @@ export interface SkillView extends ExplainedView {
 }
 export interface TechniqueView extends ExplainedView { skill: string; modifier: number; max: number; max_level?: number | null }
 
-export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; weapons?: WeaponView[]; spells?: SpellView[]; rules?: RulesOptions; notes?: string; session?: SessionView; history?: HistoryView; issues: Issue[]; path?: string | null; budget: number }
+export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; weapons?: WeaponView[]; spells?: SpellView[]; rules?: RulesOptions; notes?: string; pool?: PoolView; custom?: CustomContent; session?: SessionView; history?: HistoryView; issues: Issue[]; path?: string | null; budget: number }
 
 export type Outcome = 'critical_success' | 'success' | 'failure' | 'critical_failure';
 export interface RollResult {
@@ -207,3 +207,15 @@ export interface HistoryView {
   can_undo: boolean; can_redo: boolean; undo_label?: string | null; redo_label?: string | null; undo_depth: number; dirty: boolean;
 }
 export interface DamageRoll { expr: string; dice: number[]; adds: number; total: number }
+
+export type LedgerKind = 'starting' | 'session-award' | 'gm-bonus' | 'training' | 'new-disadvantage' | 'correction'
+  | 'influence' | 'impulse-buy' | 'buy-off' | 'other';
+export interface LedgerEntry { id: number; date?: string; amount: number; kind: LedgerKind; note?: string; skill?: string | null }
+export type LedgerInput = Omit<LedgerEntry, 'id'>;
+export interface PoolView {
+  entries: LedgerEntry[]; starting: number; income: number; earned: number; spent_outside: number; available: number;
+  character_cost: number; unspent: number; disadvantage_limit: number; disadvantage_limit_custom: boolean;
+  disadvantages: number; quirks: number; quirk_points: number;
+}
+export type CustomKind = 'trait' | 'skill' | 'spell' | 'equipment';
+export interface CustomContent { traits?: TraitDef[]; skills?: SkillDef[]; spells?: SpellDef[]; equipment?: EquipmentDef[] }

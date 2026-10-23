@@ -1,6 +1,6 @@
 // Backend facade: Tauri commands when running inside the app, an in-browser
 // preview backend (mock.ts) when opened with plain `npm run dev`.
-import type { DamageRoll, LibraryEntry, LocaleInfo, PluginStatus, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, WeaponLibEntry, SpellLibEntry, ModifierLibEntry } from './types';
+import type { CustomKind, DamageRoll, LedgerInput, LibraryEntry, LocaleInfo, PluginStatus, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, WeaponLibEntry, SpellLibEntry, ModifierLibEntry } from './types';
 import { MockBackend } from './mock';
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -65,6 +65,16 @@ export const api = {
   setNegativeRounding: (mode: string) => call<SheetView>('set_negative_rounding', { mode }),
   roll: (target: number, modifier = 0, seed?: number) => call<RollResult>('roll', { target, modifier, seed }),
   rollDamage: (expr: string, crushing = false, seed?: number) => call<DamageRoll>('roll_damage', { expr, crushing, seed }),
+  addLedgerEntry: (entry: LedgerInput) => call<SheetView>('add_ledger_entry', { entry }),
+  updateLedgerEntry: (id: number, entry: LedgerInput) => call<SheetView>('update_ledger_entry', { id, entry }),
+  removeLedgerEntry: (id: number) => call<SheetView>('remove_ledger_entry', { id }),
+  /** null = default (50% of starting points). */
+  setDisadvantageLimit: (limit: number | null) => call<SheetView>('set_disadvantage_limit', { limit }),
+  /** Empty id = new entry. */
+  saveCustom: (kind: CustomKind, def: Record<string, unknown>) => call<SheetView>('save_custom', { kind, def }),
+  removeCustom: (kind: CustomKind, id: string) => call<SheetView>('remove_custom', { kind, id }),
+  /** Tauri only: writes a user plugin folder, returns its path. */
+  exportCustomPlugin: () => call<string>('export_custom_plugin'),
   setNotes: (text: string) => call<SheetView>('set_notes', { text }),
   undo: () => call<SheetView>('undo'),
   redo: () => call<SheetView>('redo'),

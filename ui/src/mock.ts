@@ -1,8 +1,9 @@
 // Browser-preview backend. Used ONLY when the UI runs outside Tauri (plain Vite dev),
 // so designers can work on the UI without the Rust app. The source of truth for all
 // rules is the Rust crate `gurps-rules`; this is a simplified mirror of it.
+import { normalize as normalizeLedger, totals as ledgerTotals } from './pool';
 import type {
-  LibraryEntry, LocaleInfo, LocalizedText, RollResult, DamageRoll, SheetView, StatRow, TraitDef, TraitView, Value, Outcome,
+  LibraryEntry, LocaleInfo, LocalizedText, RollResult, DamageRoll, LedgerEntry, LedgerInput, CustomContent, CustomKind, SheetView, StatRow, TraitDef, TraitView, Value, Outcome,
   SkillDef, SkillLibrary, SkillView, TechniqueDef, TechniqueView, EquipmentItem, EquipmentLibEntry, EquipmentView,
   WeaponDef, WeaponLibEntry, WeaponView, ModifierDef, ModifierLibEntry, NegativeRounding, ModifierView, SpellDef, SpellLibEntry, SpellView,
 } from './types';
@@ -112,6 +113,8 @@ export function damageRoll(expr: string, crushing: boolean, rng: SplitMix): Dama
 /** Russian action labels for undoable commands (same as src-tauri/src/lib.rs). */
 const ACTION: Record<string, string> = {
   set_negative_rounding: 'правило округления', set_name: 'переименование', set_notes: 'заметки',
+  add_ledger_entry: 'запись в журнале очков', update_ledger_entry: 'правка записи журнала очков', remove_ledger_entry: 'удаление записи журнала очков',
+  set_disadvantage_limit: 'лимит недостатков', save_custom: 'своё определение', remove_custom: 'удаление своего определения',
   add_trait: 'добавление черты', set_trait_levels: 'уровень черты', remove_trait: 'удаление черты', set_trait_explanation: 'пояснение черты',
   add_skill: 'добавление навыка', set_skill_points: 'очки навыка', set_skill_specialization: 'специализация навыка',
   set_skill_explanation: 'пояснение навыка', remove_skill: 'удаление навыка',
@@ -124,11 +127,19 @@ const ACTION: Record<string, string> = {
 };
 export const HISTORY_LIMIT = 200;
 type Snap = Record<string, unknown>;
-const SNAP_KEYS = ['name', 'notes', 'levels', 'traits', 'skills', 'techniques', 'spells', 'equipment', 'weapons', 'rounding', 'session'] as const;
+const SNAP_KEYS = ['name', 'notes', 'ledger', 'disLimit', 'custom', 'levels', 'traits', 'skills', 'techniques', 'spells', 'equipment', 'weapons', 'rounding', 'session'] as const;
 
 export class MockBackend {
   session: { hp: number | null; fp: number | null } = { hp: null, fp: null };
   notes = '';
+  ledger: LedgerEntry[] = [{ id: 1, amount: 150, kind: 'starting' }];
+  disLimit: number | null = null;
+  custom: CustomContent = {};
+  private disLimitValue() { return this.disLimit ?? Math.trunc(ledgerTotals(this.ledger).starting / 2); }
+  private customList<T>(kind: CustomKind): T[] {
+    const k = kind === 'equipment' ? 'equipment' : (`${kind}s` as 'traits' | 'skills' | 'spells');
+    return ((this.custom[k] ??= []) as unknown) as T[];
+  }
   rng = new SplitMix(Date.now());
   private undoStack: [string, Snap][] = [];
   private redoStack: [string, Snap][] = [];
@@ -245,7 +256,8 @@ export class MockBackend {
     this.weapons = this.weapons.filter((w) => !w.def.equipment || ids.has(w.def.equipment));
   }
   equipmentLibrary(): EquipmentLibEntry[] {
-    return EQUIPMENT_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('equipment', d.id, d.description), translated_name: this.tr(d.id, 'equipment')?.name ?? null }));
+    return [...EQUIPMENT_DEFS.filter((d) => !this.custom.equipment?.some((c) => c.id === d.id)).map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('equipment', d.id, d.description), translated_name: this.tr(d.id, 'equipment')?.name ?? null })),
+      ...(this.custom.equipment ?? []).map((d) => ({ ...d, plugin: 'custom', explanation: localize(d.description), translated_name: null }))];
   }
   private equipmentViews(): EquipmentView[] {
     const out: EquipmentView[] = [];
@@ -269,7 +281,8 @@ export class MockBackend {
   }
   skillLibrary(): SkillLibrary {
     return {
-      skills: SKILL_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('skill', d.id, d.description), translated_name: this.tr(d.id, 'skill')?.name ?? null })),
+      skills: [...SKILL_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('skill', d.id, d.description), translated_name: this.tr(d.id, 'skill')?.name ?? null })),
+        ...(this.custom.skills ?? []).map((d) => ({ ...d, plugin: 'custom', explanation: localize(d.description), translated_name: null }))],
       techniques: TECHNIQUE_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('technique', d.id, d.description),
         translated_name: this.tr(d.id, 'technique')?.name ?? null, skill_name: this.skillName(d.skill) })),
     };
@@ -304,7 +317,8 @@ export class MockBackend {
   private plugText(def: TraitDef) { return this.tr(def.id)?.description ?? localize(def.description, this.originalOnly ? 'en' : this.locale); }
   private shown(t: MockTrait) { const n = this.tr(t.def.id)?.name; return n ? (t.def.cost_per_level ? `${n} ${t.levels}` : n) : undefined; }
   library(): LibraryEntry[] {
-    return LIBRARY.map((e) => ({ ...e, explanation: this.plugText(e), translated_name: this.tr(e.id)?.name ?? null }));
+    return [...LIBRARY.map((e) => ({ ...e, explanation: this.plugText(e), translated_name: this.tr(e.id)?.name ?? null })),
+      ...(this.custom.traits ?? []).map((d) => ({ ...d, plugin: 'custom', explanation: localize(d.description), translated_name: null }))];
   }
   locales(): LocaleInfo { return { available: [...new Set([...Object.keys(CATALOG), 'en'])].sort(), locale: this.locale, original_only: this.originalOnly }; }
 
@@ -314,7 +328,8 @@ export class MockBackend {
   rounding: NegativeRounding = 'toward_positive';
   private cost(t: MockTrait) { return t.modifiers.length ? modifiedCost(this.baseCost(t), this.modPct(t), this.rounding) : this.baseCost(t); }
   spellLibrary(): SpellLibEntry[] {
-    return SPELL_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('spell', d.id, d.description), translated_name: this.tr(d.id, 'spell')?.name ?? null }));
+    return [...SPELL_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('spell', d.id, d.description), translated_name: this.tr(d.id, 'spell')?.name ?? null })),
+      ...(this.custom.spells ?? []).map((d) => ({ ...d, plugin: 'custom', explanation: localize(d.description), translated_name: null }))];
   }
   modifierLibrary(): ModifierLibEntry[] {
     return MODIFIER_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('modifier', d.id, d.description), translated_name: this.tr(d.id, 'modifier')?.name ?? null }));
@@ -381,7 +396,7 @@ export class MockBackend {
     const sum = (ks: string[]) => ks.reduce((a, k) => a + (this.levels[k] ?? 0) * COST[k], 0);
     const cat = (c: string) => this.traits.filter((t) => t.def.category === c).reduce((a, t) => a + this.cost(t), 0);
     const p = { attributes: sum(PRIMARY), secondary: sum(SECONDARY), advantages: cat('advantage'), perks: cat('perk'),
-      disadvantages: cat('disadvantage'), quirks: cat('quirk'), skills: 0, spells: 0, total: 0, budget: 150, unspent: 0 };
+      disadvantages: cat('disadvantage'), quirks: cat('quirk'), skills: 0, spells: 0, total: 0, budget: ledgerTotals(this.ledger).available, unspent: 0 };
     const [skills, techniques, skillPts] = this.skillViews(tot);
     p.skills = skillPts;
     const spells = this.spellViews(tot);
@@ -401,12 +416,20 @@ export class MockBackend {
       sheet: { name: this.name, attributes, secondary, basic_lift: this.row('BasicLift', blv),
         damage: cb.damage, points: p, encumbrance, weapons: cb.rows, defenses: cb.defenses },
       traits, skills, techniques, spells, equipment: this.equipmentViews(), weapons: cb.views,
-      issues: [...(p.unspent < 0 ? [{ severity: 'warning' as const, message: `over budget by ${enPts(-p.unspent)}` }] : []),
+      issues: [...(-p.disadvantages > this.disLimitValue() ? [{ severity: 'warning' as const,
+          message: `disadvantages total ${enPts(-p.disadvantages)} which is over the limit of ${enPts(this.disLimitValue())}` }] : []),
+        ...((() => { const q = this.traits.filter((t) => t.def.category === 'quirk').length;
+          return q > 5 || p.quirks < -5 ? [{ severity: 'warning' as const, message: `${q} quirks for ${enPts(p.quirks)}: the usual maximum is 5 quirks at -1` }] : []; })()),
+        ...(p.unspent < 0 ? [{ severity: 'warning' as const, message: `over budget by ${enPts(-p.unspent)}` }] : []),
         ...this.skills.filter((s) => s.def.specialization_required && !s.specialization?.trim())
           .map((s) => ({ severity: 'warning' as const, message: `skill '${s.def.name}' needs a specialization` })),
         ...(encumbrance.carried_weight > bl(liftSt) * 10 + 1e-9
           ? [{ severity: 'warning' as const, message: `carried ${encumbrance.carried_weight} lb is more than 10×BL (${bl(liftSt) * 10} lb): the character cannot move` }] : [])],
-      path: null, budget: 150, rules: { negative_rounding: this.rounding }, notes: this.notes,
+      pool: (() => { const t = ledgerTotals(this.ledger); return { entries: structuredClone(this.ledger), ...t, character_cost: p.total,
+        unspent: t.available - p.total, disadvantage_limit: this.disLimitValue(), disadvantage_limit_custom: this.disLimit !== null,
+        disadvantages: -p.disadvantages, quirks: this.traits.filter((x) => x.def.category === 'quirk').length, quirk_points: p.quirks }; })(),
+      custom: structuredClone(this.custom),
+      path: null, budget: p.budget, rules: { negative_rounding: this.rounding }, notes: this.notes,
       session: { hp: this.session.hp ?? Math.floor(tot.HP), hp_max: Math.floor(tot.HP), fp: this.session.fp ?? Math.floor(tot.FP), fp_max: Math.floor(tot.FP) },
     };
   }
@@ -416,17 +439,52 @@ export class MockBackend {
 
   private exec(cmd: string, a: Record<string, unknown>): unknown {
     switch (cmd) {
-      case 'new_character': this.session = { hp: null, fp: null }; this.notes = ''; this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.spells = []; this.equipment = []; this.weapons = unarmed(); this.name = (a.name as string) ?? 'New character'; return this.view();
+      case 'new_character': this.session = { hp: null, fp: null }; this.notes = ''; this.ledger = [{ id: 1, amount: 150, kind: 'starting' }]; this.disLimit = null; this.custom = {}; this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.spells = []; this.equipment = []; this.weapons = unarmed(); this.name = (a.name as string) ?? 'New character'; return this.view();
       case 'get_sheet': return this.view();
       case 'set_negative_rounding': {
         if (a.mode !== 'toward_positive' && a.mode !== 'by_magnitude') throw new Error(`unknown rounding mode ${a.mode}`);
         this.rounding = a.mode; return this.view();
       }
+      case 'add_ledger_entry': {
+        const id = Math.max(0, ...this.ledger.map((x) => x.id)) + 1;
+        this.ledger.push({ id, ...normalizeLedger(a.entry as LedgerInput) }); return this.view();
+      }
+      case 'update_ledger_entry': {
+        const i = this.ledger.findIndex((x) => x.id === a.id); if (i < 0) throw new Error('no such ledger entry');
+        this.ledger[i] = { id: a.id as number, ...normalizeLedger(a.entry as LedgerInput) }; return this.view();
+      }
+      case 'remove_ledger_entry': {
+        const i = this.ledger.findIndex((x) => x.id === a.id); if (i < 0) throw new Error('no such ledger entry');
+        this.ledger.splice(i, 1); return this.view();
+      }
+      case 'set_disadvantage_limit': {
+        const l = a.limit as number | null; if (l !== null && l < 0) throw new Error('limit must not be negative');
+        this.disLimit = l; return this.view();
+      }
+      case 'save_custom': {
+        const kind = a.kind as CustomKind; if (!['trait', 'skill', 'spell', 'equipment'].includes(kind)) throw new Error(`unknown custom kind '${kind}'`);
+        const d = { ...(a.def as Record<string, unknown>) };
+        if (!String(d.name ?? '').trim()) throw new Error('a custom entry needs a name');
+        const all = [...(this.custom.traits ?? []), ...(this.custom.skills ?? []), ...(this.custom.spells ?? []), ...(this.custom.equipment ?? [])].map((x) => x.id);
+        if (!String(d.id ?? '').trim()) { let n = 1; while (all.includes(`custom-${kind}-${n}`)) n++; d.id = `custom-${kind}-${n}`; }
+        if (kind === 'trait') d.features ??= [];
+        const list = this.customList<{ id: string }>(kind); const i = list.findIndex((x) => x.id === d.id);
+        if (i >= 0) list[i] = d as { id: string }; else list.push(d as { id: string });
+        const plain = { ...d, description: null };
+        const sheet = kind === 'trait' ? this.traits : kind === 'skill' ? this.skills : kind === 'spell' ? this.spells : [];
+        for (const x of sheet as { def: { id: string } }[]) if (x.def.id === d.id) x.def = structuredClone(plain) as unknown as typeof x.def;
+        return this.view();
+      }
+      case 'remove_custom': {
+        const list = this.customList<{ id: string }>(a.kind as CustomKind); const i = list.findIndex((x) => x.id === a.id);
+        if (i < 0) throw new Error('no such custom entry'); list.splice(i, 1); return this.view();
+      }
+      case 'export_custom_plugin': throw new Error('Экспорт в плагин доступен только в приложении Tauri');
       case 'set_notes': { const t = a.text as string; this.notes = t.trim() ? t : ''; return this.view(); }
       case 'set_name': this.name = a.name as string; return this.view();
       case 'set_attribute': this.levels[a.key as string] = a.level as number; return this.view();
       case 'add_trait': {
-        const def = LIBRARY.find((l) => l.id === a.id); if (!def) throw new Error('unknown trait');
+        const def = this.library().find((l) => l.id === a.id); if (!def) throw new Error('unknown trait');
         this.traits.push({ def, levels: (a.levels as number) ?? (def.cost_per_level ? Math.max(1, def.min_levels ?? 1) : 0), source: def.plugin, modifiers: [] }); return this.view();
       }
       case 'set_trait_levels': this.traits[a.index as number].levels = a.levels as number; return this.view();
@@ -439,7 +497,7 @@ export class MockBackend {
       case 'list_skill_library': return this.skillLibrary();
       case 'list_spell_library': return this.spellLibrary();
       case 'add_spell': {
-        const def = SPELL_DEFS.find((d) => d.id === a.id); if (!def) throw new Error(`unknown spell '${a.id}'`);
+        const def = this.spellLibrary().find((d) => d.id === a.id); if (!def) throw new Error(`unknown spell '${a.id}'`);
         this.spells.push({ def, points: Math.max(0, (a.points as number) ?? 1) }); return this.view();
       }
       case 'set_spell_points': this.spell(a).points = Math.max(0, a.points as number); return this.view();
@@ -459,7 +517,7 @@ export class MockBackend {
         const t = a.text as string | null; m.explanation = t?.trim() ? t : undefined; return this.view();
       }
       case 'add_skill': {
-        const def = SKILL_DEFS.find((d) => d.id === a.id); if (!def) throw new Error('unknown skill');
+        const def = this.skillLibrary().skills.find((d) => d.id === a.id); if (!def) throw new Error('unknown skill');
         const sp = a.specialization as string | null | undefined;
         this.skills.push({ def, points: Math.max(0, (a.points as number) ?? 1), specialization: sp?.trim() ? sp : null }); return this.view();
       }
@@ -476,7 +534,7 @@ export class MockBackend {
       case 'remove_technique': this.tech(a); this.techniques.splice(a.index as number, 1); return this.view();
       case 'list_equipment_library': return this.equipmentLibrary();
       case 'add_equipment': {
-        const def = EQUIPMENT_DEFS.find((d) => d.id === a.id); if (!def) throw new Error('unknown item');
+        const def = this.equipmentLibrary().find((d) => d.id === a.id); if (!def) throw new Error('unknown item');
         const { description: _d, ...rest } = def; void _d;
         const e: EquipmentItem = { ...rest, quantity: Math.max(1, (a.quantity as number) ?? 1), source: 'basic-set-sample' };
         const parent = a.parent as number[] | null | undefined;

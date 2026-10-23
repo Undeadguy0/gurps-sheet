@@ -62,6 +62,8 @@ const RULES: Rule[] = [
   [/^cannot parry$/, () => 'парировать нельзя'],
   // validation
   [/^over budget by (.+)$/, (m) => `Бюджет превышен на ${m[1]}`],
+  [/^disadvantages total (.+) which is over the limit of (.+)$/, (m) => `недостатков на ${m[1]} — больше лимита ${m[2]}`],
+  [/^(\d+) quirks for (.+): the usual maximum is 5 quirks at -1$/, (m) => `причуд: ${m[1]} (${m[2]}); обычно не больше 5 по −1`],
   [/^carried (\S+) lb is more than 10×BL \((\S+) lb\): the character cannot move$/, (m) =>
     `при себе ${pounds(m[1])} — больше 10×БГ (${pounds(m[2])}): персонаж не может двигаться`],
   [/^trait '(.+)' needs at least (\d+) level\(s\)$/, (m, n) => `черте «${n(m[1])}» нужно не меньше ${plural(+m[2], LEVELS_GEN)}`],
