@@ -93,7 +93,7 @@ export function computeWeapons(weapons: WeaponDef[], c: CombatCtx): WeaponRow[] 
       if (pm === null) explain.push('cannot parry');
       else if (level !== null) {
         parry = Math.floor(level / 2) + 3 + pm + c.bonus[1];
-        explain.push(`Parry floor(${level}/2) + 3${pm ? ` ${sg(pm)}` : ''}${c.bonus[1] ? ` ${sg(c.bonus[1])}` : ''} = ${parry}`);
+        explain.push(`Parry floor(${level}/2) + 3${pm ? ` ${sg(pm)}` : ''}${c.bonus[1] ? ` ${sg(c.bonus[1])} (${c.bonusFrom.join(', ')})` : ''} = ${parry}`);
       }
       return { mode: at.mode, skill: used, skill_id: usedId, via_technique: viaTech, level, damage_expr: at.damage, damage: diceStr(dice),
         damage_type: at.damage_type, reach: at.reach ?? '', parry, can_parry: pm !== null, parry_modifier: pm ?? 0, explain };
