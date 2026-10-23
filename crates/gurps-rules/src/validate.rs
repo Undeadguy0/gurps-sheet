@@ -25,6 +25,32 @@ pub fn validate(ch: &Character) -> Vec<Issue> {
             message: format!("over budget by {}", crate::pts(-b.unspent)),
         });
     }
+    // Disadvantage limit (quirks are counted separately); warn only.
+    let limit = ch.disadvantage_limit();
+    if -b.disadvantages > limit {
+        out.push(Issue {
+            severity: Severity::Warning,
+            message: format!(
+                "disadvantages total {} which is over the limit of {}",
+                crate::pts(-b.disadvantages),
+                crate::pts(limit)
+            ),
+        });
+    }
+    let quirks = ch
+        .traits
+        .iter()
+        .filter(|t| t.def.category == gurps_core::TraitCategory::Quirk)
+        .count();
+    if quirks > 5 || b.quirks < -5 {
+        out.push(Issue {
+            severity: Severity::Warning,
+            message: format!(
+                "{quirks} quirks for {}: the usual maximum is 5 quirks at -1",
+                crate::pts(b.quirks)
+            ),
+        });
+    }
     let carried: f64 = ch
         .equipment
         .iter()
@@ -119,6 +145,48 @@ mod tests {
         assert_eq!(v.len(), 1);
         assert_eq!(v[0].severity, Severity::Warning);
         assert!(validate(&Character::default()).is_empty());
+    }
+
+    fn tr(cat: gurps_core::TraitCategory, cost: i32) -> gurps_core::Trait {
+        gurps_core::Trait::new(
+            gurps_core::TraitDef {
+                id: format!("t{cost}"),
+                name: "T".into(),
+                category: cat,
+                cost,
+                cost_per_level: 0,
+                max_levels: None,
+                min_levels: None,
+                page: None,
+                features: vec![],
+                description: None,
+            },
+            0,
+        )
+    }
+
+    #[test]
+    fn disadvantage_and_quirk_limits_warn() {
+        use gurps_core::TraitCategory::*;
+        let mut ch = Character::default(); // 150 starting -> limit 75
+        ch.traits.push(tr(Disadvantage, -75));
+        assert!(validate(&ch).iter().all(|i| !i.message.contains("limit")));
+        ch.traits.push(tr(Disadvantage, -5));
+        let v = validate(&ch);
+        assert!(
+            v.iter().any(
+                |i| i.message == "disadvantages total 80 pts which is over the limit of 75 pts"
+            ),
+            "{v:?}"
+        );
+        ch.rules.disadvantage_limit = Some(100);
+        assert!(validate(&ch).iter().all(|i| !i.message.contains("limit")));
+        for _ in 0..6 {
+            ch.traits.push(tr(Quirk, -1));
+        }
+        assert!(validate(&ch)
+            .iter()
+            .any(|i| i.message.starts_with("6 quirks")));
     }
 
     #[test]

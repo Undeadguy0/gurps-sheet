@@ -5,12 +5,14 @@
 
 pub mod damage;
 pub mod equipment;
+pub mod ledger;
 pub mod modifier;
 pub mod skill;
 pub mod spell;
 pub mod weapon;
 
 pub use equipment::{Equipment, EquipmentDef};
+pub use ledger::{LedgerEntry, LedgerKind, LedgerTotals};
 pub use modifier::{
     modified_cost, modified_cost_with, ModifierDef, NegativeRounding, TraitModifier,
 };
@@ -416,8 +418,16 @@ impl Trait {
 pub struct Character {
     pub name: String,
     pub player: String,
-    /// Starting point budget.
+    /// Legacy starting budget. Files from before the ledger only have this; it is
+    /// migrated into a `starting` ledger entry on load and afterwards kept equal
+    /// to the pool's available points so older versions still read a sane budget.
     pub points_budget: i32,
+    /// Point pool ledger (earned points and spends outside the sheet).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ledger: Vec<LedgerEntry>,
+    /// User-made definitions (shown in the libraries as «своё»).
+    #[serde(skip_serializing_if = "CustomContent::is_empty")]
+    pub custom: CustomContent,
     pub attributes: Attributes,
     pub traits: Vec<Trait>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -463,6 +473,32 @@ impl Session {
 pub struct RulesOptions {
     /// Rounding of fractional negative trait costs after modifiers.
     pub negative_rounding: NegativeRounding,
+    /// Disadvantage limit in points (positive); None = 50% of starting points.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disadvantage_limit: Option<i32>,
+}
+
+/// User-defined library entries stored in the character file.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CustomContent {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub traits: Vec<TraitDef>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub skills: Vec<SkillDef>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub spells: Vec<SpellDef>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub equipment: Vec<EquipmentDef>,
+}
+
+impl CustomContent {
+    pub fn is_empty(&self) -> bool {
+        self.traits.is_empty()
+            && self.skills.is_empty()
+            && self.spells.is_empty()
+            && self.equipment.is_empty()
+    }
 }
 
 impl RulesOptions {
@@ -485,6 +521,8 @@ impl Default for Character {
             equipment: Vec::new(),
             weapons: Vec::new(),
             notes: String::new(),
+            ledger: Vec::new(),
+            custom: CustomContent::default(),
             rules: RulesOptions::default(),
             session: Session::default(),
         }
@@ -492,6 +530,47 @@ impl Default for Character {
 }
 
 impl Character {
+    /// Ledger totals; a character without a ledger counts `points_budget` as starting points.
+    pub fn ledger_totals(&self) -> LedgerTotals {
+        if self.ledger.is_empty() {
+            let mut t = LedgerTotals {
+                starting: self.points_budget,
+                ..Default::default()
+            };
+            t.earned = t.starting;
+            t.available = t.starting;
+            return t;
+        }
+        ledger::totals(&self.ledger)
+    }
+
+    /// Points the sheet may cost (earned − spends outside the sheet).
+    pub fn available_points(&self) -> i32 {
+        self.ledger_totals().available
+    }
+
+    /// Moves a legacy `points_budget` into a `starting` ledger entry (idempotent).
+    pub fn migrate(&mut self) {
+        if self.ledger.is_empty() {
+            self.ledger.push(LedgerEntry {
+                id: 1,
+                date: String::new(),
+                amount: self.points_budget,
+                kind: LedgerKind::Starting,
+                note: String::new(),
+                skill: None,
+            });
+        }
+        self.points_budget = self.available_points();
+    }
+
+    /// Effective disadvantage limit in points (positive).
+    pub fn disadvantage_limit(&self) -> i32 {
+        self.rules
+            .disadvantage_limit
+            .unwrap_or_else(|| self.ledger_totals().starting / 2)
+    }
+
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),

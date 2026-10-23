@@ -134,6 +134,18 @@ fn parse<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, PluginError> {
 }
 
 /// Loads one plugin directory.
+/// Writes a plugin folder `root/<manifest.id>/` with `plugin.toml` and
+/// `data/custom.toml` (used to export user-made content). Overwrites both files.
+pub fn write_plugin(root: &Path, manifest: &Manifest, data: &DataFile) -> Result<PathBuf, String> {
+    let dir = root.join(&manifest.id);
+    std::fs::create_dir_all(dir.join("data")).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let m = toml::to_string(manifest).map_err(|e| e.to_string())?;
+    let d = toml::to_string(data).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("plugin.toml"), m).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("data").join("custom.toml"), d).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
 pub fn load_plugin(dir: &Path) -> Result<Plugin, PluginError> {
     let manifest: Manifest = parse(&dir.join("plugin.toml"))?;
     let mut all = DataFile::default();
@@ -681,5 +693,33 @@ description = "m"
         assert!(
             matches!(cr.features[0], gurps_core::Feature::DefenseBonus { amount, .. } if amount == 1.0)
         );
+    }
+
+    #[test]
+    fn written_plugin_loads_back() {
+        let root = std::env::temp_dir().join(format!("gurps-export-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let m = Manifest {
+            id: "user-test".into(),
+            name: "Своё".into(),
+            version: "0.1.0".into(),
+            depends: vec![],
+        };
+        let mut d = DataFile::default();
+        d.spells.push(gurps_core::SpellDef {
+            id: "custom-spell-1".into(),
+            name: "Искра".into(),
+            attribute: gurps_core::Stat::IQ,
+            difficulty: gurps_core::Difficulty::VeryHard,
+            college: vec!["Fire".into()],
+            prerequisites: Some("Magery 1".into()),
+            page: None,
+            description: Some(gurps_core::LocalizedText::Plain("**жжёт**".into())),
+        });
+        let dir = write_plugin(&root, &m, &d).unwrap();
+        let p = load_plugin(&dir).unwrap();
+        assert_eq!(p.manifest, m);
+        assert_eq!(spell_library(&[p])[0].1, d.spells[0]);
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

@@ -38,7 +38,7 @@ pub struct PointsBreakdown {
 
 pub fn breakdown(ch: &Character) -> PointsBreakdown {
     let mut b = PointsBreakdown {
-        budget: ch.points_budget,
+        budget: ch.available_points(),
         ..Default::default()
     };
     for s in Stat::PRIMARY {
