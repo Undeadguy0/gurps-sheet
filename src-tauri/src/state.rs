@@ -445,7 +445,7 @@ mod tests {
             .explanation
             .as_deref()
             .unwrap()
-            .starts_with("Быстрая"));
+            .starts_with("Персонаж реагирует"));
         let lib = s.library_view();
         let e = lib.iter().find(|e| e.def.id == "combat-reflexes").unwrap();
         assert_eq!(e.translated_name.as_deref(), Some("Боевые рефлексы"));
@@ -458,7 +458,7 @@ mod tests {
             .explanation
             .as_deref()
             .unwrap()
-            .starts_with("Fast"));
+            .starts_with("The character reacts"));
         assert!(s.library_view().iter().all(|e| e.translated_name.is_none()));
 
         let v = s.set_locale("en".into(), false);
