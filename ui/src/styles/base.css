@@ -232,3 +232,20 @@ kbd { font-family: var(--font-num); padding: 0 var(--xs); border: 1px solid var(
 .sheet-grid > .panel { min-width: 0; overflow-x: auto; }
 .has-side-panel .sheet-grid__left, .has-side-panel .sheet-grid__right { grid-column: 1 / -1; }
 @media (max-width: 1599px) { .sheet-grid__left { grid-column: span 6; } .sheet-grid__right { grid-column: span 6; } }
+
+/* Skills panel and library */
+.skill-rel, .skill-tag { font-size: 0.85em; }
+.skill-tag { margin-left: var(--xs); padding: 0 var(--xs); border-radius: var(--radiusSm); background: var(--color-surface-2); }
+.technique-name { padding-left: var(--sm); }
+.badge--warn { margin-left: var(--xs); font-size: 0.8em; color: var(--color-warning, var(--color-accent)); }
+.skill-details { display: flex; flex-direction: column; gap: var(--xs); margin-bottom: var(--sm); }
+.skill-details p { margin: 0; }
+.skill-details__spec { display: flex; align-items: center; gap: var(--sm); flex-wrap: wrap; }
+.skill-details__explain { margin: 0; padding-left: var(--lg); font-size: 0.9em; color: var(--color-muted); }
+.library-list__item--skill { grid-template-columns: 1fr auto 4em; }
+@media print {
+  .skills-panel .stepper .btn, .skill-details__spec input { display: none !important; }
+  .skill-details__explain { display: none; }
+  .skills-table .skill-tag { background: none; }
+}
+.sheet-grid__full { grid-column: 1 / -1; }
