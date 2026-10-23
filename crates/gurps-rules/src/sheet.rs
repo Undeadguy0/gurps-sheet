@@ -12,6 +12,10 @@ pub struct StatRow {
     pub label: String,
     /// Purchased steps (Basic Speed: quarter steps).
     pub level: i32,
+    /// Size of one step in stat units (Basic Speed 0.25, else 1).
+    pub step: f64,
+    /// Character points per step (B15-B17), 0 if not buyable.
+    pub cost_per_step: i32,
     pub points: i32,
     pub total: f64,
     pub value: Value,
@@ -125,6 +129,8 @@ fn row(stat: Stat, ch: &Character, value: Value) -> StatRow {
         key: stat.key().into(),
         label: stat.label().into(),
         level,
+        step: stat.step(),
+        cost_per_step: points::cost_per_step(stat),
         points: points::stat_points(stat, level),
         total: value.total(),
         explain: value.explain(),
@@ -436,5 +442,42 @@ mod tests {
         assert_eq!(sp.explain[0], "base 5 (= (DX 10 + HT 10) / 4)");
         let json = serde_json::to_value(&s).unwrap();
         assert!(json["attributes"][0]["value"]["base"].is_number());
+    }
+
+    /// Every attribute: +1 step and -1 step cost exactly the Basic Set price,
+    /// both in the row and in the points breakdown.
+    #[test]
+    fn attribute_costs_per_stat() {
+        let table = [
+            (Stat::ST, 10, 1.0, true),
+            (Stat::DX, 20, 1.0, true),
+            (Stat::IQ, 20, 1.0, true),
+            (Stat::HT, 10, 1.0, true),
+            (Stat::HP, 2, 1.0, false),
+            (Stat::Will, 5, 1.0, false),
+            (Stat::Per, 5, 1.0, false),
+            (Stat::FP, 3, 1.0, false),
+            (Stat::BasicSpeed, 5, 0.25, false),
+            (Stat::BasicMove, 5, 1.0, false),
+        ];
+        for (stat, cost, step, primary) in table {
+            for lv in [1, 3, -2] {
+                let mut ch = Character::default();
+                assert!(ch.attributes.set_purchased(stat, lv));
+                let s = compute_sheet(&ch);
+                let r = s.row(stat).unwrap();
+                assert_eq!(r.cost_per_step, cost, "{stat}");
+                assert_eq!(r.step, step, "{stat}");
+                assert_eq!(r.points, cost * lv, "{stat} x{lv}");
+                let (a, b) = if primary { (cost * lv, 0) } else { (0, cost * lv) };
+                assert_eq!((s.points.attributes, s.points.secondary), (a, b), "{stat}");
+                assert_eq!(s.points.total, cost * lv, "{stat}");
+            }
+        }
+        let mut ch = Character::default();
+        ch.attributes.basic_speed_quarters = 4; // +1.00 Basic Speed = 20 pts
+        let s = compute_sheet(&ch);
+        assert_eq!(s.total(Stat::BasicSpeed), 6.0);
+        assert_eq!(s.points.secondary, 20);
     }
 }
