@@ -8,7 +8,8 @@
 //! depends = []
 //! ```
 //! and any number of `data/*.toml` files with `[[traits]]` tables
-//! (see [`gurps_core::TraitDef`]) and, optionally, `[[skills]]`, `[[spells]]`,
+//! (see [`gurps_core::TraitDef`]), `[[skills]]` ([`gurps_core::SkillDef`]),
+//! `[[techniques]]` ([`gurps_core::TechniqueDef`]) and, optionally, `[[spells]]`,
 //! `[[equipment]]`, `[[weapons]]`, `[[modifiers]]` (see [`gurps_core::LibraryItemDef`]).
 //!
 //! Every entry may carry an optional Markdown `description`, either a plain
@@ -27,7 +28,7 @@ pub mod script;
 
 pub use l10n::{Catalog, LocEntry};
 
-use gurps_core::{LibraryItemDef, TraitDef};
+use gurps_core::{LibraryItemDef, SkillDef, TechniqueDef, TraitDef};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -68,7 +69,9 @@ pub struct DataFile {
     #[serde(default)]
     pub traits: Vec<TraitDef>,
     #[serde(default)]
-    pub skills: Vec<LibraryItemDef>,
+    pub skills: Vec<SkillDef>,
+    #[serde(default)]
+    pub techniques: Vec<TechniqueDef>,
     #[serde(default)]
     pub spells: Vec<LibraryItemDef>,
     #[serde(default)]
@@ -83,6 +86,7 @@ impl DataFile {
     fn extend(&mut self, o: DataFile) {
         self.traits.extend(o.traits);
         self.skills.extend(o.skills);
+        self.techniques.extend(o.techniques);
         self.spells.extend(o.spells);
         self.equipment.extend(o.equipment);
         self.weapons.extend(o.weapons);
@@ -95,7 +99,9 @@ pub struct Plugin {
     pub manifest: Manifest,
     pub traits: Vec<TraitDef>,
     #[serde(default)]
-    pub skills: Vec<LibraryItemDef>,
+    pub skills: Vec<SkillDef>,
+    #[serde(default)]
+    pub techniques: Vec<TechniqueDef>,
     #[serde(default)]
     pub spells: Vec<LibraryItemDef>,
     #[serde(default)]
@@ -149,6 +155,7 @@ pub fn load_plugin(dir: &Path) -> Result<Plugin, PluginError> {
         manifest,
         traits: all.traits,
         skills: all.skills,
+        techniques: all.techniques,
         spells: all.spells,
         equipment: all.equipment,
         weapons: all.weapons,
@@ -262,6 +269,30 @@ pub fn trait_library(plugins: &[Plugin]) -> Vec<(String, TraitDef)> {
         }
     }
     lib.into_values().collect()
+}
+
+fn flatten<T: Clone>(
+    plugins: &[Plugin],
+    items: impl Fn(&Plugin) -> &[T],
+    id: impl Fn(&T) -> &str,
+) -> Vec<(String, T)> {
+    let mut lib: BTreeMap<String, (String, T)> = BTreeMap::new();
+    for p in plugins {
+        for t in items(p) {
+            lib.insert(id(t).to_string(), (p.manifest.id.clone(), t.clone()));
+        }
+    }
+    lib.into_values().collect()
+}
+
+/// Flattened skill library; later plugins override earlier ones by id.
+pub fn skill_library(plugins: &[Plugin]) -> Vec<(String, SkillDef)> {
+    flatten(plugins, |p| &p.skills, |s| &s.id)
+}
+
+/// Flattened technique library; later plugins override earlier ones by id.
+pub fn technique_library(plugins: &[Plugin]) -> Vec<(String, TechniqueDef)> {
+    flatten(plugins, |p| &p.techniques, |s| &s.id)
 }
 
 #[cfg(test)]

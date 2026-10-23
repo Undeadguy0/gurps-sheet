@@ -9,6 +9,7 @@
 pub mod dice;
 pub mod points;
 pub mod sheet;
+pub mod skills;
 pub mod validate;
 pub mod value;
 

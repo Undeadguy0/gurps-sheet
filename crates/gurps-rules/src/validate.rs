@@ -45,6 +45,46 @@ pub fn validate(ch: &Character) -> Vec<Issue> {
             }
         }
     }
+    let warn = |out: &mut Vec<Issue>, message: String| {
+        out.push(Issue {
+            severity: Severity::Warning,
+            message,
+        })
+    };
+    for s in &ch.skills {
+        let name = s.display_name();
+        if s.points < 0 {
+            out.push(Issue {
+                severity: Severity::Error,
+                message: format!("skill '{name}' has negative points"),
+            });
+        } else if !crate::skills::is_standard_points(s.points) {
+            warn(
+                &mut out,
+                format!(
+                    "skill '{name}': {} pts is not on the cost table (1, 2, 4, 8, 12...); extra points are wasted",
+                    s.points
+                ),
+            );
+        }
+        if s.def.specialization_required && gurps_core::is_blank(&s.specialization) {
+            warn(&mut out, format!("skill '{name}' needs a specialization"));
+        }
+    }
+    for t in &ch.techniques {
+        if t.points < 0 {
+            out.push(Issue {
+                severity: Severity::Error,
+                message: format!("technique '{}' has negative points", t.def.name),
+            });
+        }
+        if !ch.skills.iter().any(|s| s.def.id == t.def.skill) {
+            warn(
+                &mut out,
+                format!("technique '{}' needs skill '{}'", t.def.name, t.def.skill),
+            );
+        }
+    }
     out
 }
 

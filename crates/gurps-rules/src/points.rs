@@ -53,6 +53,7 @@ pub fn breakdown(ch: &Character) -> PointsBreakdown {
         };
         *slot += t.cost();
     }
+    b.skills = crate::skills::skill_points(ch);
     b.total =
         b.attributes + b.secondary + b.advantages + b.perks + b.disadvantages + b.quirks + b.skills;
     b.unspent = b.budget - b.total;

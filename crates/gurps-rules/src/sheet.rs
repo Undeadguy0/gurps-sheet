@@ -1,4 +1,5 @@
 use crate::points::{self, PointsBreakdown};
+use crate::skills::{compute_skills, compute_techniques, SkillRow, TechniqueRow};
 use crate::value::{fmt_num, SourceKind, Value};
 use gurps_core::damage::basic_damage;
 use gurps_core::{Character, Feature, Stat};
@@ -40,6 +41,10 @@ pub struct Sheet {
     pub secondary: Vec<StatRow>,
     pub basic_lift: StatRow,
     pub damage: DamageRow,
+    #[serde(default)]
+    pub skills: Vec<SkillRow>,
+    #[serde(default)]
+    pub techniques: Vec<TechniqueRow>,
     pub points: PointsBreakdown,
 }
 
@@ -94,6 +99,7 @@ fn trait_bonuses(ch: &Character) -> Bonuses {
                     let a = if *per_level { amount * lv } else { *amount };
                     striking.push((t.display_name(), a));
                 }
+                Feature::SkillBonus { .. } => {} // see skills::compute_skills
             }
         }
     }
@@ -224,6 +230,13 @@ pub fn compute_sheet(ch: &Character) -> Sheet {
     }
     let based_on_st = dmg_st.total().floor() as i32;
     let (thr, sw) = basic_damage(based_on_st);
+    let totals: BTreeMap<Stat, f64> = attributes
+        .iter()
+        .chain(secondary.iter())
+        .filter_map(|r| Stat::parse(&r.key).map(|s| (s, r.total)))
+        .collect();
+    let skills = compute_skills(ch, &|s| totals.get(&s).copied().unwrap_or(10.0));
+    let techniques = compute_techniques(ch, &skills);
     Sheet {
         name: ch.name.clone(),
         attributes,
@@ -236,6 +249,8 @@ pub fn compute_sheet(ch: &Character) -> Sheet {
             explain: dmg_st.explain(),
             st_value: dmg_st,
         },
+        skills,
+        techniques,
         points: points::breakdown(ch),
     }
 }

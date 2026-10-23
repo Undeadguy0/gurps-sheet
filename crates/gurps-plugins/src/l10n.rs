@@ -21,7 +21,15 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 /// Entry kinds usable as key prefixes.
-pub const KINDS: [&str; 6] = ["trait", "skill", "spell", "equipment", "weapon", "modifier"];
+pub const KINDS: [&str; 7] = [
+    "trait",
+    "skill",
+    "technique",
+    "spell",
+    "equipment",
+    "weapon",
+    "modifier",
+];
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocEntry {
