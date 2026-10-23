@@ -68,7 +68,7 @@ pub fn save(path: impl AsRef<Path>, ch: &Character) -> Result<(), IoError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gurps_core::{Equipment, Feature, Stat, Trait, TraitCategory, TraitDef};
+    use gurps_core::{Equipment, EquipmentDef, Feature, Stat, Trait, TraitCategory, TraitDef};
 
     fn sample() -> Character {
         let mut ch = Character::new("Test");
@@ -93,13 +93,15 @@ mod tests {
             },
             1,
         ));
-        ch.equipment.push(Equipment {
-            name: "Rope".into(),
-            quantity: 1,
-            weight: 1.5,
-            cost: 5.0,
-            explanation: None,
-        });
+        ch.equipment.push(Equipment::new(
+            EquipmentDef {
+                name: "Rope".into(),
+                weight: 1.5,
+                cost: 5.0,
+                ..Default::default()
+            },
+            1,
+        ));
         ch
     }
 

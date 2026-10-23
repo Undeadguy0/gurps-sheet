@@ -4,8 +4,10 @@
 #![cfg_attr(test, allow(clippy::field_reassign_with_default))]
 
 pub mod damage;
+pub mod equipment;
 pub mod skill;
 
+pub use equipment::{Equipment, EquipmentDef};
 pub use skill::{Difficulty, Skill, SkillDef, SkillDefault, Technique, TechniqueDef};
 
 use serde::{Deserialize, Serialize};
@@ -263,7 +265,6 @@ impl LibraryItemDef {
 }
 
 pub type SpellDef = LibraryItemDef;
-pub type EquipmentDef = LibraryItemDef;
 pub type WeaponDef = LibraryItemDef;
 pub type ModifierDef = LibraryItemDef;
 
@@ -362,19 +363,6 @@ impl Trait {
             self.def.name.clone()
         }
     }
-}
-
-/// Equipment stub (weight in lbs, cost in $).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct Equipment {
-    pub name: String,
-    pub quantity: u32,
-    pub weight: f64,
-    pub cost: f64,
-    /// User's explanation (Markdown); skipped in JSON when empty.
-    #[serde(skip_serializing_if = "is_blank")]
-    pub explanation: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
