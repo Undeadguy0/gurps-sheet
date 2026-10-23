@@ -8,12 +8,23 @@
 //! depends = []
 //! ```
 //! and any number of `data/*.toml` files with `[[traits]]` tables
-//! (see [`gurps_core::TraitDef`]).
+//! (see [`gurps_core::TraitDef`]) and, optionally, `[[skills]]`, `[[spells]]`,
+//! `[[equipment]]`, `[[weapons]]`, `[[modifiers]]` (see [`gurps_core::LibraryItemDef`]).
+//!
+//! Every entry may carry an optional Markdown `description`, either a plain
+//! string or a localized table:
+//! ```toml
+//! description = "Short text"
+//! # or
+//! [traits.description]
+//! ru = '''Многострочный текст'''
+//! en = '''Multi-line text'''
+//! ```
 #![cfg_attr(test, allow(clippy::field_reassign_with_default))]
 
 pub mod script;
 
-use gurps_core::TraitDef;
+use gurps_core::{LibraryItemDef, TraitDef};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -51,12 +62,43 @@ pub struct Manifest {
 pub struct DataFile {
     #[serde(default)]
     pub traits: Vec<TraitDef>,
+    #[serde(default)]
+    pub skills: Vec<LibraryItemDef>,
+    #[serde(default)]
+    pub spells: Vec<LibraryItemDef>,
+    #[serde(default)]
+    pub equipment: Vec<LibraryItemDef>,
+    #[serde(default)]
+    pub weapons: Vec<LibraryItemDef>,
+    #[serde(default)]
+    pub modifiers: Vec<LibraryItemDef>,
+}
+
+impl DataFile {
+    fn extend(&mut self, o: DataFile) {
+        self.traits.extend(o.traits);
+        self.skills.extend(o.skills);
+        self.spells.extend(o.spells);
+        self.equipment.extend(o.equipment);
+        self.weapons.extend(o.weapons);
+        self.modifiers.extend(o.modifiers);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Plugin {
     pub manifest: Manifest,
     pub traits: Vec<TraitDef>,
+    #[serde(default)]
+    pub skills: Vec<LibraryItemDef>,
+    #[serde(default)]
+    pub spells: Vec<LibraryItemDef>,
+    #[serde(default)]
+    pub equipment: Vec<LibraryItemDef>,
+    #[serde(default)]
+    pub weapons: Vec<LibraryItemDef>,
+    #[serde(default)]
+    pub modifiers: Vec<LibraryItemDef>,
     #[serde(skip)]
     pub path: PathBuf,
 }
@@ -78,7 +120,7 @@ fn parse<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, PluginError> {
 /// Loads one plugin directory.
 pub fn load_plugin(dir: &Path) -> Result<Plugin, PluginError> {
     let manifest: Manifest = parse(&dir.join("plugin.toml"))?;
-    let mut traits = Vec::new();
+    let mut all = DataFile::default();
     let data = dir.join("data");
     if data.is_dir() {
         let mut files: Vec<PathBuf> = std::fs::read_dir(&data)
@@ -92,12 +134,17 @@ pub fn load_plugin(dir: &Path) -> Result<Plugin, PluginError> {
         files.sort();
         for f in files {
             let df: DataFile = parse(&f)?;
-            traits.extend(df.traits);
+            all.extend(df);
         }
     }
     Ok(Plugin {
         manifest,
-        traits,
+        traits: all.traits,
+        skills: all.skills,
+        spells: all.spells,
+        equipment: all.equipment,
+        weapons: all.weapons,
+        modifiers: all.modifiers,
         path: dir.to_path_buf(),
     })
 }
@@ -298,5 +345,80 @@ mod tests {
         assert_eq!(ids, vec!["base", "ext"]);
         assert_eq!(plugins[1].traits[0].cost, 5);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn description_plain_and_localized() {
+        let src = r#"
+[[traits]]
+id = "plain"
+name = "Plain"
+cost = 5
+description = """
+Line one.
+
+* item
+"""
+
+[[traits]]
+id = "loc"
+name = "Localized"
+cost = 5
+[traits.description]
+ru = '''Русский текст.'''
+en = '''English text.'''
+
+[[traits]]
+id = "ru-only"
+name = "Ru only"
+cost = 1
+description = { ru = "Только по-русски" }
+
+[[traits]]
+id = "none"
+name = "None"
+cost = 1
+
+[[skills]]
+id = "sk"
+name = "Skill"
+description = "skill text"
+[[spells]]
+id = "sp"
+name = "Spell"
+description = { en = "spell text" }
+[[equipment]]
+id = "eq"
+name = "Rope"
+[[weapons]]
+id = "w"
+name = "Sword"
+description = "w"
+[[modifiers]]
+id = "m"
+name = "Mod"
+description = "m"
+"#;
+        let df: DataFile = toml::from_str(src).unwrap();
+        let t = |id: &str| df.traits.iter().find(|t| t.id == id).unwrap();
+        assert_eq!(t("plain").explanation("ru"), Some("Line one.\n\n* item\n"));
+        assert_eq!(t("loc").explanation("ru"), Some("Русский текст."));
+        assert_eq!(t("loc").explanation("en"), Some("English text."));
+        assert_eq!(t("loc").explanation("de"), Some("English text."));
+        assert_eq!(t("ru-only").explanation("en"), Some("Только по-русски"));
+        assert_eq!(t("none").explanation("ru"), None);
+        assert_eq!(df.skills[0].explanation("ru"), Some("skill text"));
+        assert_eq!(df.spells[0].explanation("ru"), Some("spell text"));
+        assert_eq!(df.equipment[0].explanation("ru"), None);
+        assert_eq!(df.weapons.len() + df.modifiers.len(), 2);
+    }
+
+    #[test]
+    fn sample_plugin_has_explanations() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+        let lib = trait_library(&load_all(&root).unwrap());
+        let cr = &lib.iter().find(|(_, t)| t.id == "combat-reflexes").unwrap().1;
+        assert!(cr.explanation("ru").is_some() && cr.explanation("en").is_some());
+        assert_ne!(cr.explanation("ru"), cr.explanation("en"));
     }
 }
