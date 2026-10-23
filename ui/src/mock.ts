@@ -27,23 +27,23 @@ export function localize(t: LocalizedText | null | undefined, locale = 'ru'): st
 // Own-words sample texts (mirrors plugins/basic-set-sample; not book text).
 const RAW_LIBRARY: Omit<LibraryEntry, 'explanation'>[] = [
   { plugin: 'basic-set-sample', id: 'increased-st-example', name: 'Increased ST (example)', category: 'advantage', cost: 0, cost_per_level: 10, page: 'example', features: [{ type: 'attribute_bonus', target: 'ST', amount: 1, per_level: true }],
-    description: 'Example trait: each level gives **+1 ST** (and everything derived from ST).' },
+    description: "A sample trait used to test the sheet: each level simply adds +1 to ST, and everything calculated from ST follows automatically (Hit Points, Basic Lift, thrust and swing damage).\n\nUse it to see how the sheet explains where a number comes from: the ST row will list the trait as a separate contribution next to the purchased levels." },
   { plugin: 'basic-set-sample', id: 'lifting-st', name: 'Lifting ST', category: 'advantage', cost: 0, cost_per_level: 3, page: 'B65', features: [{ type: 'lifting_st_bonus', amount: 1, per_level: true }],
-    description: 'Extra strength **only for lifting and carrying**.\nRaises Basic Lift, but not damage or HP.' },
+    description: "Extra muscle that only counts when you lift, carry, push or drag something. Each level raises the ST used to work out Basic Lift, so the character can haul heavier loads before being slowed down. It does not make blows hit harder and does not add Hit Points.\n\nIn play it suits porters, labourers, climbers who carry gear and anyone who needs to move a lot of weight cheaply. Combine it with ordinary ST if you also want stronger attacks." },
   { plugin: 'basic-set-sample', id: 'combat-reflexes', name: 'Combat Reflexes', category: 'advantage', cost: 15, cost_per_level: 0, page: 'B43', features: [],
-    description: 'Fast reactions in a fight:\n- rarely caught off guard;\n- small bonuses to defence and readiness.' },
+    description: "The character reacts to danger almost instantly. Surprise rarely freezes them, they recover from being stunned faster than most, and they are a little better at dodging, blocking and parrying. Fear and shock also have a weaker grip on them.\n\nIn play this is the classic trait of veterans, bodyguards and duellists: they act first in an ambush and keep their head when things go wrong. The defence and fear bonuses are not calculated by the sheet yet; apply them at the table." },
   { plugin: 'basic-set-sample', id: 'overconfidence', name: 'Overconfidence', category: 'disadvantage', cost: -5, cost_per_level: 0, page: 'B148', features: [],
-    description: 'Character believes they can handle anything and *underestimates risk*.' },
+    description: "The character believes they can handle anything and consistently underestimates risk. When a sensible person would back off, plan or ask for help, they tend to charge ahead instead, unless they manage to resist the urge.\n\nIt makes for bold, memorable characters (young heroes, braggarts, star pilots), but the player should actually play the recklessness. Others may find them inspiring or insufferable." },
 ];
 const LIBRARY = RAW_LIBRARY;
 
 /** Mirror of plugins/lang-ru/locales/ru/basic-set-sample.ftl (subset). Keys: `<kind>-<id>`. */
 export const CATALOG: Record<string, Record<string, { name?: string; description?: string }>> = {
   ru: {
-    'trait-increased-st-example': { name: 'Повышенная ST (пример)', description: 'Пример черты: каждый уровень даёт **+1 ST** (и всё, что от ST зависит).' },
-    'trait-lifting-st': { name: 'Подъёмная сила', description: 'Добавочная сила **только для подъёма и переноски** грузов.\nВлияет на базовый груз, но не на урон и не на HP.' },
-    'trait-combat-reflexes': { name: 'Боевые рефлексы', description: 'Быстрая реакция в бою:\n- реже теряется от неожиданности;\n- небольшие бонусы к защите и готовности.' },
-    'trait-overconfidence': { name: 'Самоуверенность', description: 'Персонаж уверен, что справится с чем угодно, и *недооценивает риск*.' },
+    'trait-increased-st-example': { name: 'Повышенная ST (пример)', description: "Пробная черта для проверки листа: каждый уровень просто добавляет +1 к ST, а всё, что считается от ST, меняется само (HP, базовый груз, урон толчком и замахом).\n\nУдобна, чтобы посмотреть, как лист объясняет происхождение чисел: в строке ST черта будет отдельным слагаемым рядом с купленными уровнями." },
+    'trait-lifting-st': { name: 'Подъёмная сила', description: "Дополнительная мускульная сила, которая работает только при подъёме, переноске, толкании или волочении. Каждый уровень повышает ST, от которой считается базовый груз, поэтому персонаж может тащить больше, не замедляясь. На силу ударов и на HP она не влияет.\n\nПодходит носильщикам, грузчикам, альпинистам со снаряжением и всем, кому нужно дёшево таскать тяжести. Если нужны и сильные удары — сочетайте с обычной ST." },
+    'trait-combat-reflexes': { name: 'Боевые рефлексы', description: "Персонаж реагирует на опасность почти мгновенно. Внезапность редко сбивает его с толку, из оглушения он выходит быстрее других и чуть лучше уклоняется, блокирует и парирует. Страх и шок тоже действуют на него слабее.\n\nЭто типичная черта ветеранов, телохранителей и дуэлянтов: в засаде они действуют первыми и не теряют голову, когда всё идёт плохо. Бонусы к защите и против страха лист пока не считает — учитывайте их за столом." },
+    'trait-overconfidence': { name: 'Самоуверенность', description: "Персонаж уверен, что справится с чем угодно, и постоянно недооценивает риск. Там, где разумный человек отступил бы, подготовился или позвал на помощь, он склонен лезть вперёд, если не сумеет сдержаться.\n\nДаёт смелых и запоминающихся персонажей (юные герои, хвастуны, лихие пилоты), но безрассудство нужно действительно отыгрывать. Окружающих это может как вдохновлять, так и раздражать." },
   },
 };
 

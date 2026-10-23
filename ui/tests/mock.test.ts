@@ -29,7 +29,7 @@ describe('browser preview backend', () => {
     const m = new MockBackend();
     let v = m.invoke('add_trait', { id: 'combat-reflexes' }) as SheetView;
     const def = v.traits[0].explanation;
-    expect(def).toContain('Быстрая реакция');
+    expect(def).toContain('Персонаж реагирует');
     expect(v.traits[0].custom_explanation).toBe(false);
     v = m.invoke('set_trait_explanation', { index: 0, text: 'Моё **пояснение**' }) as SheetView;
     expect(v.traits[0].explanation).toBe('Моё **пояснение**');
@@ -69,7 +69,7 @@ describe('browser preview backend', () => {
     let v = m.invoke('add_trait', { id: 'lifting-st', levels: 2 }) as SheetView;
     expect(v.traits[0].name).toBe('Подъёмная сила 2');
     expect(v.traits[0].original_name).toBe('Lifting ST 2');
-    expect(v.traits[0].explanation).toContain('только для подъёма');
+    expect(v.traits[0].explanation).toContain('только при подъёме');
     const lib = m.invoke('list_library', {}) as LibraryEntry[];
     const cr = lib.find((e) => e.id === 'combat-reflexes')!;
     expect(cr.translated_name).toBe('Боевые рефлексы');
@@ -79,7 +79,7 @@ describe('browser preview backend', () => {
     v = m.invoke('set_locale', { locale: 'ru', originalOnly: true }) as SheetView;
     expect(v.traits[0].name).toBe('Lifting ST 2');
     expect(v.traits[0].original_name).toBeNull();
-    expect(v.traits[0].explanation).toContain('only for lifting');
+    expect(v.traits[0].explanation).toContain('only counts when you lift');
     expect((m.invoke('list_library', {}) as LibraryEntry[]).every((e) => !e.translated_name)).toBe(true);
     v = m.invoke('set_locale', { locale: 'en', originalOnly: false }) as SheetView;
     expect(v.traits[0].name).toBe('Lifting ST 2');
