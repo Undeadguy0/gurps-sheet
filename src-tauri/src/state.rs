@@ -2,8 +2,9 @@
 //! logic can be unit-tested without a webview.
 
 use gurps_core::{
-    Character, Equipment, EquipmentDef, LocalizedText, Skill, SkillDef, SkillDefault, Stat,
-    Technique, TechniqueDef, Trait, TraitCategory, TraitDef, Weapon, WeaponDef,
+    Character, Equipment, EquipmentDef, LocalizedText, ModifierDef, Skill, SkillDef, SkillDefault,
+    Spell, SpellDef, Stat, Technique, TechniqueDef, Trait, TraitCategory, TraitDef, TraitModifier,
+    Weapon, WeaponDef,
 };
 use gurps_rules::dice::{success_roll, RollResult, SplitMix};
 use gurps_rules::validate::{validate, Issue};
@@ -23,7 +24,15 @@ pub struct TraitView {
     pub levels: u32,
     pub leveled: bool,
     pub min_level: u32,
+    /// Final cost (with modifiers).
     pub cost: i32,
+    /// Cost before modifiers.
+    pub base_cost: i32,
+    /// Sum of modifier percentages (before the -80% floor).
+    pub modifier_percent: i32,
+    pub modifiers: Vec<ModifierView>,
+    /// How the cost was obtained (empty without modifiers).
+    pub cost_explain: Vec<String>,
     pub page: Option<String>,
     pub source: Option<String>,
     /// Effective explanation (user text, else plugin text), Markdown.
@@ -32,6 +41,61 @@ pub struct TraitView {
     pub default_explanation: Option<String>,
     /// True when the user override is in effect.
     pub custom_explanation: bool,
+}
+
+/// An enhancement/limitation on a character's trait.
+#[derive(Debug, Clone, Serialize)]
+pub struct ModifierView {
+    pub index: usize,
+    pub id: String,
+    pub name: String,
+    pub original_name: Option<String>,
+    pub cost_percent: i32,
+    pub page: Option<String>,
+    pub source: Option<String>,
+    pub explanation: Option<String>,
+    pub default_explanation: Option<String>,
+    pub custom_explanation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ModifierLibEntry {
+    pub plugin: String,
+    #[serde(flatten)]
+    pub def: ModifierDef,
+    pub explanation: Option<String>,
+    pub translated_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SpellView {
+    pub index: usize,
+    pub id: String,
+    pub name: String,
+    pub original_name: Option<String>,
+    pub college: Vec<String>,
+    pub attribute: String,
+    pub difficulty: String,
+    pub points: i32,
+    pub level: Option<i32>,
+    pub relative: Option<String>,
+    pub bonus: i32,
+    pub prerequisites: Option<String>,
+    pub explain: Vec<String>,
+    pub page: Option<String>,
+    pub source: Option<String>,
+    pub explanation: Option<String>,
+    pub default_explanation: Option<String>,
+    pub custom_explanation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SpellLibEntry {
+    pub plugin: String,
+    #[serde(flatten)]
+    pub def: SpellDef,
+    pub explanation: Option<String>,
+    pub translated_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -205,6 +269,8 @@ pub struct PluginStatus {
     pub skills: usize,
     pub equipment: usize,
     pub weapons: usize,
+    pub spells: usize,
+    pub modifiers: usize,
 }
 
 /// Language settings for the UI switcher.
@@ -222,6 +288,7 @@ pub struct SheetView {
     pub traits: Vec<TraitView>,
     pub skills: Vec<SkillView>,
     pub techniques: Vec<TechniqueView>,
+    pub spells: Vec<SpellView>,
     pub equipment: Vec<EquipmentView>,
     pub weapons: Vec<WeaponView>,
     pub issues: Vec<Issue>,
@@ -238,6 +305,8 @@ pub struct AppState {
     pub technique_library: Vec<(String, TechniqueDef)>,
     pub equipment_library: Vec<(String, EquipmentDef)>,
     pub weapon_library: Vec<(String, WeaponDef)>,
+    pub spell_library: Vec<(String, SpellDef)>,
+    pub modifier_library: Vec<(String, ModifierDef)>,
     pub path: Option<PathBuf>,
     pub plugin_errors: Vec<String>,
     /// Directory the library was loaded from.
@@ -263,6 +332,8 @@ impl Default for AppState {
             technique_library: Vec::new(),
             equipment_library: Vec::new(),
             weapon_library: Vec::new(),
+            spell_library: Vec::new(),
+            modifier_library: Vec::new(),
             path: None,
             plugin_errors: Vec::new(),
             plugin_dir: None,
@@ -291,6 +362,8 @@ impl AppState {
         self.technique_library.clear();
         self.equipment_library.clear();
         self.weapon_library.clear();
+        self.spell_library.clear();
+        self.modifier_library.clear();
         self.catalog = Default::default();
         self.plugin_errors.clear();
         self.plugin_ids.clear();
@@ -309,6 +382,8 @@ impl AppState {
                 self.technique_library = gurps_plugins::technique_library(&plugins);
                 self.equipment_library = gurps_plugins::equipment_library(&plugins);
                 self.weapon_library = gurps_plugins::weapon_library(&plugins);
+                self.spell_library = gurps_plugins::spell_library(&plugins);
+                self.modifier_library = gurps_plugins::modifier_library(&plugins);
                 self.library = gurps_plugins::trait_library(&plugins)
                     .into_iter()
                     .map(|(plugin, def)| LibraryEntry {
@@ -332,6 +407,8 @@ impl AppState {
             skills: self.skill_library.len() + self.technique_library.len(),
             equipment: self.equipment_library.len(),
             weapons: self.weapon_library.len(),
+            spells: self.spell_library.len(),
+            modifiers: self.modifier_library.len(),
         }
     }
 
@@ -340,6 +417,7 @@ impl AppState {
         SheetView {
             skills: self.skill_views(&sheet),
             techniques: self.technique_views(&sheet),
+            spells: self.spell_views(&sheet),
             equipment: self.equipment_views(),
             weapons: self.weapon_views(&sheet),
             sheet,
@@ -367,6 +445,10 @@ impl AppState {
                     leveled: t.def.is_leveled(),
                     min_level: t.def.min_level(),
                     cost: t.cost(),
+                    base_cost: t.base_cost(),
+                    modifier_percent: t.modifier_percent(),
+                    modifiers: self.modifier_views(t),
+                    cost_explain: gurps_rules::modifiers::trait_cost_explain(t),
                     page: t.def.page.clone(),
                     source: t.source.clone(),
                     explanation: gurps_core::non_blank(t.explanation.clone())
@@ -918,6 +1000,195 @@ impl AppState {
         Ok(self.view())
     }
 
+    fn modifier_views(&self, t: &Trait) -> Vec<ModifierView> {
+        t.modifiers
+            .iter()
+            .enumerate()
+            .map(|(index, m)| {
+                let tr = self.translated_kind("modifier", &m.def.id);
+                let own = self
+                    .modifier_library
+                    .iter()
+                    .find(|(_, d)| d.id == m.def.id)
+                    .and_then(|(_, d)| d.description.as_ref())
+                    .or(m.def.description.as_ref());
+                let default_explanation = self.text_for("modifier", &m.def.id, own);
+                ModifierView {
+                    index,
+                    id: m.def.id.clone(),
+                    original_name: tr.map(|_| m.def.name.clone()),
+                    name: tr.map(str::to_owned).unwrap_or_else(|| m.def.name.clone()),
+                    cost_percent: m.def.cost_percent,
+                    page: m.def.page.clone(),
+                    source: m.source.clone(),
+                    explanation: gurps_core::non_blank(m.explanation.clone())
+                        .or_else(|| default_explanation.clone()),
+                    default_explanation,
+                    custom_explanation: m.has_custom_explanation(),
+                }
+            })
+            .collect()
+    }
+
+    pub fn modifier_library_view(&self) -> Vec<ModifierLibEntry> {
+        self.modifier_library
+            .iter()
+            .map(|(plugin, def)| ModifierLibEntry {
+                plugin: plugin.clone(),
+                explanation: self.text_for("modifier", &def.id, def.description.as_ref()),
+                translated_name: self.translated_kind("modifier", &def.id).map(str::to_owned),
+                def: def.clone(),
+            })
+            .collect()
+    }
+
+    fn trait_mut(&mut self, index: usize) -> Result<&mut Trait, String> {
+        self.character
+            .traits
+            .get_mut(index)
+            .ok_or_else(|| "no such trait".into())
+    }
+
+    pub fn add_trait_modifier(
+        &mut self,
+        trait_index: usize,
+        id: &str,
+    ) -> Result<SheetView, String> {
+        let (plugin, def) = self
+            .modifier_library
+            .iter()
+            .find(|(_, d)| d.id == id)
+            .ok_or_else(|| format!("modifier {id} not in library"))?;
+        let mut def = def.clone();
+        def.description = None;
+        let mut m = TraitModifier::new(def);
+        m.source = Some(plugin.clone());
+        self.trait_mut(trait_index)?.modifiers.push(m);
+        Ok(self.view())
+    }
+
+    pub fn remove_trait_modifier(
+        &mut self,
+        trait_index: usize,
+        index: usize,
+    ) -> Result<SheetView, String> {
+        let t = self.trait_mut(trait_index)?;
+        if index >= t.modifiers.len() {
+            return Err("no such modifier".into());
+        }
+        t.modifiers.remove(index);
+        Ok(self.view())
+    }
+
+    pub fn set_modifier_explanation(
+        &mut self,
+        trait_index: usize,
+        index: usize,
+        text: Option<String>,
+    ) -> Result<SheetView, String> {
+        let m = self
+            .trait_mut(trait_index)?
+            .modifiers
+            .get_mut(index)
+            .ok_or("no such modifier")?;
+        m.explanation = gurps_core::non_blank(text);
+        Ok(self.view())
+    }
+
+    fn spell_views(&self, sheet: &Sheet) -> Vec<SpellView> {
+        self.character
+            .spells
+            .iter()
+            .zip(&sheet.spells)
+            .map(|(s, r)| {
+                let tr = self.translated_kind("spell", &s.def.id);
+                let own = self
+                    .spell_library
+                    .iter()
+                    .find(|(_, d)| d.id == s.def.id)
+                    .and_then(|(_, d)| d.description.as_ref())
+                    .or(s.def.description.as_ref());
+                let default_explanation = self.text_for("spell", &s.def.id, own);
+                SpellView {
+                    index: r.index,
+                    id: s.def.id.clone(),
+                    original_name: tr.map(|_| r.name.clone()),
+                    name: tr.map(str::to_owned).unwrap_or_else(|| r.name.clone()),
+                    college: r.college.clone(),
+                    attribute: r.attribute.clone(),
+                    difficulty: r.difficulty.clone(),
+                    points: s.points,
+                    level: r.level,
+                    relative: r.relative.clone(),
+                    bonus: r.bonus,
+                    prerequisites: r.prerequisites.clone(),
+                    explain: r.explain.clone(),
+                    page: s.def.page.clone(),
+                    source: s.source.clone(),
+                    explanation: gurps_core::non_blank(s.explanation.clone())
+                        .or_else(|| default_explanation.clone()),
+                    default_explanation,
+                    custom_explanation: s.has_custom_explanation(),
+                }
+            })
+            .collect()
+    }
+
+    pub fn spell_library_view(&self) -> Vec<SpellLibEntry> {
+        self.spell_library
+            .iter()
+            .map(|(plugin, def)| SpellLibEntry {
+                plugin: plugin.clone(),
+                explanation: self.text_for("spell", &def.id, def.description.as_ref()),
+                translated_name: self.translated_kind("spell", &def.id).map(str::to_owned),
+                def: def.clone(),
+            })
+            .collect()
+    }
+
+    pub fn add_spell(&mut self, id: &str, points: Option<i32>) -> Result<SheetView, String> {
+        let (plugin, def) = self
+            .spell_library
+            .iter()
+            .find(|(_, d)| d.id == id)
+            .ok_or_else(|| format!("spell {id} not in library"))?;
+        let mut def = def.clone();
+        def.description = None;
+        let mut s = Spell::new(def, points.unwrap_or(1).max(0));
+        s.source = Some(plugin.clone());
+        self.character.spells.push(s);
+        Ok(self.view())
+    }
+
+    fn spell_mut(&mut self, index: usize) -> Result<&mut Spell, String> {
+        self.character
+            .spells
+            .get_mut(index)
+            .ok_or_else(|| "no such spell".into())
+    }
+
+    pub fn set_spell_points(&mut self, index: usize, points: i32) -> Result<SheetView, String> {
+        self.spell_mut(index)?.points = points.max(0);
+        Ok(self.view())
+    }
+
+    pub fn set_spell_explanation(
+        &mut self,
+        index: usize,
+        text: Option<String>,
+    ) -> Result<SheetView, String> {
+        self.spell_mut(index)?.explanation = gurps_core::non_blank(text);
+        Ok(self.view())
+    }
+
+    pub fn remove_spell(&mut self, index: usize) -> Result<SheetView, String> {
+        if index >= self.character.spells.len() {
+            return Err("no such spell".into());
+        }
+        self.character.spells.remove(index);
+        Ok(self.view())
+    }
+
     pub fn skill_library_view(&self) -> SkillLibrary {
         SkillLibrary {
             skills: self
@@ -1352,6 +1623,51 @@ mod tests {
         assert!(s.remove_technique(3).is_err());
         assert!(s.add_skill("nope", None, None).is_err());
         assert!(s.set_skill_points(0, 4).unwrap().sheet.points.skills >= 4);
+    }
+
+    #[test]
+    fn spells_and_modifiers_flow_translated() {
+        let mut s = state();
+        assert_eq!(s.plugin_status().spells, 6);
+        assert_eq!(s.plugin_status().modifiers, 6);
+        s.set_attribute("IQ", 4).unwrap();
+        s.add_trait("magery", Some(2)).unwrap();
+        let v = s.add_spell("fireball", None).unwrap();
+        let sp = &v.spells[0];
+        assert_eq!(sp.name, "Огненный шар");
+        assert_eq!(sp.original_name.as_deref(), Some("Fireball"));
+        // IQ 14, 1 pt H = 12, +2 Magery 2
+        assert_eq!((sp.level, sp.bonus), (Some(14), 2));
+        assert!(sp.explanation.as_deref().unwrap().contains("шар"));
+        let v = s.set_spell_points(0, 4).unwrap();
+        assert_eq!(v.spells[0].level, Some(16));
+        assert_eq!(v.sheet.points.spells, 4);
+        let v = s.set_spell_explanation(0, Some("моё".into())).unwrap();
+        assert!(v.spells[0].custom_explanation);
+        let v = s.set_spell_explanation(0, None).unwrap();
+        assert!(!v.spells[0].custom_explanation);
+        assert!(s
+            .spell_library_view()
+            .iter()
+            .all(|e| e.translated_name.is_some() && e.explanation.is_some()));
+
+        // Magery 2 = 25; Emergencies Only -30%: 17.5 -> 18
+        let v = s.add_trait_modifier(0, "emergencies-only").unwrap();
+        let t = &v.traits[0];
+        assert_eq!((t.base_cost, t.modifier_percent, t.cost), (25, -30, 18));
+        assert_eq!(t.modifiers[0].name, "Только в опасности");
+        assert_eq!(
+            t.cost_explain.last().unwrap(),
+            "25 × 70% = 17.5 -> 18 (rounded up)"
+        );
+        let v = s.set_modifier_explanation(0, 0, Some("x".into())).unwrap();
+        assert!(v.traits[0].modifiers[0].custom_explanation);
+        let v = s.remove_trait_modifier(0, 0).unwrap();
+        assert_eq!(v.traits[0].cost, 25);
+        assert!(v.traits[0].cost_explain.is_empty());
+        let v = s.remove_spell(0).unwrap();
+        assert!(v.spells.is_empty());
+        assert_eq!(s.modifier_library_view().len(), 6);
     }
 
     #[test]

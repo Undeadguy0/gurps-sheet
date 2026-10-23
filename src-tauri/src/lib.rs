@@ -3,7 +3,8 @@ mod state;
 use gurps_rules::dice::RollResult;
 pub use state::{AppState, SheetView};
 use state::{
-    EquipmentLibEntry, LibraryEntry, LocaleInfo, PluginStatus, SkillLibrary, WeaponLibEntry,
+    EquipmentLibEntry, LibraryEntry, LocaleInfo, ModifierLibEntry, PluginStatus, SkillLibrary,
+    SpellLibEntry, WeaponLibEntry,
 };
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -215,6 +216,60 @@ fn set_weapon_explanation(
 }
 
 #[tauri::command]
+fn list_spell_library(state: S) -> Vec<SpellLibEntry> {
+    lock(&state).spell_library_view()
+}
+
+#[tauri::command]
+fn add_spell(state: S, id: String, points: Option<i32>) -> Result<SheetView, String> {
+    lock(&state).add_spell(&id, points)
+}
+
+#[tauri::command]
+fn set_spell_points(state: S, index: usize, points: i32) -> Result<SheetView, String> {
+    lock(&state).set_spell_points(index, points)
+}
+
+#[tauri::command]
+fn set_spell_explanation(
+    state: S,
+    index: usize,
+    text: Option<String>,
+) -> Result<SheetView, String> {
+    lock(&state).set_spell_explanation(index, text)
+}
+
+#[tauri::command]
+fn remove_spell(state: S, index: usize) -> Result<SheetView, String> {
+    lock(&state).remove_spell(index)
+}
+
+#[tauri::command]
+fn list_modifier_library(state: S) -> Vec<ModifierLibEntry> {
+    lock(&state).modifier_library_view()
+}
+
+#[tauri::command]
+fn add_trait_modifier(state: S, trait_index: usize, id: String) -> Result<SheetView, String> {
+    lock(&state).add_trait_modifier(trait_index, &id)
+}
+
+#[tauri::command]
+fn remove_trait_modifier(state: S, trait_index: usize, index: usize) -> Result<SheetView, String> {
+    lock(&state).remove_trait_modifier(trait_index, index)
+}
+
+#[tauri::command]
+fn set_modifier_explanation(
+    state: S,
+    trait_index: usize,
+    index: usize,
+    text: Option<String>,
+) -> Result<SheetView, String> {
+    lock(&state).set_modifier_explanation(trait_index, index, text)
+}
+
+#[tauri::command]
 fn roll(target: i32, modifier: Option<i32>) -> RollResult {
     AppState::roll(target, modifier.unwrap_or(0))
 }
@@ -305,6 +360,15 @@ pub fn run() {
             add_weapon,
             remove_weapon,
             set_weapon_explanation,
+            list_spell_library,
+            add_spell,
+            set_spell_points,
+            set_spell_explanation,
+            remove_spell,
+            list_modifier_library,
+            add_trait_modifier,
+            remove_trait_modifier,
+            set_modifier_explanation,
             plugin_status,
             reload_plugins,
             roll
