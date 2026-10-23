@@ -3,9 +3,20 @@ import { computed, ref } from 'vue';
 import { createColumnHelper, FlexRender, getCoreRowModel, getFilteredRowModel, getSortedRowModel, useVueTable, type SortingState } from '@tanstack/vue-table';
 import type { PointsBreakdown, TraitView } from '../types';
 import { CATEGORY_LABEL } from '../labels';
+import { excerpt, renderMarkdown } from '../markdown';
+import ExplanationEditor from './ExplanationEditor.vue';
 
 const props = defineProps<{ traits: TraitView[]; points: PointsBreakdown }>();
-const emit = defineEmits<{ add: []; remove: [number]; setLevels: [number, number] }>();
+const emit = defineEmits<{ add: []; remove: [number]; setLevels: [number, number]; setExplanation: [number, string | null] }>();
+
+// Expanded explanation rows, keyed by trait index.
+const expanded = ref<Set<number>>(new Set());
+function toggle(i: number) {
+  const s = new Set(expanded.value);
+  if (s.has(i)) s.delete(i); else s.add(i);
+  expanded.value = s;
+}
+const tip = (t: TraitView) => excerpt(t.explanation) || undefined;
 
 const filter = ref('');
 const sorting = ref<SortingState>([]);
@@ -61,7 +72,9 @@ const summary = computed(() => `Преим ${props.points.advantages + props.poi
         </tr>
       </thead>
       <tbody>
-        <tr v-for="row in table.getRowModel().rows" :key="row.id" class="data-table__row" :data-category="row.original.category" tabindex="0">
+        <template v-for="row in table.getRowModel().rows" :key="row.id">
+        <tr class="data-table__row" :data-category="row.original.category" tabindex="0" :title="tip(row.original)"
+          @keydown.enter.self="toggle(row.original.index)">
           <td v-for="cell in row.getVisibleCells()" :key="cell.id" :class="['cell', `cell--${cell.column.id}`, { 'is-num': (cell.column.columnDef.meta as any)?.num }]">
             <template v-if="cell.column.id === 'levels'">
               <span v-if="row.original.leveled" class="stepper">
@@ -76,9 +89,28 @@ const summary = computed(() => `Преим ${props.points.advantages + props.poi
             <template v-else-if="cell.column.id === 'actions'">
               <button class="btn btn--icon btn--danger" type="button" :aria-label="`Удалить ${row.original.name}`" @click="emit('remove', row.original.index)">×</button>
             </template>
+            <template v-else-if="cell.column.id === 'name'">
+              <button class="btn btn--icon btn--expand" type="button" :aria-expanded="expanded.has(row.original.index)"
+                :aria-label="`Пояснение: ${row.original.name}`" :title="expanded.has(row.original.index) ? 'Скрыть пояснение' : 'Показать пояснение'"
+                @click="toggle(row.original.index)">{{ expanded.has(row.original.index) ? '▾' : '▸' }}</button>
+              <span>{{ row.original.name }}</span>
+              <span v-if="row.original.explanation" class="explanation-mark" :class="{ 'is-custom': row.original.custom_explanation }"
+                aria-hidden="true" title="">ⓘ</span>
+            </template>
             <span v-else :class="{ num: (cell.column.columnDef.meta as any)?.num }"><FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" /></span>
           </td>
         </tr>
+        <tr v-if="expanded.has(row.original.index)" class="explanation-row">
+          <td :colspan="row.getVisibleCells().length">
+            <ExplanationEditor :text="row.original.explanation" :default-text="row.original.default_explanation"
+              :custom="row.original.custom_explanation" :label="row.original.name"
+              @save="(t) => emit('setExplanation', row.original.index, t)" />
+          </td>
+        </tr>
+        <tr v-else-if="row.original.explanation" class="explanation-row explanation-row--print-only">
+          <td :colspan="row.getVisibleCells().length"><div class="md" v-html="renderMarkdown(row.original.explanation)"></div></td>
+        </tr>
+        </template>
       </tbody>
     </table>
   </section>

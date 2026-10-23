@@ -176,6 +176,43 @@ kbd { font-family: var(--font-num); padding: 0 var(--xs); border: 1px solid var(
   .field--title { border: 0; }
 }
 
+/* Explanations (пояснения): rendered Markdown + editor. Theme tokens only. */
+.md { line-height: 1.5; overflow-wrap: anywhere; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md blockquote, .md pre { margin: 0 0 var(--sm); }
+.md ul, .md ol { padding-left: var(--lg); }
+.md h4, .md h5, .md h6 { margin: var(--sm) 0 var(--xs); font-family: var(--font-head); font-weight: var(--heading-weight); font-size: 1em; }
+.md code { font-family: var(--font-num); font-size: 0.92em; background: var(--color-surface-2); padding: 0 var(--xs); border-radius: var(--radiusSm); }
+.md pre { background: var(--color-surface-2); padding: var(--sm); border-radius: var(--radiusSm); overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md blockquote { border-left: 3px solid var(--color-border); padding-left: var(--sm); color: var(--color-muted); }
+.md a { color: var(--color-accent); }
+.md hr { border: 0; border-top: 1px solid var(--color-border); }
+.btn--expand { min-width: 0; min-height: 0; width: 1.6em; height: 1.6em; padding: 0; margin-right: var(--xs); border: 0; background: none; color: var(--color-muted); }
+.explanation-mark { margin-left: var(--xs); color: var(--color-muted); font-size: 0.85em; }
+.explanation-mark.is-custom { color: var(--color-accent); }
+.explanation-row > td { background: var(--color-surface-2); padding: var(--sm) var(--md); white-space: normal; }
+.explanation-row--print-only { display: none; }
+.explanation { display: flex; flex-direction: column; gap: var(--sm); max-width: 72ch; }
+.explanation.is-editing { max-width: none; }
+.explanation__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sm); }
+.explanation__badge, .explanation__hint { margin-right: auto; font-size: 0.85em; }
+.explanation__editor { display: grid; grid-template-columns: 1fr 1fr; gap: var(--md); }
+.explanation__pane { display: flex; flex-direction: column; gap: var(--xs); min-width: 0; }
+.explanation__textarea { min-height: 10em; padding: var(--sm); resize: vertical; font-family: var(--font-num); line-height: 1.4; }
+.explanation__preview { min-height: 10em; padding: var(--sm); border: 1px dashed var(--color-border); border-radius: var(--radiusSm); background: var(--color-surface); }
+.library-preview__explanation { padding-top: var(--sm); border-top: 1px solid var(--color-border); max-height: 40vh; overflow-y: auto; }
+@media (max-width: 767px) { .explanation__editor { grid-template-columns: 1fr; } }
+@media print {
+  .btn--expand, .explanation__actions, .explanation__editor textarea, .explanation__pane > .muted { display: none !important; }
+  .explanation-row--print-only { display: table-row; }
+  .explanation-row > td { background: none; padding: 0 var(--sm) var(--sm) var(--lg); font-size: 0.9em; break-inside: avoid; }
+  .explanation__editor { display: block; }
+  .explanation__preview { border: 0; padding: 0; min-height: 0; }
+  .md a { color: inherit; text-decoration: none; }
+}
+
 /* Panels never overlap: tables scroll inside their panel; with the side panel open the grid stacks. */
 .sheet-grid > .panel { min-width: 0; overflow-x: auto; }
 .has-side-panel .sheet-grid__left, .has-side-panel .sheet-grid__right { grid-column: 1 / -1; }

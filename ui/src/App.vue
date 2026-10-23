@@ -73,6 +73,7 @@ const newChar = () => run(api.newCharacter(), false);
 const setLevel = (k: string, l: number) => run(api.setAttribute(k, l));
 const removeTrait = (i: number) => run(api.removeTrait(i));
 const setTraitLevels = (i: number, l: number) => run(api.setTraitLevels(i, l));
+const setTraitExplanation = (i: number, t: string | null) => run(api.setTraitExplanation(i, t));
 
 function onKey(e: KeyboardEvent) {
   const t = e.target as HTMLElement;
@@ -118,7 +119,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
           @set-level="setLevel" @roll="roll" @explain="(k) => (explainKey = k)"
           @focus-row="(k) => (focusKey = k)" />
         <TraitsPanel ref="traitsPanel" class="sheet-grid__right" :traits="view.traits" :points="view.sheet.points"
-          @add="libraryOpen = true" @remove="removeTrait" @set-levels="setTraitLevels" />
+          @add="libraryOpen = true" @remove="removeTrait" @set-levels="setTraitLevels" @set-explanation="setTraitExplanation" />
       </div>
       <section v-else class="panel empty-state">
         <h2 class="panel__title">{{ sections.find((s) => s.id === section)?.label }}</h2>

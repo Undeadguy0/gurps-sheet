@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue';
 import type { LibraryEntry, TraitCategory } from '../types';
 import { CATEGORY_LABEL } from '../labels';
+import { excerpt, renderMarkdown } from '../markdown';
 
 const props = defineProps<{ library: LibraryEntry[] }>();
 const emit = defineEmits<{ close: []; add: [string[]] }>();
@@ -39,7 +40,7 @@ function reset() { query.value = ''; cat.value = ''; }
       </div>
       <div class="library-dialog__body">
         <ul v-if="items.length" class="library-list" role="listbox" aria-multiselectable="true">
-          <li v-for="e in items" :key="e.id" class="library-list__item" role="option" :aria-selected="selected.has(e.id)"
+          <li v-for="e in items" :key="e.id" class="library-list__item" role="option" :aria-selected="selected.has(e.id)" :title="excerpt(e.explanation) || undefined"
             :class="{ 'is-preview': preview?.id === e.id }" @click="preview = e">
             <input type="checkbox" :checked="selected.has(e.id)" :aria-label="`Выбрать ${e.name}`" @click.stop="toggle(e.id)" />
             <span class="library-list__name">{{ e.name }}</span>
@@ -67,6 +68,7 @@ function reset() { query.value = ''; cat.value = ''; }
               </span>
             </dd>
           </dl>
+          <div v-if="preview.explanation" class="library-preview__explanation md" v-html="renderMarkdown(preview.explanation)"></div>
           <button class="btn btn--primary" type="button" @click="emit('add', [preview.id])">Добавить</button>
         </aside>
       </div>
