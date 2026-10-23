@@ -8,6 +8,7 @@
 pub mod dice;
 pub mod points;
 pub mod sheet;
+pub mod validate;
 pub mod value;
 
 pub use sheet::{compute_sheet, Sheet, StatRow};
