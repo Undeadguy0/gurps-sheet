@@ -4,18 +4,22 @@
 import type {
   LibraryEntry, LocaleInfo, LocalizedText, RollResult, SheetView, StatRow, TraitDef, TraitView, Value, Outcome,
   SkillDef, SkillLibrary, SkillView, TechniqueDef, TechniqueView, EquipmentItem, EquipmentLibEntry, EquipmentView,
-  WeaponDef, WeaponLibEntry, WeaponView,
+  WeaponDef, WeaponLibEntry, WeaponView, ModifierDef, ModifierLibEntry, ModifierView, SpellDef, SpellLibEntry, SpellView,
 } from './types';
 import { WEAPON_CATALOG_RU, WEAPON_DEFS } from './mockWeapons';
 import { basicDamage, computeDefenses, computeWeapons, diceStr, type CombatCtx, type Owned } from './combat';
 import { EQUIPMENT_CATALOG_RU, EQUIPMENT_DEFS } from './mockEquipment';
 import { computeEncumbrance, totalCost, totalWeight } from './encumbrance';
 import { SKILL_CATALOG_RU, SKILL_DEFS, TALENT_DEF, TECHNIQUE_DEFS } from './mockSkills';
+import { MAGERY_DEF, MAGERY_RU, MODIFIER_CATALOG_RU, MODIFIER_DEFS, SPELL_CATALOG_RU, SPELL_DEFS } from './mockMagic';
+import { computeSpells, modifiedCost, traitCostExplain } from './magic';
 import { computeSkills, computeTechniques, signedInt, enPts } from './skills';
 
 interface MockSkill { def: SkillDef; points: number; specialization?: string | null; explanation?: string }
 interface MockTech { def: TechniqueDef; points: number; explanation?: string }
-interface MockTrait { def: TraitDef; levels: number; source: string; explanation?: string }
+interface MockMod { def: ModifierDef; explanation?: string }
+interface MockTrait { def: TraitDef; levels: number; source: string; explanation?: string; modifiers: MockMod[] }
+interface MockSpell { def: SpellDef; points: number; explanation?: string }
 
 /** Points per step (B15-B17); Basic Speed per 0.25. Mirrors gurps_rules::points::cost_per_step. */
 export const COST: Record<string, number> = {
@@ -46,6 +50,7 @@ const RAW_LIBRARY: Omit<LibraryEntry, 'explanation'>[] = [
     description: "The character believes they can handle anything and consistently underestimates risk. When a sensible person would back off, plan or ask for help, they tend to charge ahead instead, unless they manage to resist the urge.\n\nIt makes for bold, memorable characters (young heroes, braggarts, star pilots), but the player should actually play the recklessness. Others may find them inspiring or insufferable." },
 ];
 RAW_LIBRARY.push({ plugin: 'basic-set-sample', ...TALENT_DEF } as Omit<LibraryEntry, 'explanation'>);
+RAW_LIBRARY.push({ plugin: 'basic-set-sample', ...MAGERY_DEF } as Omit<LibraryEntry, 'explanation'>);
 const LIBRARY = RAW_LIBRARY;
 
 /** Mirror of plugins/lang-ru/locales/ru/basic-set-sample.ftl (subset). Keys: `<kind>-<id>`. */
@@ -76,6 +81,10 @@ for (const [id, v] of Object.entries(WEAPON_CATALOG_RU)) CATALOG.ru[`weapon-${id
 interface MockWeapon { def: WeaponDef; explanation?: string }
 const unarmed = (): MockWeapon[] => WEAPON_DEFS.filter((w) => !w.equipment).map((def) => ({ def }));
 
+CATALOG.ru['trait-magery'] = MAGERY_RU;
+for (const [k, v] of Object.entries(SPELL_CATALOG_RU)) CATALOG.ru[`spell-${k}`] = v;
+for (const [k, v] of Object.entries(MODIFIER_CATALOG_RU)) CATALOG.ru[`modifier-${k}`] = v;
+
 export class MockBackend {
   name = 'Пример (браузер)';
   levels: Record<string, number> = {};
@@ -83,6 +92,7 @@ export class MockBackend {
   locale = 'ru';
   originalOnly = false;
 
+  spells: MockSpell[] = [];
   skills: MockSkill[] = [];
   techniques: MockTech[] = [];
   private tr(id: string, kind = 'trait') {
@@ -201,7 +211,37 @@ export class MockBackend {
   locales(): LocaleInfo { return { available: [...new Set([...Object.keys(CATALOG), 'en'])].sort(), locale: this.locale, original_only: this.originalOnly }; }
 
   private name_(t: MockTrait) { return t.def.cost_per_level ? `${t.def.name} ${t.levels}` : t.def.name; }
-  private cost(t: MockTrait) { return t.def.cost + t.def.cost_per_level * t.levels; }
+  private baseCost(t: MockTrait) { return t.def.cost + t.def.cost_per_level * t.levels; }
+  private modPct(t: MockTrait) { return t.modifiers.reduce((a, m) => a + m.def.cost_percent, 0); }
+  private cost(t: MockTrait) { return modifiedCost(this.baseCost(t), this.modPct(t)); }
+  spellLibrary(): SpellLibEntry[] {
+    return SPELL_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('spell', d.id, d.description), translated_name: this.tr(d.id, 'spell')?.name ?? null }));
+  }
+  modifierLibrary(): ModifierLibEntry[] {
+    return MODIFIER_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('modifier', d.id, d.description), translated_name: this.tr(d.id, 'modifier')?.name ?? null }));
+  }
+  private modViews(t: MockTrait): ModifierView[] {
+    return t.modifiers.map((m, index) => {
+      const n = this.tr(m.def.id, 'modifier')?.name; const dflt = this.text('modifier', m.def.id, m.def.description);
+      return { index, id: m.def.id, name: n ?? m.def.name, original_name: n ? m.def.name : null, cost_percent: m.def.cost_percent, page: m.def.page,
+        source: 'basic-set-sample', explanation: m.explanation?.trim() ? m.explanation : dflt, default_explanation: dflt, custom_explanation: !!m.explanation?.trim() };
+    });
+  }
+  private spellViews(tot: Record<string, number>): SpellView[] {
+    const bonuses: [string, number, string[]][] = [];
+    for (const t of this.traits) for (const f of t.def.features) if (f.type === 'spell_bonus')
+      bonuses.push([this.name_(t), Math.floor(f.per_level ? f.amount * t.levels : f.amount), f.colleges ?? []]);
+    const rows = computeSpells(this.spells, (k) => tot[k] ?? 10, bonuses);
+    return this.spells.map((sp, index) => {
+      const r = rows[index]; const n = this.tr(sp.def.id, 'spell')?.name; const dflt = this.text('spell', sp.def.id, sp.def.description);
+      return { index, id: sp.def.id, name: n ?? sp.def.name, original_name: n ? sp.def.name : null, college: sp.def.college ?? [], attribute: sp.def.attribute ?? 'IQ',
+        difficulty: sp.def.difficulty ?? 'H', points: sp.points, level: r.level, relative: r.relative, bonus: r.bonus, prerequisites: sp.def.prerequisites ?? null,
+        explain: r.explain, page: sp.def.page, source: 'basic-set-sample', explanation: sp.explanation?.trim() ? sp.explanation : dflt, default_explanation: dflt,
+        custom_explanation: !!sp.explanation?.trim() };
+    });
+  }
+  private spell(a: Record<string, unknown>) { const s = this.spells[a.index as number]; if (!s) throw new Error('no such spell'); return s; }
+  private trait(i: unknown) { const t = this.traits[i as number]; if (!t) throw new Error('no such trait'); return t; }
 
   private row(key: string, v: Value): StatRow {
     const level = this.levels[key] ?? 0;
@@ -242,22 +282,26 @@ export class MockBackend {
     const sum = (ks: string[]) => ks.reduce((a, k) => a + (this.levels[k] ?? 0) * COST[k], 0);
     const cat = (c: string) => this.traits.filter((t) => t.def.category === c).reduce((a, t) => a + this.cost(t), 0);
     const p = { attributes: sum(PRIMARY), secondary: sum(SECONDARY), advantages: cat('advantage'), perks: cat('perk'),
-      disadvantages: cat('disadvantage'), quirks: cat('quirk'), skills: 0, total: 0, budget: 150, unspent: 0 };
+      disadvantages: cat('disadvantage'), quirks: cat('quirk'), skills: 0, spells: 0, total: 0, budget: 150, unspent: 0 };
     const [skills, techniques, skillPts] = this.skillViews(tot);
     p.skills = skillPts;
-    p.total = p.attributes + p.secondary + p.advantages + p.perks + p.disadvantages + p.quirks + p.skills;
+    const spells = this.spellViews(tot);
+    p.spells = this.spells.reduce((a, sp) => a + Math.max(0, sp.points), 0);
+    p.total = p.attributes + p.secondary + p.advantages + p.perks + p.disadvantages + p.quirks + p.skills + p.spells;
     p.unspent = p.budget - p.total;
     const traits: TraitView[] = this.traits.map((t, index) => ({ index, id: t.def.id, name: this.shown(t) ?? this.name_(t),
       original_name: this.shown(t) ? this.name_(t) : null, category: t.def.category,
       levels: t.levels, leveled: !!t.def.cost_per_level, min_level: t.def.min_levels ?? (t.def.cost_per_level ? 1 : 0), cost: this.cost(t), page: t.def.page, source: t.source,
       explanation: t.explanation?.trim() ? t.explanation : this.plugText(t.def),
-      default_explanation: this.plugText(t.def), custom_explanation: !!t.explanation?.trim() }));
+      default_explanation: this.plugText(t.def), custom_explanation: !!t.explanation?.trim(),
+      base_cost: this.baseCost(t), modifier_percent: this.modPct(t), modifiers: this.modViews(t),
+      cost_explain: traitCostExplain(this.baseCost(t), t.modifiers.map((m) => m.def)) }));
     const encumbrance = computeEncumbrance(this.equipment, bl(liftSt), tot.BasicMove, tot.BasicSpeed);
     const cb = this.combat(tot, skills, techniques, encumbrance);
     return {
       sheet: { name: this.name, attributes, secondary, basic_lift: this.row('BasicLift', blv),
         damage: cb.damage, points: p, encumbrance, weapons: cb.rows, defenses: cb.defenses },
-      traits, skills, techniques, equipment: this.equipmentViews(), weapons: cb.views,
+      traits, skills, techniques, spells, equipment: this.equipmentViews(), weapons: cb.views,
       issues: [...(p.unspent < 0 ? [{ severity: 'warning' as const, message: `over budget by ${enPts(-p.unspent)}` }] : []),
         ...this.skills.filter((s) => s.def.specialization_required && !s.specialization?.trim())
           .map((s) => ({ severity: 'warning' as const, message: `skill '${s.def.name}' needs a specialization` })),
@@ -272,13 +316,13 @@ export class MockBackend {
 
   invoke(cmd: string, a: Record<string, unknown>): unknown {
     switch (cmd) {
-      case 'new_character': this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.equipment = []; this.weapons = unarmed(); this.name = (a.name as string) ?? 'New character'; return this.view();
+      case 'new_character': this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.spells = []; this.equipment = []; this.weapons = unarmed(); this.name = (a.name as string) ?? 'New character'; return this.view();
       case 'get_sheet': return this.view();
       case 'set_name': this.name = a.name as string; return this.view();
       case 'set_attribute': this.levels[a.key as string] = a.level as number; return this.view();
       case 'add_trait': {
         const def = LIBRARY.find((l) => l.id === a.id); if (!def) throw new Error('unknown trait');
-        this.traits.push({ def, levels: (a.levels as number) ?? (def.cost_per_level ? 1 : 0), source: def.plugin }); return this.view();
+        this.traits.push({ def, levels: (a.levels as number) ?? (def.cost_per_level ? Math.max(1, def.min_levels ?? 1) : 0), source: def.plugin, modifiers: [] }); return this.view();
       }
       case 'set_trait_levels': this.traits[a.index as number].levels = a.levels as number; return this.view();
       case 'set_trait_explanation': {
@@ -288,6 +332,27 @@ export class MockBackend {
       case 'remove_trait': this.traits.splice(a.index as number, 1); return this.view();
       case 'list_library': return this.library();
       case 'list_skill_library': return this.skillLibrary();
+      case 'list_spell_library': return this.spellLibrary();
+      case 'add_spell': {
+        const def = SPELL_DEFS.find((d) => d.id === a.id); if (!def) throw new Error(`unknown spell '${a.id}'`);
+        this.spells.push({ def, points: Math.max(0, (a.points as number) ?? 1) }); return this.view();
+      }
+      case 'set_spell_points': this.spell(a).points = Math.max(0, a.points as number); return this.view();
+      case 'set_spell_explanation': { const t = a.text as string | null; this.spell(a).explanation = t?.trim() ? t : undefined; return this.view(); }
+      case 'remove_spell': this.spell(a); this.spells.splice(a.index as number, 1); return this.view();
+      case 'list_modifier_library': return this.modifierLibrary();
+      case 'add_trait_modifier': {
+        const def = MODIFIER_DEFS.find((d) => d.id === a.id); if (!def) throw new Error(`unknown modifier '${a.id}'`);
+        this.trait(a.traitIndex).modifiers.push({ def }); return this.view();
+      }
+      case 'remove_trait_modifier': {
+        const t = this.trait(a.traitIndex); if (!t.modifiers[a.index as number]) throw new Error('no such modifier');
+        t.modifiers.splice(a.index as number, 1); return this.view();
+      }
+      case 'set_modifier_explanation': {
+        const m = this.trait(a.traitIndex).modifiers[a.index as number]; if (!m) throw new Error('no such modifier');
+        const t = a.text as string | null; m.explanation = t?.trim() ? t : undefined; return this.view();
+      }
       case 'add_skill': {
         const def = SKILL_DEFS.find((d) => d.id === a.id); if (!def) throw new Error('unknown skill');
         const sp = a.specialization as string | null | undefined;
@@ -334,7 +399,7 @@ export class MockBackend {
         const w = this.weapons[a.index as number]; if (!w) throw new Error('no such weapon');
         const t = a.text as string | null; w.explanation = t?.trim() ? t : undefined; return this.view();
       }
-      case 'plugin_status': case 'reload_plugins': return { dir: null, plugins: ['basic-set-sample (встроенная копия)', 'lang-ru (встроенная копия)'], errors: [], traits: LIBRARY.length, skills: SKILL_DEFS.length + TECHNIQUE_DEFS.length, equipment: EQUIPMENT_DEFS.length, weapons: WEAPON_DEFS.length };
+      case 'plugin_status': case 'reload_plugins': return { dir: null, plugins: ['basic-set-sample (встроенная копия)', 'lang-ru (встроенная копия)'], errors: [], traits: LIBRARY.length, skills: SKILL_DEFS.length + TECHNIQUE_DEFS.length, equipment: EQUIPMENT_DEFS.length, weapons: WEAPON_DEFS.length, spells: SPELL_DEFS.length, modifiers: MODIFIER_DEFS.length };
       case 'get_locales': return this.locales();
       case 'set_locale': if ((a.locale as string)?.trim()) this.locale = a.locale as string; this.originalOnly = !!a.originalOnly; return this.view();
       case 'roll': {

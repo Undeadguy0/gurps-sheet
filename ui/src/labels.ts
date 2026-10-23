@@ -30,5 +30,6 @@ export function featureText(f: Feature): string {
       const which = f.defenses?.length ? f.defenses.map((d) => ru[d] ?? d).join(', ') : 'уклонение, парирование и блок';
       return `Активные защиты (${which}): ${amt}${per}`;
     }
+    case 'spell_bonus': return `Заклинания (${f.colleges?.length ? f.colleges.join(', ') : 'все'}): ${amt}${per}`;
   }
 }

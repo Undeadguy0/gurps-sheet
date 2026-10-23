@@ -45,6 +45,7 @@ watch(() => props.view.path, (p) => { if (p) path.value = p; });
         <div><dt>Недост</dt><dd class="num">{{ view.sheet.points.disadvantages }}</dd></div>
         <div><dt>Причуды</dt><dd class="num">{{ view.sheet.points.quirks }}</dd></div>
         <div><dt>Навыки</dt><dd class="num">{{ view.sheet.points.skills }}</dd></div>
+        <div v-if="view.sheet.points.spells"><dt>Заклинания</dt><dd class="num">{{ view.sheet.points.spells }}</dd></div>
       </dl>
     </div>
 

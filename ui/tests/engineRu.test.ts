@@ -13,6 +13,7 @@ const RU_NAMES = new Map([
   ['Combat Reflexes', 'Боевые рефлексы'], ['Brawling', 'Драка'], ['Broadsword', 'Палаш'], ['Knife', 'Нож'], ['Shield', 'Щит'],
   ['Kicking (Brawling)', 'Пинок (Драка)'], ['Lifting ST 2', 'Подъёмная ST 2'], ['Striking ST 2', 'Ударная ST 2'],
   ['Increased ST (example) 1', 'Повышенная ST (пример) 1'], ['Outdoorsman 1', 'Природник 1'],
+  ['Magery 2', 'Магические способности 2'], ['Area Effect', 'Действие по площади'],
 ]);
 const n = (s: string) => RU_NAMES.get(s) ?? s;
 

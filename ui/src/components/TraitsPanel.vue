@@ -3,11 +3,16 @@ import { computed, ref } from 'vue';
 import { createColumnHelper, FlexRender, getCoreRowModel, getFilteredRowModel, getSortedRowModel, useVueTable, type SortingState } from '@tanstack/vue-table';
 import type { PointsBreakdown, TraitView } from '../types';
 import { CATEGORY_LABEL } from '../labels';
-import { excerpt, renderMarkdown } from '../markdown';
-import ExplanationEditor from './ExplanationEditor.vue';
+import { tx } from '../engineRu';
+import { excerpt } from '../markdown';
+import ExplanationRows from './ExplanationRows.vue';
+import TraitModifiers from './TraitModifiers.vue';
 
 const props = defineProps<{ traits: TraitView[]; points: PointsBreakdown }>();
-const emit = defineEmits<{ add: []; remove: [number]; setLevels: [number, number]; setExplanation: [number, string | null] }>();
+const emit = defineEmits<{
+  add: []; remove: [number]; setLevels: [number, number]; setExplanation: [number, string | null];
+  addModifier: [number]; removeModifier: [number, number]; setModifierExplanation: [number, number, string | null];
+}>();
 
 // Expanded explanation rows, keyed by trait index.
 const expanded = ref<Set<number>>(new Set());
@@ -90,6 +95,10 @@ const summary = computed(() => `Преим ${props.points.advantages + props.poi
               </span>
               <span v-else class="muted">—</span>
             </template>
+            <template v-else-if="cell.column.id === 'cost'">
+              <span class="num" :title="row.original.cost_explain.map(tx).join('\n') || undefined">{{ row.original.cost }}</span>
+              <span v-if="row.original.modifiers.length" class="muted num"> ({{ row.original.base_cost }})</span>
+            </template>
             <template v-else-if="cell.column.id === 'actions'">
               <button class="btn btn--icon btn--danger" type="button" :aria-label="`Удалить ${row.original.name}`" @click="emit('remove', row.original.index)">×</button>
             </template>
@@ -101,19 +110,23 @@ const summary = computed(() => `Преим ${props.points.advantages + props.poi
               <span v-if="row.original.original_name" class="muted original-name"> ({{ row.original.original_name }})</span>
               <span v-if="row.original.explanation" class="explanation-mark" :class="{ 'is-custom': row.original.custom_explanation }"
                 aria-hidden="true" title="">ⓘ</span>
+              <span v-for="m in row.original.modifiers" :key="m.index" class="skill-tag" :class="m.cost_percent > 0 ? 'is-enh' : 'is-lim'"
+                :title="excerpt(m.explanation) || undefined">{{ m.name }} {{ m.cost_percent > 0 ? '+' : '' }}{{ m.cost_percent }}%</span>
             </template>
             <span v-else :class="{ num: (cell.column.columnDef.meta as any)?.num }"><FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" /></span>
           </td>
         </tr>
-        <tr v-if="expanded.has(row.original.index)" class="explanation-row">
+        <ExplanationRows :open="expanded.has(row.original.index)" :colspan="row.getVisibleCells().length" :label="row.original.name"
+          :text="row.original.explanation" :default-text="row.original.default_explanation" :custom="row.original.custom_explanation"
+          @save="(t) => emit('setExplanation', row.original.index, t)">
+          <TraitModifiers :t="row.original" @add="emit('addModifier', row.original.index)"
+            @remove="(m) => emit('removeModifier', row.original.index, m)"
+            @set-explanation="(m, t) => emit('setModifierExplanation', row.original.index, m, t)" />
+        </ExplanationRows>
+        <tr v-if="!expanded.has(row.original.index) && row.original.modifiers.length" class="explanation-row explanation-row--print-only">
           <td :colspan="row.getVisibleCells().length">
-            <ExplanationEditor :text="row.original.explanation" :default-text="row.original.default_explanation"
-              :custom="row.original.custom_explanation" :label="row.original.name"
-              @save="(t) => emit('setExplanation', row.original.index, t)" />
+            <TraitModifiers :t="row.original" print-only />
           </td>
-        </tr>
-        <tr v-else-if="row.original.explanation" class="explanation-row explanation-row--print-only">
-          <td :colspan="row.getVisibleCells().length"><div class="md" v-html="renderMarkdown(row.original.explanation)"></div></td>
         </tr>
         </template>
       </tbody>

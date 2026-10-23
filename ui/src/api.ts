@@ -1,6 +1,6 @@
 // Backend facade: Tauri commands when running inside the app, an in-browser
 // preview backend (mock.ts) when opened with plain `npm run dev`.
-import type { LibraryEntry, LocaleInfo, PluginStatus, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, WeaponLibEntry } from './types';
+import type { LibraryEntry, LocaleInfo, PluginStatus, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, WeaponLibEntry, SpellLibEntry, ModifierLibEntry } from './types';
 import { MockBackend } from './mock';
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -52,5 +52,15 @@ export const api = {
   addWeapon: (id: string) => call<SheetView>('add_weapon', { id }),
   removeWeapon: (index: number) => call<SheetView>('remove_weapon', { index }),
   setWeaponExplanation: (index: number, text: string | null) => call<SheetView>('set_weapon_explanation', { index, text }),
+  listSpellLibrary: () => call<SpellLibEntry[]>('list_spell_library'),
+  addSpell: (id: string, points?: number) => call<SheetView>('add_spell', { id, points }),
+  setSpellPoints: (index: number, points: number) => call<SheetView>('set_spell_points', { index, points }),
+  setSpellExplanation: (index: number, text: string | null) => call<SheetView>('set_spell_explanation', { index, text }),
+  removeSpell: (index: number) => call<SheetView>('remove_spell', { index }),
+  listModifierLibrary: () => call<ModifierLibEntry[]>('list_modifier_library'),
+  addTraitModifier: (traitIndex: number, id: string) => call<SheetView>('add_trait_modifier', { traitIndex, id }),
+  removeTraitModifier: (traitIndex: number, index: number) => call<SheetView>('remove_trait_modifier', { traitIndex, index }),
+  setModifierExplanation: (traitIndex: number, index: number, text: string | null) =>
+    call<SheetView>('set_modifier_explanation', { traitIndex, index, text }),
   roll: (target: number, modifier = 0) => call<RollResult>('roll', { target, modifier }),
 };

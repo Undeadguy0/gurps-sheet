@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { api, inTauri } from './api';
-import type { LibraryEntry, LocaleInfo, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, WeaponLibEntry } from './types';
+import type { LibraryEntry, LocaleInfo, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, WeaponLibEntry, SpellLibEntry, ModifierLibEntry } from './types';
 import { loadLocalePref, saveLocalePref } from './i18n';
 import AppHeader from './components/AppHeader.vue';
 import NavRail, { type Section } from './components/NavRail.vue';
@@ -16,6 +16,9 @@ import ProvenancePanel from './components/ProvenancePanel.vue';
 import WeaponsPanel from './components/WeaponsPanel.vue';
 import DefensesPanel from './components/DefensesPanel.vue';
 import WeaponLibraryDialog from './components/WeaponLibraryDialog.vue';
+import SpellsPanel from './components/SpellsPanel.vue';
+import SpellLibraryDialog from './components/SpellLibraryDialog.vue';
+import ModifierLibraryDialog from './components/ModifierLibraryDialog.vue';
 import { ROLLABLE } from './labels';
 import { engineLocale, engineNames, namesFrom, tx } from './engineRu';
 import { watchEffect } from 'vue';
@@ -24,6 +27,7 @@ const sections: Section[] = [
   { id: 'sheet', label: 'Лист', icon: '▦', ready: true },
   { id: 'traits', label: 'Черты', icon: '✦', ready: true },
   { id: 'skills', label: 'Навыки', icon: '◎', ready: true },
+  { id: 'magic', label: 'Магия', icon: '✧', ready: true },
   { id: 'equipment', label: 'Снаряж.', icon: '⚒', ready: true },
   { id: 'combat', label: 'Оружие', icon: '⚔', ready: true },
   { id: 'notes', label: 'Заметки', icon: '✎', ready: false },
@@ -42,6 +46,12 @@ const weaponLibraryOpen = ref(false);
 /** null = closed; [] = top level; path = into that container. */
 const equipmentTarget = ref<number[] | null>(null);
 const skillLibrary = ref<SkillLibrary>({ skills: [], techniques: [] });
+const spellLibrary = ref<SpellLibEntry[]>([]);
+const spellLibraryOpen = ref(false);
+const modifierLibrary = ref<ModifierLibEntry[]>([]);
+/** Trait index the modifier library is open for. */
+const modifierTarget = ref<number | null>(null);
+const modifierTargetTrait = computed(() => (modifierTarget.value === null ? null : view.value?.traits[modifierTarget.value] ?? null));
 const helpOpen = ref(false);
 const explainKey = ref<string | null>(null);
 const focusKey = ref<string | null>(null);
@@ -97,12 +107,13 @@ watchEffect(() => {
   const l = locales.value;
   engineLocale.value = l && (!l.locale.startsWith('ru') || l.original_only) ? 'en' : 'ru';
   const v = view.value;
-  engineNames.value = v ? namesFrom([v.traits, v.skills, v.techniques, v.equipment, v.weapons]) : new Map();
+  engineNames.value = v ? namesFrom([v.traits, v.skills, v.techniques, v.spells, v.traits.flatMap((t) => t.modifiers ?? []), v.equipment, v.weapons]) : new Map();
 });
 async function setLocale(locale: string, originalOnly: boolean) {
   await run(api.setLocale(locale, originalOnly), false);
   saveLocalePref({ locale, originalOnly });
-  [locales.value, library.value, skillLibrary.value, equipmentLibrary.value, weaponLibrary.value] = await Promise.all([api.getLocales(), api.listLibrary(), api.listSkillLibrary(), api.listEquipmentLibrary(), api.listWeaponLibrary()]);
+  [locales.value, library.value, skillLibrary.value, equipmentLibrary.value, weaponLibrary.value, spellLibrary.value, modifierLibrary.value] = await Promise.all([
+    api.getLocales(), api.listLibrary(), api.listSkillLibrary(), api.listEquipmentLibrary(), api.listWeaponLibrary(), api.listSpellLibrary(), api.listModifierLibrary()]);
 }
 async function reloadLibrary() {
   [library.value, locales.value, view.value] = await Promise.all([api.listLibrary(), api.getLocales(), api.getSheet()]);
@@ -130,6 +141,15 @@ async function openWeaponLibrary() { weaponLibrary.value = await api.listWeaponL
 async function addWeapon(id: string) { await run(api.addWeapon(id)); weaponLibraryOpen.value = false; }
 const removeWeapon = (i: number) => run(api.removeWeapon(i));
 const setWeaponExplanation = (i: number, t: string | null) => run(api.setWeaponExplanation(i, t));
+async function openSpellLibrary() { spellLibrary.value = await api.listSpellLibrary(); spellLibraryOpen.value = true; }
+async function addSpell(id: string) { await run(api.addSpell(id, 1)); spellLibraryOpen.value = false; }
+const setSpellPoints = (i: number, p: number) => run(api.setSpellPoints(i, p));
+const removeSpell = (i: number) => run(api.removeSpell(i));
+const setSpellExplanation = (i: number, t: string | null) => run(api.setSpellExplanation(i, t));
+async function openModifierLibrary(trait: number) { modifierLibrary.value = await api.listModifierLibrary(); modifierTarget.value = trait; }
+async function addModifier(id: string) { if (modifierTarget.value !== null) await run(api.addTraitModifier(modifierTarget.value, id)); modifierTarget.value = null; }
+const removeModifier = (t: number, i: number) => run(api.removeTraitModifier(t, i));
+const setModifierExplanation = (t: number, i: number, x: string | null) => run(api.setModifierExplanation(t, i, x));
 async function openSkillLibrary() { skillLibrary.value = await api.listSkillLibrary(); skillLibraryOpen.value = true; }
 async function addSkill(id: string, spec: string | null) { await run(api.addSkill(id, spec)); skillLibraryOpen.value = false; }
 async function addTechnique(id: string) { await run(api.addTechnique(id)); skillLibraryOpen.value = false; }
@@ -139,8 +159,8 @@ function onKey(e: KeyboardEvent) {
   const typing = t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA');
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); libraryOpen.value = true; return; }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (inTauri) save(view.value?.path ?? undefined); return; }
-  if (e.key === 'Escape') { libraryOpen.value = false; skillLibraryOpen.value = false; weaponLibraryOpen.value = false; equipmentTarget.value = null; explainKey.value = null; helpOpen.value = false; return; }
-  if (e.altKey && /^[1-7]$/.test(e.key)) { section.value = sections[+e.key - 1].id; e.preventDefault(); return; }
+  if (e.key === 'Escape') { libraryOpen.value = false; skillLibraryOpen.value = false; weaponLibraryOpen.value = false; spellLibraryOpen.value = false; modifierTarget.value = null; equipmentTarget.value = null; explainKey.value = null; helpOpen.value = false; return; }
+  if (e.altKey && /^[1-8]$/.test(e.key)) { section.value = sections[+e.key - 1].id; e.preventDefault(); return; }
   if (typing) return;
   if (e.key === '?') helpOpen.value = !helpOpen.value;
   else if (e.key === '/') { e.preventDefault(); traitsPanel.value?.focusFilter(); }
@@ -176,15 +196,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
         <span aria-hidden="true">{{ i.severity === 'error' ? '⚠' : 'ℹ' }}</span> {{ tx(i.message) }}
       </div>
 
-      <div v-if="['sheet', 'traits', 'skills', 'equipment', 'combat'].includes(section)" class="sheet-grid">
+      <div v-if="['sheet', 'traits', 'skills', 'magic', 'equipment', 'combat'].includes(section)" class="sheet-grid">
         <AttributesPanel v-if="section === 'sheet'" class="sheet-grid__left" :sheet="view.sheet" :rolls="rolls" :selected="explainKey"
           @set-level="setLevel" @roll="roll" @explain="(k) => (explainKey = k)"
           @focus-row="(k) => (focusKey = k)" />
         <TraitsPanel v-if="section === 'sheet' || section === 'traits'" ref="traitsPanel" class="sheet-grid__right" :traits="view.traits" :points="view.sheet.points"
-          @add="libraryOpen = true" @remove="removeTrait" @set-levels="setTraitLevels" @set-explanation="setTraitExplanation" />
+          @add="libraryOpen = true" @remove="removeTrait" @set-levels="setTraitLevels" @set-explanation="setTraitExplanation"
+          @add-modifier="openModifierLibrary" @remove-modifier="removeModifier" @set-modifier-explanation="setModifierExplanation" />
         <SkillsPanel v-if="section === 'sheet' || section === 'skills'" class="sheet-grid__full" :skills="view.skills" :techniques="view.techniques" :points="view.sheet.points.skills"
           @add="openSkillLibrary" @set-points="setSkillPoints" @remove="removeSkill" @set-explanation="setSkillExplanation"
           @set-specialization="setSpecialization" />
+        <SpellsPanel v-if="section === 'magic' || ((section === 'sheet' || section === 'skills') && view.spells?.length)" class="sheet-grid__full"
+          :spells="view.spells ?? []" :points="view.sheet.points.spells ?? 0"
+          @add="openSpellLibrary" @set-points="setSpellPoints" @remove="removeSpell" @set-explanation="setSpellExplanation" />
         <EquipmentPanel v-if="section === 'sheet' || section === 'equipment'" class="sheet-grid__full" :items="view.equipment ?? []" :encumbrance="view.sheet.encumbrance"
           @add="openEquipmentLibrary" @set-quantity="setEquipmentQuantity" @set-carried="setEquipmentCarried" @remove="removeEquipment"
           @set-explanation="setEquipmentExplanation" />
@@ -201,6 +225,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
     <ProvenancePanel v-if="explainRow" :row="explainRow" @close="explainKey = null" />
     <LibraryDialog v-if="libraryOpen" :library="library" @close="libraryOpen = false" @add="addTraits" @reloaded="reloadLibrary" />
     <SkillLibraryDialog v-if="skillLibraryOpen" :library="skillLibrary" @close="skillLibraryOpen = false" @add-skill="addSkill" @add-technique="addTechnique" />
+    <SpellLibraryDialog v-if="spellLibraryOpen" :library="spellLibrary" @close="spellLibraryOpen = false" @add="addSpell" />
+    <ModifierLibraryDialog v-if="modifierTargetTrait" :library="modifierLibrary" :target="modifierTargetTrait" @close="modifierTarget = null" @add="addModifier" />
     <EquipmentLibraryDialog v-if="equipmentTarget" :library="equipmentLibrary" :target="equipmentTargetName" @close="equipmentTarget = null" @add="addEquipment" />
     <WeaponLibraryDialog v-if="weaponLibraryOpen" :library="weaponLibrary" :owned="(view.weapons ?? []).map((w) => w.id)" @close="weaponLibraryOpen = false" @add="addWeapon" />
 
@@ -212,7 +238,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
           <dt><kbd>/</kbd></dt><dd>Фильтр черт</dd>
           <dt><kbd>P</kbd></dt><dd>Откуда взялось число (строка в фокусе)</dd>
           <dt><kbd>R</kbd></dt><dd>Бросок 3d6 по строке в фокусе</dd>
-          <dt><kbd>Alt</kbd>+<kbd>1..7</kbd></dt><dd>Разделы</dd>
+          <dt><kbd>Alt</kbd>+<kbd>1..8</kbd></dt><dd>Разделы</dd>
           <dt><kbd>Ctrl</kbd>+<kbd>S</kbd></dt><dd>Сохранить</dd>
           <dt><kbd>Esc</kbd></dt><dd>Закрыть панель</dd>
           <dt><kbd>?</kbd></dt><dd>Эта шпаргалка</dd>

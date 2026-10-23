@@ -281,3 +281,17 @@ kbd { font-family: var(--font-num); padding: 0 var(--xs); border: 1px solid var(
   .weapons-table tr.is-stored td { opacity: 1; font-style: italic; }
   .defenses__item { break-inside: avoid; }
 }
+
+/* Trait modifiers (усиления/ограничения) and spells */
+.trait-mods { margin-bottom: var(--sm); }
+.trait-mods__head { display: flex; align-items: center; gap: var(--sm); flex-wrap: wrap; }
+.trait-mods__list { list-style: none; margin: var(--xs) 0 0; padding: 0; }
+.trait-mods__item { padding: var(--xs) 0; border-top: 1px solid var(--color-border); }
+.trait-mods__row { display: flex; align-items: center; gap: var(--sm); flex-wrap: wrap; }
+.skill-tag.is-enh { color: var(--color-success, inherit); }
+.skill-tag.is-lim { color: var(--color-warning, inherit); }
+.print-only { display: none; }
+@media print {
+  .print-only { display: block; }
+  .trait-mods__head .btn { display: none; }
+}

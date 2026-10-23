@@ -69,6 +69,28 @@ Combat Reflexes-style traits use `features = [{ type = "defense_bonus", amount =
 Файл `data/weapons.toml`: оружие с режимами атаки, уроном, досягаемостью и модификатором
 парирования; `equipment` связывает его с предметом снаряжения. Тексты — своими словами.
 
+### Spells / Заклинания
+
+`data/spells.toml`, `[[spells]]`: `id`, `name`, `attribute` (default `IQ`), `difficulty`
+(`H` default, or `VH`), `college` (list), `prerequisites` (free text, **not checked**), `page`,
+`description`. A spell is a skill with no default (0 points = no level); level =
+attribute + cost-table step for H/VH + spell bonuses. Magery-style traits use
+`features = [{ type = "spell_bonus", amount = 1, per_level = true }]` (`colleges = ["Fire"]`
+limits it; level 0 gives +0). Names translate via `spell-<id>`.
+
+Заклинание — трудный (H) или очень трудный (VH) навык от IQ без умолчания; магические
+способности добавляют свой уровень. Требования — просто текст, не проверяются.
+
+### Trait modifiers / Модификаторы черт
+
+`data/modifiers.toml`, `[[modifiers]]`: `id`, `name`, `cost_percent` (> 0 enhancement,
+< 0 limitation; one fixed value, no per-level steps), `page`, `description`. A trait's cost =
+base × (100% + sum of %), the sum floored at −80%, the result rounded up (towards +∞, so
+−7.5 → −7; unverified for disadvantages). The sheet lists every step. Names: `modifier-<id>`.
+
+Усиления и ограничения в процентах к стоимости черты; сумма не ниже −80%, итог
+округляется вверх. Расчёт показывается построчно.
+
 ## Translations (Fluent) / Переводы
 
 Format: [Fluent](https://projectfluent.org) `.ftl`, parsed with the `fluent-syntax` crate.

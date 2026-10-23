@@ -26,7 +26,7 @@ export interface StatRow {
 
 export interface PointsBreakdown {
   attributes: number; secondary: number; advantages: number; perks: number;
-  disadvantages: number; quirks: number; skills: number; total: number; budget: number; unspent: number;
+  disadvantages: number; quirks: number; skills: number; spells?: number; total: number; budget: number; unspent: number;
 }
 
 export interface Sheet {
@@ -103,7 +103,8 @@ export type Feature =
   | { type: 'lifting_st_bonus'; amount: number; per_level?: boolean }
   | { type: 'striking_st_bonus'; amount: number; per_level?: boolean }
   | { type: 'skill_bonus'; skills: string[]; amount: number; per_level?: boolean }
-  | { type: 'defense_bonus'; amount: number; defenses?: string[]; per_level?: boolean };
+  | { type: 'defense_bonus'; amount: number; defenses?: string[]; per_level?: boolean }
+  | { type: 'spell_bonus'; amount: number; colleges?: string[]; per_level?: boolean };
 
 export interface TraitDef {
   id: string; name: string; category: TraitCategory; cost: number; cost_per_level: number;
@@ -133,6 +134,26 @@ export interface TraitView {
   /** Plugin text, used by "reset to default". */
   default_explanation?: string | null;
   custom_explanation: boolean;
+  /** Cost before modifiers; total modifier %; applied modifiers; cost lines (engine text). */
+  base_cost: number; modifier_percent: number; modifiers: ModifierView[]; cost_explain: string[];
+}
+
+export interface ModifierDef { id: string; name: string; cost_percent: number; page?: string | null; description?: LocalizedText | null }
+export interface ModifierLibEntry extends ModifierDef { plugin: string; explanation?: string | null; translated_name?: string | null }
+export interface ModifierView {
+  index: number; id: string; name: string; original_name?: string | null; cost_percent: number; page?: string | null; source?: string | null;
+  explanation?: string | null; default_explanation?: string | null; custom_explanation: boolean;
+}
+
+export interface SpellDef {
+  id: string; name: string; attribute?: string; difficulty?: Difficulty; college?: string[]; prerequisites?: string | null;
+  page?: string | null; description?: LocalizedText | null;
+}
+export interface SpellLibEntry extends SpellDef { plugin: string; explanation?: string | null; translated_name?: string | null }
+export interface SpellView {
+  index: number; id: string; name: string; original_name?: string | null; college: string[]; attribute: string; difficulty: Difficulty;
+  points: number; level?: number | null; relative?: string | null; bonus: number; prerequisites?: string | null; explain: string[];
+  page?: string | null; source?: string | null; explanation?: string | null; default_explanation?: string | null; custom_explanation: boolean;
 }
 
 export interface Issue { severity: 'error' | 'warning'; message: string }
@@ -164,7 +185,7 @@ export interface SkillView extends ExplainedView {
 }
 export interface TechniqueView extends ExplainedView { skill: string; modifier: number; max: number; max_level?: number | null }
 
-export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; weapons?: WeaponView[]; issues: Issue[]; path?: string | null; budget: number }
+export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; weapons?: WeaponView[]; spells?: SpellView[]; issues: Issue[]; path?: string | null; budget: number }
 
 export type Outcome = 'critical_success' | 'success' | 'failure' | 'critical_failure';
 export interface RollResult {
@@ -173,4 +194,4 @@ export interface RollResult {
 }
 
 /** Where the library came from (plugin_status command). */
-export interface PluginStatus { dir?: string | null; plugins: string[]; errors: string[]; traits: number; skills?: number; equipment?: number; weapons?: number }
+export interface PluginStatus { dir?: string | null; plugins: string[]; errors: string[]; traits: number; skills?: number; equipment?: number; weapons?: number; spells?: number; modifiers?: number }
