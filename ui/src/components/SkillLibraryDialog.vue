@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 import { computed, nextTick, onMounted, ref } from 'vue';
 import type { SkillLibEntry, SkillLibrary, TechniqueLibEntry } from '../types';
 import { matchesLibrary } from '../i18n';

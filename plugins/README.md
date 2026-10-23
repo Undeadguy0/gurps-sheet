@@ -31,6 +31,23 @@ weapons and modifiers currently carry `id`, `name`, `page`, `description` only.
 `description` — необязательное пояснение в Markdown: строка (рекомендуется) или таблица
 `{ ru, en }` (для совместимости). **Только собственные формулировки — не копируйте текст книг SJG.**
 
+### Equipment / Снаряжение
+
+```toml
+[[equipment]]
+id = "backpack-frame"
+name = "Backpack, Frame"
+weight = 10.0        # lb per unit
+cost = 100.0         # $ per unit
+container = true     # optional: can hold other items
+stats = "DB 2"       # optional free text (shield DB, armour DR...), not used in maths yet
+page = "B288"        # unverified
+description = '''Own-words Markdown explanation.'''
+```
+
+Fluent keys: `equipment-<id>`. Encumbrance: carried weight vs Basic Lift ×1/2/3/6/10 →
+levels 0–4; Move ×1/0.8/0.6/0.4/0.2 rounded down; Dodge −level.
+
 ## Translations (Fluent) / Переводы
 
 Format: [Fluent](https://projectfluent.org) `.ftl`, parsed with the `fluent-syntax` crate.

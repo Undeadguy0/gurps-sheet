@@ -249,3 +249,18 @@ kbd { font-family: var(--font-num); padding: 0 var(--xs); border: 1px solid var(
   .skills-table .skill-tag { background: none; }
 }
 .sheet-grid__full { grid-column: 1 / -1; }
+
+/* equipment & encumbrance */
+.encumbrance { margin-bottom: var(--md); }
+.encumbrance__summary { margin: 0 0 var(--sm, 0.5rem); }
+.encumbrance__table { max-width: 32rem; margin-bottom: 0.25rem; }
+.encumbrance__table tr.is-current td { font-weight: 600; background: var(--accent-soft, rgba(80, 70, 230, 0.08)); }
+.encumbrance__note { font-size: 0.85em; margin: 0.25rem 0 0; }
+.equipment-table tr.is-stored td { opacity: 0.55; }
+.equipment-indent { display: inline-flex; align-items: center; gap: 0.15rem; }
+.field--qty { width: 5rem; }
+@media print {
+  .equipment-table .cell--actions, .equipment-table .btn--step, .equipment-panel .field--filter { display: none; }
+  .equipment-table tr.is-stored td { opacity: 1; font-style: italic; }
+  .encumbrance__table tr.is-current td { background: none; text-decoration: underline; }
+}

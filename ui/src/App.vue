@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { api, inTauri } from './api';
-import type { LibraryEntry, LocaleInfo, RollResult, SheetView, SkillLibrary } from './types';
+import type { LibraryEntry, LocaleInfo, RollResult, SheetView, SkillLibrary, EquipmentLibEntry } from './types';
 import { loadLocalePref, saveLocalePref } from './i18n';
 import AppHeader from './components/AppHeader.vue';
 import NavRail, { type Section } from './components/NavRail.vue';
@@ -9,6 +9,8 @@ import AttributesPanel from './components/AttributesPanel.vue';
 import TraitsPanel from './components/TraitsPanel.vue';
 import LibraryDialog from './components/LibraryDialog.vue';
 import SkillsPanel from './components/SkillsPanel.vue';
+import EquipmentPanel from './components/EquipmentPanel.vue';
+import EquipmentLibraryDialog from './components/EquipmentLibraryDialog.vue';
 import SkillLibraryDialog from './components/SkillLibraryDialog.vue';
 import ProvenancePanel from './components/ProvenancePanel.vue';
 import { ROLLABLE } from './labels';
@@ -17,7 +19,7 @@ const sections: Section[] = [
   { id: 'sheet', label: 'Лист', icon: '▦', ready: true },
   { id: 'traits', label: 'Черты', icon: '✦', ready: true },
   { id: 'skills', label: 'Навыки', icon: '◎', ready: true },
-  { id: 'equipment', label: 'Снаряж.', icon: '⚒', ready: false },
+  { id: 'equipment', label: 'Снаряж.', icon: '⚒', ready: true },
   { id: 'notes', label: 'Заметки', icon: '✎', ready: false },
   { id: 'table', label: 'За столом', icon: '⚄', ready: false },
 ];
@@ -28,6 +30,9 @@ const rolls = ref<Record<string, RollResult>>({});
 const section = ref('sheet');
 const libraryOpen = ref(false);
 const skillLibraryOpen = ref(false);
+const equipmentLibrary = ref<EquipmentLibEntry[]>([]);
+/** null = closed; [] = top level; path = into that container. */
+const equipmentTarget = ref<number[] | null>(null);
 const skillLibrary = ref<SkillLibrary>({ skills: [], techniques: [] });
 const helpOpen = ref(false);
 const explainKey = ref<string | null>(null);
@@ -82,7 +87,7 @@ const locales = ref<LocaleInfo | null>(null);
 async function setLocale(locale: string, originalOnly: boolean) {
   await run(api.setLocale(locale, originalOnly), false);
   saveLocalePref({ locale, originalOnly });
-  [locales.value, library.value, skillLibrary.value] = await Promise.all([api.getLocales(), api.listLibrary(), api.listSkillLibrary()]);
+  [locales.value, library.value, skillLibrary.value, equipmentLibrary.value] = await Promise.all([api.getLocales(), api.listLibrary(), api.listSkillLibrary(), api.listEquipmentLibrary()]);
 }
 async function reloadLibrary() {
   [library.value, locales.value, view.value] = await Promise.all([api.listLibrary(), api.getLocales(), api.getSheet()]);
@@ -93,6 +98,19 @@ const setSkillPoints = (k: Kind, i: number, p: number) => run(k === 'skill' ? ap
 const removeSkill = (k: Kind, i: number) => run(k === 'skill' ? api.removeSkill(i) : api.removeTechnique(i));
 const setSkillExplanation = (k: Kind, i: number, t: string | null) => run(k === 'skill' ? api.setSkillExplanation(i, t) : api.setTechniqueExplanation(i, t));
 const setSpecialization = (i: number, s: string | null) => run(api.setSkillSpecialization(i, s));
+async function openEquipmentLibrary(parent: number[] | null) { equipmentLibrary.value = await api.listEquipmentLibrary(); equipmentTarget.value = parent ?? []; }
+async function addEquipment(id: string, qty: number) {
+  const parent = equipmentTarget.value?.length ? equipmentTarget.value : null;
+  await run(api.addEquipment(id, qty, parent)); equipmentTarget.value = null;
+}
+const equipmentTargetName = computed(() => {
+  const t = equipmentTarget.value; if (!t?.length) return null;
+  return view.value?.equipment?.find((e) => e.path.join('.') === t.join('.'))?.name ?? null;
+});
+const setEquipmentQuantity = (p: number[], q: number) => run(api.setEquipmentQuantity(p, q));
+const setEquipmentCarried = (p: number[], c: boolean) => run(api.setEquipmentCarried(p, c));
+const removeEquipment = (p: number[]) => run(api.removeEquipment(p));
+const setEquipmentExplanation = (p: number[], t: string | null) => run(api.setEquipmentExplanation(p, t));
 async function openSkillLibrary() { skillLibrary.value = await api.listSkillLibrary(); skillLibraryOpen.value = true; }
 async function addSkill(id: string, spec: string | null) { await run(api.addSkill(id, spec)); skillLibraryOpen.value = false; }
 async function addTechnique(id: string) { await run(api.addTechnique(id)); skillLibraryOpen.value = false; }
@@ -102,7 +120,7 @@ function onKey(e: KeyboardEvent) {
   const typing = t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA');
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); libraryOpen.value = true; return; }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (inTauri) save(view.value?.path ?? undefined); return; }
-  if (e.key === 'Escape') { libraryOpen.value = false; skillLibraryOpen.value = false; explainKey.value = null; helpOpen.value = false; return; }
+  if (e.key === 'Escape') { libraryOpen.value = false; skillLibraryOpen.value = false; equipmentTarget.value = null; explainKey.value = null; helpOpen.value = false; return; }
   if (e.altKey && /^[1-6]$/.test(e.key)) { section.value = sections[+e.key - 1].id; e.preventDefault(); return; }
   if (typing) return;
   if (e.key === '?') helpOpen.value = !helpOpen.value;
@@ -139,15 +157,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
         <span aria-hidden="true">{{ i.severity === 'error' ? '⚠' : 'ℹ' }}</span> {{ i.message }}
       </div>
 
-      <div v-if="section === 'sheet' || section === 'traits' || section === 'skills'" class="sheet-grid">
+      <div v-if="['sheet', 'traits', 'skills', 'equipment'].includes(section)" class="sheet-grid">
         <AttributesPanel v-if="section === 'sheet'" class="sheet-grid__left" :sheet="view.sheet" :rolls="rolls" :selected="explainKey"
           @set-level="setLevel" @roll="roll" @explain="(k) => (explainKey = k)"
           @focus-row="(k) => (focusKey = k)" />
-        <TraitsPanel v-if="section !== 'skills'" ref="traitsPanel" class="sheet-grid__right" :traits="view.traits" :points="view.sheet.points"
+        <TraitsPanel v-if="section === 'sheet' || section === 'traits'" ref="traitsPanel" class="sheet-grid__right" :traits="view.traits" :points="view.sheet.points"
           @add="libraryOpen = true" @remove="removeTrait" @set-levels="setTraitLevels" @set-explanation="setTraitExplanation" />
-        <SkillsPanel v-if="section !== 'traits'" class="sheet-grid__full" :skills="view.skills" :techniques="view.techniques" :points="view.sheet.points.skills"
+        <SkillsPanel v-if="section === 'sheet' || section === 'skills'" class="sheet-grid__full" :skills="view.skills" :techniques="view.techniques" :points="view.sheet.points.skills"
           @add="openSkillLibrary" @set-points="setSkillPoints" @remove="removeSkill" @set-explanation="setSkillExplanation"
           @set-specialization="setSpecialization" />
+        <EquipmentPanel v-if="section === 'sheet' || section === 'equipment'" class="sheet-grid__full" :items="view.equipment ?? []" :encumbrance="view.sheet.encumbrance"
+          @add="openEquipmentLibrary" @set-quantity="setEquipmentQuantity" @set-carried="setEquipmentCarried" @remove="removeEquipment"
+          @set-explanation="setEquipmentExplanation" />
       </div>
       <section v-else class="panel empty-state">
         <h2 class="panel__title">{{ sections.find((s) => s.id === section)?.label }}</h2>
@@ -158,6 +179,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
     <ProvenancePanel v-if="explainRow" :row="explainRow" @close="explainKey = null" />
     <LibraryDialog v-if="libraryOpen" :library="library" @close="libraryOpen = false" @add="addTraits" @reloaded="reloadLibrary" />
     <SkillLibraryDialog v-if="skillLibraryOpen" :library="skillLibrary" @close="skillLibraryOpen = false" @add-skill="addSkill" @add-technique="addTechnique" />
+    <EquipmentLibraryDialog v-if="equipmentTarget" :library="equipmentLibrary" :target="equipmentTargetName" @close="equipmentTarget = null" @add="addEquipment" />
 
     <div v-if="helpOpen" class="modal-backdrop" @click.self="helpOpen = false">
       <div class="modal help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
