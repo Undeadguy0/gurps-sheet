@@ -16,6 +16,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gurps-io"
+version = "0.1.0"
+dependencies = [
+ "gurps-core",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "gurps-plugins"
 version = "0.1.0"
 dependencies = [
