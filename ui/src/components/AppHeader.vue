@@ -36,7 +36,7 @@ watch(() => props.view.path, (p) => { if (p) path.value = p; });
 
     <div class="points-summary" role="status" aria-label="Очки персонажа">
       <strong class="points-summary__main num">
-        Бюджет {{ view.budget }} · потрачено {{ view.sheet.points.total }} ·
+        <span :title="view.pool ? `Заработано ${view.pool.earned}, потрачено вне листа ${view.pool.spent_outside}` : undefined">Бюджет {{ view.pool?.available ?? view.budget }}</span> · потрачено {{ view.sheet.points.total }} ·
         <span :class="{ 'is-danger': view.sheet.points.unspent < 0 }">{{ remaining(view.sheet.points.unspent) }}</span>
       </strong>
       <dl class="points-summary__parts">
