@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/gurps-core", "crates/gurps-rules"]
+members = ["crates/gurps-core", "crates/gurps-rules", "crates/gurps-plugins"]
 
 
 [workspace.package]
