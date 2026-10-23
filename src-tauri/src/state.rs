@@ -1,7 +1,10 @@
 //! UI-independent application state; all Tauri commands delegate here so the
 //! logic can be unit-tested without a webview.
 
-use gurps_core::{Character, Stat, Trait, TraitCategory, TraitDef};
+use gurps_core::{
+    Character, LocalizedText, Skill, SkillDef, SkillDefault, Stat, Technique, TechniqueDef, Trait,
+    TraitCategory, TraitDef,
+};
 use gurps_rules::dice::{success_roll, RollResult, SplitMix};
 use gurps_rules::validate::{validate, Issue};
 use gurps_rules::Sheet;
@@ -42,6 +45,82 @@ pub struct LibraryEntry {
     pub translated_name: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillView {
+    pub index: usize,
+    pub id: String,
+    /// Name in the UI language with specialization.
+    pub name: String,
+    pub original_name: Option<String>,
+    pub attribute: String,
+    pub difficulty: String,
+    pub points: i32,
+    pub level: Option<i32>,
+    pub relative: Option<String>,
+    pub from_default: bool,
+    pub bonus: i32,
+    pub explain: Vec<String>,
+    /// Defaults as text, e.g. "DX-5", "Shortsword-2".
+    pub defaults: Vec<String>,
+    pub specialization: Option<String>,
+    pub specialization_required: bool,
+    pub specializations: Vec<String>,
+    pub page: Option<String>,
+    pub source: Option<String>,
+    pub explanation: Option<String>,
+    pub default_explanation: Option<String>,
+    pub custom_explanation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TechniqueView {
+    pub index: usize,
+    pub id: String,
+    /// E.g. "Пинок (Драка)".
+    pub name: String,
+    pub original_name: Option<String>,
+    pub skill: String,
+    pub difficulty: String,
+    pub modifier: i32,
+    pub max: i32,
+    pub points: i32,
+    pub level: Option<i32>,
+    pub relative: Option<String>,
+    pub max_level: Option<i32>,
+    pub explain: Vec<String>,
+    pub page: Option<String>,
+    pub source: Option<String>,
+    pub explanation: Option<String>,
+    pub default_explanation: Option<String>,
+    pub custom_explanation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillLibEntry {
+    pub plugin: String,
+    #[serde(flatten)]
+    pub def: SkillDef,
+    pub explanation: Option<String>,
+    pub translated_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TechniqueLibEntry {
+    pub plugin: String,
+    #[serde(flatten)]
+    pub def: TechniqueDef,
+    pub explanation: Option<String>,
+    pub translated_name: Option<String>,
+    /// Parent skill name in the UI language.
+    pub skill_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillLibrary {
+    pub skills: Vec<SkillLibEntry>,
+    pub techniques: Vec<TechniqueLibEntry>,
+}
+
 /// Where library data came from (shown in the UI; helps spot stale data).
 #[derive(Debug, Clone, Serialize)]
 pub struct PluginStatus {
@@ -49,6 +128,8 @@ pub struct PluginStatus {
     pub plugins: Vec<String>,
     pub errors: Vec<String>,
     pub traits: usize,
+    /// Skills + techniques.
+    pub skills: usize,
 }
 
 /// Language settings for the UI switcher.
@@ -64,6 +145,8 @@ pub struct LocaleInfo {
 pub struct SheetView {
     pub sheet: Sheet,
     pub traits: Vec<TraitView>,
+    pub skills: Vec<SkillView>,
+    pub techniques: Vec<TechniqueView>,
     pub issues: Vec<Issue>,
     pub path: Option<String>,
     pub budget: i32,
@@ -73,6 +156,9 @@ pub struct SheetView {
 pub struct AppState {
     pub character: Character,
     pub library: Vec<LibraryEntry>,
+    /// (plugin id, definition)
+    pub skill_library: Vec<(String, SkillDef)>,
+    pub technique_library: Vec<(String, TechniqueDef)>,
     pub path: Option<PathBuf>,
     pub plugin_errors: Vec<String>,
     /// Directory the library was loaded from.
@@ -94,6 +180,8 @@ impl Default for AppState {
         Self {
             character: Character::default(),
             library: Vec::new(),
+            skill_library: Vec::new(),
+            technique_library: Vec::new(),
             path: None,
             plugin_errors: Vec::new(),
             plugin_dir: None,
@@ -118,6 +206,8 @@ impl AppState {
     /// (Re)reads plugin data from `plugin_dir`; nothing is cached between runs.
     pub fn reload_plugins(&mut self) {
         self.library.clear();
+        self.skill_library.clear();
+        self.technique_library.clear();
         self.catalog = Default::default();
         self.plugin_errors.clear();
         self.plugin_ids.clear();
@@ -132,6 +222,8 @@ impl AppState {
                     .map(|p| format!("{} {}", p.manifest.id, p.manifest.version))
                     .collect();
                 self.catalog = gurps_plugins::translations(&plugins);
+                self.skill_library = gurps_plugins::skill_library(&plugins);
+                self.technique_library = gurps_plugins::technique_library(&plugins);
                 self.library = gurps_plugins::trait_library(&plugins)
                     .into_iter()
                     .map(|(plugin, def)| LibraryEntry {
@@ -152,12 +244,16 @@ impl AppState {
             plugins: self.plugin_ids.clone(),
             errors: self.plugin_errors.clone(),
             traits: self.library.len(),
+            skills: self.skill_library.len() + self.technique_library.len(),
         }
     }
 
     pub fn view(&self) -> SheetView {
+        let sheet = gurps_rules::compute_sheet(&self.character);
         SheetView {
-            sheet: gurps_rules::compute_sheet(&self.character),
+            skills: self.skill_views(&sheet),
+            techniques: self.technique_views(&sheet),
+            sheet,
             traits: self
                 .character
                 .traits
@@ -276,10 +372,300 @@ impl AppState {
 
     /// Translated trait name for the current language, unless showing originals.
     fn translated(&self, id: &str) -> Option<&str> {
+        self.translated_kind("trait", id)
+    }
+
+    fn translated_kind(&self, kind: &str, id: &str) -> Option<&str> {
         if self.original_only {
             return None;
         }
-        self.catalog.name(&self.locale, "trait", id)
+        self.catalog.name(&self.locale, kind, id)
+    }
+
+    /// Fluent description, else the plugin's own text.
+    fn text_for(&self, kind: &str, id: &str, own: Option<&LocalizedText>) -> Option<String> {
+        (!self.original_only)
+            .then(|| self.catalog.description(&self.locale, kind, id))
+            .flatten()
+            .or_else(|| own.and_then(|d| d.get(self.data_locale())))
+            .map(str::to_owned)
+    }
+
+    fn skill_def(&self, id: &str) -> Option<&SkillDef> {
+        self.skill_library
+            .iter()
+            .map(|(_, d)| d)
+            .find(|d| d.id == id)
+    }
+
+    fn technique_def(&self, id: &str) -> Option<&TechniqueDef> {
+        self.technique_library
+            .iter()
+            .map(|(_, d)| d)
+            .find(|d| d.id == id)
+    }
+
+    /// Skill name in the UI language (no specialization).
+    fn skill_name(&self, id: &str) -> String {
+        self.translated_kind("skill", id)
+            .map(str::to_owned)
+            .or_else(|| self.skill_def(id).map(|d| d.name.clone()))
+            .or_else(|| {
+                self.character
+                    .skills
+                    .iter()
+                    .find(|s| s.def.id == id)
+                    .map(|s| s.def.name.clone())
+            })
+            .unwrap_or_else(|| id.to_owned())
+    }
+
+    fn default_text(&self, d: &SkillDefault) -> String {
+        let sg = |m: i32| {
+            if m >= 0 {
+                format!("+{m}")
+            } else {
+                m.to_string()
+            }
+        };
+        match d {
+            SkillDefault::Attribute {
+                attribute,
+                modifier,
+            } => format!("{}{}", attribute.key(), sg(*modifier)),
+            SkillDefault::Skill { skill, modifier } => {
+                format!("{}{}", self.skill_name(skill), sg(*modifier))
+            }
+        }
+    }
+
+    fn skill_views(&self, sheet: &Sheet) -> Vec<SkillView> {
+        self.character
+            .skills
+            .iter()
+            .zip(&sheet.skills)
+            .map(|(s, r)| {
+                let tr = self.translated_kind("skill", &s.def.id).map(|n| {
+                    match gurps_core::non_blank(s.specialization.clone()) {
+                        Some(sp) => format!("{n} ({})", sp.trim()),
+                        None => n.to_owned(),
+                    }
+                });
+                let own = self
+                    .skill_def(&s.def.id)
+                    .and_then(|d| d.description.as_ref())
+                    .or(s.def.description.as_ref());
+                let default_explanation = self.text_for("skill", &s.def.id, own);
+                SkillView {
+                    index: r.index,
+                    id: s.def.id.clone(),
+                    original_name: tr.as_ref().map(|_| r.name.clone()),
+                    name: tr.unwrap_or_else(|| r.name.clone()),
+                    attribute: r.attribute.clone(),
+                    difficulty: r.difficulty.clone(),
+                    points: s.points,
+                    level: r.level,
+                    relative: r.relative.clone(),
+                    from_default: r.from_default,
+                    bonus: r.bonus,
+                    explain: r.explain.clone(),
+                    defaults: s
+                        .def
+                        .defaults
+                        .iter()
+                        .map(|d| self.default_text(d))
+                        .collect(),
+                    specialization: s.specialization.clone(),
+                    specialization_required: s.def.specialization_required,
+                    specializations: s.def.specializations.clone(),
+                    page: s.def.page.clone(),
+                    source: s.source.clone(),
+                    explanation: gurps_core::non_blank(s.explanation.clone())
+                        .or_else(|| default_explanation.clone()),
+                    default_explanation,
+                    custom_explanation: s.has_custom_explanation(),
+                }
+            })
+            .collect()
+    }
+
+    fn technique_views(&self, sheet: &Sheet) -> Vec<TechniqueView> {
+        self.character
+            .techniques
+            .iter()
+            .zip(&sheet.techniques)
+            .map(|(t, r)| {
+                let tr = self
+                    .translated_kind("technique", &t.def.id)
+                    .map(|n| format!("{n} ({})", self.skill_name(&t.def.skill)));
+                let own = self
+                    .technique_def(&t.def.id)
+                    .and_then(|d| d.description.as_ref())
+                    .or(t.def.description.as_ref());
+                let default_explanation = self.text_for("technique", &t.def.id, own);
+                let sk = self.skill_name(&t.def.skill);
+                TechniqueView {
+                    index: r.index,
+                    id: t.def.id.clone(),
+                    original_name: tr.as_ref().map(|_| r.name.clone()),
+                    name: tr.unwrap_or_else(|| r.name.clone()),
+                    skill: t.def.skill.clone(),
+                    difficulty: r.difficulty.clone(),
+                    modifier: t.def.modifier,
+                    max: t.def.max,
+                    points: t.points,
+                    level: r.level,
+                    relative: r.level.zip(r.max_level).map(|(l, cap)| {
+                        let d = l - (cap - t.def.max);
+                        format!(
+                            "{sk}{}",
+                            if d >= 0 {
+                                format!("+{d}")
+                            } else {
+                                d.to_string()
+                            }
+                        )
+                    }),
+                    max_level: r.max_level,
+                    explain: r.explain.clone(),
+                    page: t.def.page.clone(),
+                    source: t.source.clone(),
+                    explanation: gurps_core::non_blank(t.explanation.clone())
+                        .or_else(|| default_explanation.clone()),
+                    default_explanation,
+                    custom_explanation: t.has_custom_explanation(),
+                }
+            })
+            .collect()
+    }
+
+    pub fn skill_library_view(&self) -> SkillLibrary {
+        SkillLibrary {
+            skills: self
+                .skill_library
+                .iter()
+                .map(|(plugin, def)| SkillLibEntry {
+                    plugin: plugin.clone(),
+                    explanation: self.text_for("skill", &def.id, def.description.as_ref()),
+                    translated_name: self.translated_kind("skill", &def.id).map(str::to_owned),
+                    def: def.clone(),
+                })
+                .collect(),
+            techniques: self
+                .technique_library
+                .iter()
+                .map(|(plugin, def)| TechniqueLibEntry {
+                    plugin: plugin.clone(),
+                    explanation: self.text_for("technique", &def.id, def.description.as_ref()),
+                    translated_name: self
+                        .translated_kind("technique", &def.id)
+                        .map(str::to_owned),
+                    skill_name: self.skill_name(&def.skill),
+                    def: def.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    pub fn add_skill(
+        &mut self,
+        id: &str,
+        specialization: Option<String>,
+        points: Option<i32>,
+    ) -> Result<SheetView, String> {
+        let (plugin, def) = self
+            .skill_library
+            .iter()
+            .find(|(_, d)| d.id == id)
+            .ok_or_else(|| format!("skill {id} not in library"))?;
+        let mut def = def.clone();
+        def.description = None;
+        let mut s = Skill::new(def, points.unwrap_or(1).max(0));
+        s.specialization = gurps_core::non_blank(specialization);
+        s.source = Some(plugin.clone());
+        self.character.skills.push(s);
+        Ok(self.view())
+    }
+
+    fn skill_mut(&mut self, index: usize) -> Result<&mut Skill, String> {
+        self.character
+            .skills
+            .get_mut(index)
+            .ok_or_else(|| "no such skill".into())
+    }
+
+    pub fn set_skill_points(&mut self, index: usize, points: i32) -> Result<SheetView, String> {
+        self.skill_mut(index)?.points = points.max(0);
+        Ok(self.view())
+    }
+
+    pub fn set_skill_specialization(
+        &mut self,
+        index: usize,
+        specialization: Option<String>,
+    ) -> Result<SheetView, String> {
+        self.skill_mut(index)?.specialization = gurps_core::non_blank(specialization);
+        Ok(self.view())
+    }
+
+    pub fn set_skill_explanation(
+        &mut self,
+        index: usize,
+        text: Option<String>,
+    ) -> Result<SheetView, String> {
+        self.skill_mut(index)?.explanation = gurps_core::non_blank(text);
+        Ok(self.view())
+    }
+
+    pub fn remove_skill(&mut self, index: usize) -> Result<SheetView, String> {
+        if index >= self.character.skills.len() {
+            return Err("no such skill".into());
+        }
+        self.character.skills.remove(index);
+        Ok(self.view())
+    }
+
+    pub fn add_technique(&mut self, id: &str, points: Option<i32>) -> Result<SheetView, String> {
+        let (plugin, def) = self
+            .technique_library
+            .iter()
+            .find(|(_, d)| d.id == id)
+            .ok_or_else(|| format!("technique {id} not in library"))?;
+        let mut def = def.clone();
+        def.description = None;
+        let mut t = Technique::new(def, points.unwrap_or(0).max(0));
+        t.source = Some(plugin.clone());
+        self.character.techniques.push(t);
+        Ok(self.view())
+    }
+
+    fn technique_mut(&mut self, index: usize) -> Result<&mut Technique, String> {
+        self.character
+            .techniques
+            .get_mut(index)
+            .ok_or_else(|| "no such technique".into())
+    }
+
+    pub fn set_technique_points(&mut self, index: usize, points: i32) -> Result<SheetView, String> {
+        self.technique_mut(index)?.points = points.max(0);
+        Ok(self.view())
+    }
+
+    pub fn set_technique_explanation(
+        &mut self,
+        index: usize,
+        text: Option<String>,
+    ) -> Result<SheetView, String> {
+        self.technique_mut(index)?.explanation = gurps_core::non_blank(text);
+        Ok(self.view())
+    }
+
+    pub fn remove_technique(&mut self, index: usize) -> Result<SheetView, String> {
+        if index >= self.character.techniques.len() {
+            return Err("no such technique".into());
+        }
+        self.character.techniques.remove(index);
+        Ok(self.view())
     }
 
     /// Plugin explanation for a trait id: Fluent translation, else the plugin's
@@ -483,5 +869,65 @@ mod tests {
         assert_eq!(s.plugin_status().traits, st.traits);
         let bad = AppState::with_plugins(None);
         assert!(!bad.plugin_status().errors.is_empty());
+    }
+
+    #[test]
+    fn skills_flow_translated() {
+        let mut s = state();
+        s.set_attribute("DX", 2).unwrap();
+        let lib = s.skill_library_view();
+        assert!(lib.skills.len() >= 10);
+        let k = lib
+            .techniques
+            .iter()
+            .find(|t| t.def.id == "kicking")
+            .unwrap();
+        assert_eq!(k.skill_name, "Драка");
+        assert!(k.explanation.as_deref().unwrap().contains("\n\n"));
+        s.add_skill("brawling", None, Some(1)).unwrap();
+        s.add_skill("survival", Some("Woodlands".into()), Some(2))
+            .unwrap();
+        s.add_trait("outdoorsman", Some(1)).unwrap();
+        let v = s.add_technique("kicking", Some(2)).unwrap();
+        assert_eq!(v.skills[0].name, "Драка");
+        assert_eq!(v.skills[0].original_name.as_deref(), Some("Brawling"));
+        assert_eq!(v.skills[0].level, Some(12));
+        assert_eq!(v.skills[1].name, "Выживание (Woodlands)");
+        assert_eq!(v.skills[1].level, Some(11), "Per 10 + talent");
+        assert_eq!(v.skills[1].defaults, vec!["Per-5", "Натуралист-3"]);
+        assert_eq!(v.techniques[0].name, "Пинок (Драка)");
+        assert_eq!(v.techniques[0].level, Some(11));
+        assert_eq!(v.techniques[0].relative.as_deref(), Some("Драка-1"));
+        assert_eq!(v.sheet.points.skills, 5);
+        // explanations: plugin (ru) default, user override, reset
+        assert!(v.skills[1]
+            .explanation
+            .as_deref()
+            .unwrap()
+            .starts_with("Умение"));
+        let v = s.set_skill_explanation(1, Some("моё".into())).unwrap();
+        assert!(v.skills[1].custom_explanation);
+        let v = s.set_technique_explanation(0, Some("моё".into())).unwrap();
+        assert_eq!(v.techniques[0].explanation.as_deref(), Some("моё"));
+        let v = s.set_skill_specialization(1, Some(" ".into())).unwrap();
+        assert!(v
+            .issues
+            .iter()
+            .any(|i| i.message.contains("specialization")));
+        let v = s.set_locale("ru".into(), true);
+        assert_eq!(v.skills[1].name, "Survival");
+        assert_eq!(v.techniques[0].name, "Kicking (Brawling)");
+        // file roundtrip keeps skills and the user's texts
+        let p = std::env::temp_dir().join(format!("app-skills-{}.json", std::process::id()));
+        s.save(Some(p.display().to_string())).unwrap();
+        let v = state().load(&p.display().to_string()).unwrap();
+        std::fs::remove_file(p).unwrap();
+        assert_eq!(v.skills.len(), 2);
+        assert_eq!(v.techniques[0].explanation.as_deref(), Some("моё"));
+        let v = s.remove_skill(0).unwrap();
+        assert_eq!(v.techniques[0].level, None, "parent removed");
+        assert!(s.remove_technique(3).is_err());
+        assert!(s.add_skill("nope", None, None).is_err());
+        assert!(s.set_skill_points(0, 4).unwrap().sheet.points.skills >= 4);
     }
 }

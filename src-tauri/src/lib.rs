@@ -2,7 +2,7 @@ mod state;
 
 use gurps_rules::dice::RollResult;
 pub use state::{AppState, SheetView};
-use state::{LibraryEntry, LocaleInfo, PluginStatus};
+use state::{LibraryEntry, LocaleInfo, PluginStatus, SkillLibrary};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::State;
@@ -83,6 +83,73 @@ fn list_library(state: S) -> Vec<LibraryEntry> {
 }
 
 #[tauri::command]
+fn list_skill_library(state: S) -> SkillLibrary {
+    lock(&state).skill_library_view()
+}
+
+#[tauri::command]
+fn add_skill(
+    state: S,
+    id: String,
+    specialization: Option<String>,
+    points: Option<i32>,
+) -> Result<SheetView, String> {
+    lock(&state).add_skill(&id, specialization, points)
+}
+
+#[tauri::command]
+fn set_skill_points(state: S, index: usize, points: i32) -> Result<SheetView, String> {
+    lock(&state).set_skill_points(index, points)
+}
+
+#[tauri::command]
+fn set_skill_specialization(
+    state: S,
+    index: usize,
+    specialization: Option<String>,
+) -> Result<SheetView, String> {
+    lock(&state).set_skill_specialization(index, specialization)
+}
+
+#[tauri::command]
+fn set_skill_explanation(
+    state: S,
+    index: usize,
+    text: Option<String>,
+) -> Result<SheetView, String> {
+    lock(&state).set_skill_explanation(index, text)
+}
+
+#[tauri::command]
+fn remove_skill(state: S, index: usize) -> Result<SheetView, String> {
+    lock(&state).remove_skill(index)
+}
+
+#[tauri::command]
+fn add_technique(state: S, id: String, points: Option<i32>) -> Result<SheetView, String> {
+    lock(&state).add_technique(&id, points)
+}
+
+#[tauri::command]
+fn set_technique_points(state: S, index: usize, points: i32) -> Result<SheetView, String> {
+    lock(&state).set_technique_points(index, points)
+}
+
+#[tauri::command]
+fn set_technique_explanation(
+    state: S,
+    index: usize,
+    text: Option<String>,
+) -> Result<SheetView, String> {
+    lock(&state).set_technique_explanation(index, text)
+}
+
+#[tauri::command]
+fn remove_technique(state: S, index: usize) -> Result<SheetView, String> {
+    lock(&state).remove_technique(index)
+}
+
+#[tauri::command]
 fn roll(target: i32, modifier: Option<i32>) -> RollResult {
     AppState::roll(target, modifier.unwrap_or(0))
 }
@@ -153,6 +220,16 @@ pub fn run() {
             set_locale,
             get_sheet,
             list_library,
+            list_skill_library,
+            add_skill,
+            set_skill_points,
+            set_skill_specialization,
+            set_skill_explanation,
+            remove_skill,
+            add_technique,
+            set_technique_points,
+            set_technique_explanation,
+            remove_technique,
             plugin_status,
             reload_plugins,
             roll
