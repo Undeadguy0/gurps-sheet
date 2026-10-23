@@ -1178,6 +1178,7 @@ version = "0.1.0"
 dependencies = [
  "gurps-core",
  "gurps-io",
+ "gurps-plugins",
  "gurps-rules",
  "serde",
  "serde_json",
