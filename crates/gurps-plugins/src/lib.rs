@@ -28,7 +28,7 @@ pub mod script;
 
 pub use l10n::{Catalog, LocEntry};
 
-use gurps_core::{LibraryItemDef, SkillDef, TechniqueDef, TraitDef};
+use gurps_core::{EquipmentDef, LibraryItemDef, SkillDef, TechniqueDef, TraitDef};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -75,7 +75,7 @@ pub struct DataFile {
     #[serde(default)]
     pub spells: Vec<LibraryItemDef>,
     #[serde(default)]
-    pub equipment: Vec<LibraryItemDef>,
+    pub equipment: Vec<EquipmentDef>,
     #[serde(default)]
     pub weapons: Vec<LibraryItemDef>,
     #[serde(default)]
@@ -105,7 +105,7 @@ pub struct Plugin {
     #[serde(default)]
     pub spells: Vec<LibraryItemDef>,
     #[serde(default)]
-    pub equipment: Vec<LibraryItemDef>,
+    pub equipment: Vec<EquipmentDef>,
     #[serde(default)]
     pub weapons: Vec<LibraryItemDef>,
     #[serde(default)]
@@ -288,6 +288,11 @@ fn flatten<T: Clone>(
 /// Flattened skill library; later plugins override earlier ones by id.
 pub fn skill_library(plugins: &[Plugin]) -> Vec<(String, SkillDef)> {
     flatten(plugins, |p| &p.skills, |s| &s.id)
+}
+
+/// Flattened equipment library; later plugins override earlier ones by id.
+pub fn equipment_library(plugins: &[Plugin]) -> Vec<(String, EquipmentDef)> {
+    flatten(plugins, |p| &p.equipment, |e| &e.id)
 }
 
 /// Flattened technique library; later plugins override earlier ones by id.
@@ -553,5 +558,34 @@ description = "m"
         assert!(
             matches!(&talent.features[0], gurps_core::Feature::SkillBonus { skills, .. } if skills.contains(&"tracking".to_string()))
         );
+    }
+
+    #[test]
+    fn sample_equipment() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+        let plugins = load_all(&root).unwrap();
+        let eq = equipment_library(&plugins);
+        assert!(eq.len() >= 10);
+        let get = |id: &str| eq.iter().find(|(_, e)| e.id == id).unwrap().1.clone();
+        let (pack, knife) = (get("backpack-frame"), get("small-knife"));
+        assert!(pack.container && !knife.container);
+        assert_eq!((knife.weight, knife.cost), (0.5, 30.0));
+        assert_eq!(get("medium-shield").stats.as_deref(), Some("DB 2"));
+        let cat = translations(&plugins);
+        for (_, e) in &eq {
+            assert!(
+                cat.name("ru", "equipment", &e.id).is_some(),
+                "ru name {}",
+                e.id
+            );
+            assert!(cat
+                .description("ru", "equipment", &e.id)
+                .is_some_and(|d| d.contains("\n\n")));
+            assert!(
+                e.explanation("en").is_some_and(|d| d.contains("\n\n")),
+                "{}",
+                e.id
+            );
+        }
     }
 }
