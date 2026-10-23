@@ -26,7 +26,13 @@
         "cost_per_level": 10,
         "max_levels": null,
         "page": "B66",
-        "features": [],
+        "features": [
+          {
+            "type": "spell_bonus",
+            "amount": 1.0,
+            "per_level": true
+          }
+        ],
         "min_levels": 0,
         "levels": 2,
         "source": "basic-set-sample"

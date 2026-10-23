@@ -153,6 +153,8 @@ fn fixtures_match_plugin_library() {
     let techs = gurps_plugins::technique_library(&plugins);
     let equip = gurps_plugins::equipment_library(&plugins);
     let weapons = gurps_plugins::weapon_library(&plugins);
+    let spells = gurps_plugins::spell_library(&plugins);
+    let mods = gurps_plugins::modifier_library(&plugins);
     for name in [
         "warrior",
         "mage",
@@ -163,6 +165,7 @@ fn fixtures_match_plugin_library() {
         "rogue-equipment",
         "warrior-combat",
         "rogue-combat",
+        "mage-spells",
     ] {
         let ch = gurps_io::load(root().join(format!("examples/test-chars/{name}.json"))).unwrap();
         for t in &ch.traits {
@@ -172,6 +175,15 @@ fn fixtures_match_plugin_library() {
                 .unwrap_or_else(|| panic!("{name}: trait {} not in library", t.def.id));
             let mut def = lib_def.clone();
             def.description = None;
+            for m in &t.modifiers {
+                let (_, d) = mods
+                    .iter()
+                    .find(|(_, d)| d.id == m.def.id)
+                    .unwrap_or_else(|| panic!("{name}: modifier {} not in library", m.def.id));
+                let mut d = d.clone();
+                d.description = None;
+                assert_eq!(m.def, d, "{name}: modifier {} differs", m.def.id);
+            }
             assert_eq!(
                 t.def, def,
                 "{name}: trait {} differs from library",
@@ -186,6 +198,15 @@ fn fixtures_match_plugin_library() {
             let mut d = d.clone();
             d.description = None;
             assert_eq!(s.def, d, "{name}: skill {} differs from library", s.def.id);
+        }
+        for sp in &ch.spells {
+            let (_, d) = spells
+                .iter()
+                .find(|(_, d)| d.id == sp.def.id)
+                .unwrap_or_else(|| panic!("{name}: spell {} not in library", sp.def.id));
+            let mut d = d.clone();
+            d.description = None;
+            assert_eq!(sp.def, d, "{name}: spell {} differs", sp.def.id);
         }
         for w in &ch.weapons {
             let (_, d) = weapons
@@ -357,6 +378,13 @@ fn warrior_weapons_and_defences() {
     );
     assert_eq!(attack(&s, "kick", "kick").parry, None);
     assert_eq!(attack(&s, "broadsword", "swing").parry, Some(11));
+    assert!(
+        attack(&s, "broadsword", "swing")
+            .explain
+            .iter()
+            .any(|l| l == "Parry floor(14/2) + 3 +1 (Combat Reflexes) = 11"),
+        "weapon Parry line names the trait"
+    );
     let d = &s.defenses;
     assert_eq!(
         d.parry.as_ref().map(|p| (p.value, p.from.as_str())),

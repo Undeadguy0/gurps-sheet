@@ -128,8 +128,9 @@ cost = 5
 cost_per_level = 10
 min_levels = 0
 page = "B66" # unverified
+features = [{ type = "spell_bonus", amount = 1, per_level = true }]
 description = '''
-An inborn talent for magic. Level 0 means the character can sense magic and learn spells at all; each further level makes spellcasting easier and opens access to more demanding spells.
+An inborn talent for magic. Level 0 means the character can sense magic and learn spells at all; each further level adds +1 to every spell and opens access to more demanding spells.
 
 It is the foundation of any wizard, witch or hedge mage. Even level 0 is useful for noticing enchanted items. Remember that magic may not exist or may work differently in your campaign setting.
 '''

@@ -1,0 +1,58 @@
+# Sample trait modifiers. cost_percent > 0 = enhancement, < 0 = limitation.
+# Total modifier on a trait cannot go below -80%; the final cost is rounded up.
+# Values are from memory and UNVERIFIED; real books often have variable values
+# (per level, per range step). Descriptions are our own words.
+
+[[modifiers]]
+id = "area-effect"
+name = "Area Effect"
+cost_percent = 50
+page = "B102" # unverified
+description = '''
+The ability works on everyone in an area around the target instead of a single target. Bigger areas cost more in real play; this sample entry is one fixed step.
+'''
+
+[[modifiers]]
+id = "extended-duration"
+name = "Extended Duration"
+cost_percent = 20
+page = "B105" # unverified
+description = '''
+The effect lasts noticeably longer than normal once it has been used. Typical for abilities with a limited duration.
+'''
+
+[[modifiers]]
+id = "increased-range"
+name = "Increased Range"
+cost_percent = 10
+page = "B106" # unverified
+description = '''
+The ability reaches farther than standard. This sample entry is one step of extra range.
+'''
+
+[[modifiers]]
+id = "accessibility"
+name = "Accessibility"
+cost_percent = -10
+page = "B110" # unverified
+description = '''
+The ability only works in some situations (for example, only in daylight or only against living beings). The rarer the situation, the bigger the discount; this sample is a mild one.
+'''
+
+[[modifiers]]
+id = "costs-fatigue"
+name = "Costs Fatigue"
+cost_percent = -5
+page = "B111" # unverified
+description = '''
+Each use tires the character a little (costs FP). This sample entry is the smallest step.
+'''
+
+[[modifiers]]
+id = "emergencies-only"
+name = "Emergencies Only"
+cost_percent = -30
+page = "B112" # unverified
+description = '''
+The ability only works when the character is in real danger or under great stress. It is unreliable for everyday use, hence the large discount.
+'''

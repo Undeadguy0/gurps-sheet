@@ -1,0 +1,139 @@
+{
+  "format": "gurps-sheet",
+  "version": 1,
+  "character": {
+    "name": "Mage with spells (test)",
+    "player": "",
+    "points_budget": 150,
+    "attributes": {
+      "st": -1,
+      "dx": 0,
+      "iq": 4,
+      "ht": 1,
+      "hp": 2,
+      "will": 1,
+      "per": -2,
+      "fp": 3,
+      "basic_speed_quarters": 0,
+      "basic_move": 0
+    },
+    "traits": [
+      {
+        "id": "magery",
+        "name": "Magery",
+        "category": "advantage",
+        "cost": 5,
+        "cost_per_level": 10,
+        "max_levels": null,
+        "page": "B66",
+        "features": [
+          {
+            "type": "spell_bonus",
+            "amount": 1.0,
+            "per_level": true
+          }
+        ],
+        "min_levels": 0,
+        "levels": 2,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "eidetic-memory",
+        "name": "Eidetic Memory",
+        "category": "advantage",
+        "cost": 5,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B51",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample",
+        "modifiers": [
+          {
+            "id": "emergencies-only",
+            "name": "Emergencies Only",
+            "cost_percent": -30,
+            "page": "B112",
+            "source": "basic-set-sample"
+          }
+        ]
+      },
+      {
+        "id": "pacifism-self-defense",
+        "name": "Pacifism: Self-Defense Only",
+        "category": "disadvantage",
+        "cost": -15,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B148",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "curious-12",
+        "name": "Curious (12)",
+        "category": "disadvantage",
+        "cost": -5,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B129",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "skinny",
+        "name": "Skinny",
+        "category": "disadvantage",
+        "cost": -5,
+        "cost_per_level": 0,
+        "max_levels": null,
+        "page": "B18",
+        "features": [],
+        "levels": 0,
+        "source": "basic-set-sample"
+      }
+    ],
+    "equipment": [],
+    "notes": "Stage 4 spells fixture: the GM mage plus spells and one modified trait. Expected spell levels are OUR reading of the rules (no GM data yet). Page refs unverified.",
+    "spells": [
+      {
+        "id": "light",
+        "name": "Light",
+        "college": [
+          "Light and Darkness"
+        ],
+        "difficulty": "H",
+        "prerequisites": "none",
+        "page": "B253",
+        "points": 1,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "fireball",
+        "name": "Fireball",
+        "college": [
+          "Fire"
+        ],
+        "difficulty": "H",
+        "prerequisites": "Magery 1, Create Fire, Shape Fire",
+        "page": "B247",
+        "points": 4,
+        "source": "basic-set-sample"
+      },
+      {
+        "id": "teleport",
+        "name": "Teleport",
+        "college": [
+          "Movement"
+        ],
+        "difficulty": "VH",
+        "prerequisites": "Magery 3, Hawk Flight or IQ 13+ and one spell from each of 10 colleges",
+        "page": "B248",
+        "points": 8,
+        "source": "basic-set-sample"
+      }
+    ]
+  }
+}

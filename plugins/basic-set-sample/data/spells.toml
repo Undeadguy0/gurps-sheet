@@ -1,0 +1,82 @@
+# Sample spells. A spell is an IQ-based Hard (or Very Hard) skill with no default;
+# Magery adds its level to every spell. Prerequisites are plain text and are not checked.
+# Names are the common Basic Set ones; colleges, prerequisites, difficulty and pages are
+# from memory and UNVERIFIED. Descriptions are our own words, not book text.
+
+[[spells]]
+id = "light"
+name = "Light"
+college = ["Light and Darkness"]
+difficulty = "H"
+prerequisites = "none" # unverified
+page = "B253" # unverified
+description = '''
+Makes a small, steady glow, about as bright as a candle, at a spot the caster chooses. It lasts a while and can be renewed.
+
+The classic first spell: cheap, safe and the root of the Light college. Useful anywhere torches are awkward or would give the party away by their smoke.
+'''
+
+[[spells]]
+id = "ignite-fire"
+name = "Ignite Fire"
+college = ["Fire"]
+difficulty = "H"
+prerequisites = "Magery 1" # unverified
+page = "B246" # unverified
+description = '''
+Heats one small spot until whatever burns there catches fire: tinder, a candle wick, a scrap of paper. It does not make flames from nothing.
+
+The entry point to the Fire college. On its own it starts campfires; most fire mages learn it to reach the stronger spells.
+'''
+
+[[spells]]
+id = "create-fire"
+name = "Create Fire"
+college = ["Fire"]
+difficulty = "H"
+prerequisites = "Ignite Fire" # unverified
+page = "B246" # unverified
+description = '''
+Fills an area with real flame that needs no fuel while the spell lasts. Anything flammable inside can catch fire for good.
+
+A step up from Ignite Fire and a prerequisite for the attack spells of the college.
+'''
+
+[[spells]]
+id = "fireball"
+name = "Fireball"
+college = ["Fire"]
+difficulty = "H"
+prerequisites = "Magery 1, Create Fire, Shape Fire" # unverified
+page = "B247" # unverified
+description = '''
+Gathers fire into a ball in the caster's hand that can then be thrown at a target. Damage grows with the energy put into it.
+
+The best-known attack spell. The throw itself uses its own roll, so a fire mage usually also trains to aim.
+'''
+
+[[spells]]
+id = "detect-magic"
+name = "Detect Magic"
+college = ["Knowledge"]
+difficulty = "H"
+prerequisites = "Magery 1" # unverified
+page = "B249" # unverified
+description = '''
+Tells the caster whether one object or being is magical or under a spell; with a good roll it hints at what kind of magic it is.
+
+Useful for treasure, traps and suspicious strangers. Many adventuring mages keep it ready.
+'''
+
+[[spells]]
+id = "teleport"
+name = "Teleport"
+college = ["Movement"]
+difficulty = "VH"
+prerequisites = "Magery 3, Hawk Flight or IQ 13+ and one spell from each of 10 colleges" # unverified
+page = "B248" # unverified
+description = '''
+Moves the caster instantly to a place they know, near or far. Longer jumps and unfamiliar destinations are harder.
+
+A Very Hard spell for experienced mages: it costs more points per level than ordinary spells, but it is a powerful way to travel or escape.
+'''
