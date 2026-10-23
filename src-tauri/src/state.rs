@@ -297,9 +297,50 @@ pub struct SheetView {
     pub rules: gurps_core::RulesOptions,
     /// Character notes (Markdown source).
     pub notes: String,
+    pub pool: PoolView,
+    /// User-made definitions stored in the character (for the «Своё» editors).
+    pub custom: gurps_core::CustomContent,
     pub session: SessionView,
     pub history: HistoryView,
 }
+
+/// Point pool summary + ledger (character cost is live, never stored).
+#[derive(Debug, Clone, Serialize)]
+pub struct PoolView {
+    pub entries: Vec<gurps_core::LedgerEntry>,
+    pub starting: i32,
+    pub income: i32,
+    pub earned: i32,
+    pub spent_outside: i32,
+    pub available: i32,
+    /// Live cost of the sheet.
+    pub character_cost: i32,
+    /// earned − character_cost − spent_outside (may be negative).
+    pub unspent: i32,
+    pub disadvantage_limit: i32,
+    /// True when the limit was set by hand (else 50% of starting points).
+    pub disadvantage_limit_custom: bool,
+    /// Disadvantage points taken (positive, quirks excluded).
+    pub disadvantages: i32,
+    pub quirks: usize,
+    pub quirk_points: i32,
+}
+
+/// Editable fields of a ledger entry (the id is assigned by the state).
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct LedgerInput {
+    #[serde(default)]
+    pub date: String,
+    pub amount: i32,
+    pub kind: gurps_core::LedgerKind,
+    #[serde(default)]
+    pub note: String,
+    #[serde(default)]
+    pub skill: Option<String>,
+}
+
+/// Library tag of user-made definitions.
+pub const CUSTOM: &str = "custom";
 
 /// Current HP/FP at the table (session state, not build points).
 #[derive(Debug, Clone, Serialize)]
@@ -392,6 +433,8 @@ impl AppState {
             ..Self::default()
         };
         s.reload_plugins();
+        s.character.migrate();
+        s.saved = s.character.clone();
         s
     }
 
@@ -436,6 +479,7 @@ impl AppState {
             }
             Err(e) => self.plugin_errors.push(e.to_string()),
         }
+        self.sync_custom();
     }
 
     pub fn plugin_status(&self) -> PluginStatus {
@@ -460,6 +504,8 @@ impl AppState {
             spells: self.spell_views(&sheet),
             rules: self.character.rules.clone(),
             notes: self.character.notes.clone(),
+            pool: self.pool_view(),
+            custom: self.character.custom.clone(),
             session: self.session_view(&sheet),
             history: self.history_view(),
             equipment: self.equipment_views(),
@@ -506,7 +552,7 @@ impl AppState {
                 .collect(),
             issues: validate(&self.character),
             path: self.path.as_ref().map(|p| p.display().to_string()),
-            budget: self.character.points_budget,
+            budget: self.character.available_points(),
         }
     }
 
@@ -526,6 +572,8 @@ impl AppState {
     }
 
     fn reset_history(&mut self) {
+        self.character.migrate();
+        self.sync_custom();
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.saved = self.character.clone();
@@ -607,6 +655,7 @@ impl AppState {
         let (label, prev) = self.undo_stack.pop_back().ok_or("nothing to undo")?;
         let cur = std::mem::replace(&mut self.character, prev);
         self.redo_stack.push((label, cur));
+        self.sync_custom();
         Ok(self.view())
     }
 
@@ -614,7 +663,286 @@ impl AppState {
         let (label, next) = self.redo_stack.pop().ok_or("nothing to redo")?;
         let cur = std::mem::replace(&mut self.character, next);
         self.undo_stack.push_back((label, cur));
+        self.sync_custom();
         Ok(self.view())
+    }
+
+    fn pool_view(&self) -> PoolView {
+        let ch = &self.character;
+        let t = ch.ledger_totals();
+        let b = gurps_rules::points::breakdown(ch);
+        PoolView {
+            entries: ch.ledger.clone(),
+            starting: t.starting,
+            income: t.income,
+            earned: t.earned,
+            spent_outside: t.spent_outside,
+            available: t.available,
+            character_cost: b.total,
+            unspent: t.available - b.total,
+            disadvantage_limit: ch.disadvantage_limit(),
+            disadvantage_limit_custom: ch.rules.disadvantage_limit.is_some(),
+            disadvantages: -b.disadvantages,
+            quirks: ch
+                .traits
+                .iter()
+                .filter(|x| x.def.category == TraitCategory::Quirk)
+                .count(),
+            quirk_points: b.quirks,
+        }
+    }
+
+    pub fn add_ledger_entry(&mut self, e: LedgerInput) -> Result<SheetView, String> {
+        self.character.migrate();
+        let id = self
+            .character
+            .ledger
+            .iter()
+            .map(|x| x.id)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let entry = gurps_core::LedgerEntry {
+            id,
+            date: e.date,
+            amount: e.amount,
+            kind: e.kind,
+            note: e.note,
+            skill: gurps_core::non_blank(e.skill),
+        }
+        .normalized()?;
+        self.character.ledger.push(entry);
+        self.character.migrate();
+        Ok(self.view())
+    }
+
+    pub fn update_ledger_entry(&mut self, id: u32, e: LedgerInput) -> Result<SheetView, String> {
+        self.character.migrate();
+        let slot = self
+            .character
+            .ledger
+            .iter_mut()
+            .find(|x| x.id == id)
+            .ok_or("no such ledger entry")?;
+        *slot = gurps_core::LedgerEntry {
+            id,
+            date: e.date,
+            amount: e.amount,
+            kind: e.kind,
+            note: e.note,
+            skill: gurps_core::non_blank(e.skill),
+        }
+        .normalized()?;
+        self.character.migrate();
+        Ok(self.view())
+    }
+
+    pub fn remove_ledger_entry(&mut self, id: u32) -> Result<SheetView, String> {
+        let n = self.character.ledger.len();
+        self.character.ledger.retain(|x| x.id != id);
+        if self.character.ledger.len() == n {
+            return Err("no such ledger entry".into());
+        }
+        if self.character.ledger.is_empty() {
+            // Removing everything means "no points", not "back to the legacy budget".
+            self.character.points_budget = 0;
+        }
+        self.character.migrate();
+        Ok(self.view())
+    }
+
+    /// `None` = default (50% of starting points).
+    pub fn set_disadvantage_limit(&mut self, limit: Option<i32>) -> Result<SheetView, String> {
+        if limit.is_some_and(|l| l < 0) {
+            return Err("limit must not be negative".into());
+        }
+        self.character.rules.disadvantage_limit = limit;
+        Ok(self.view())
+    }
+
+    /// Puts the character's custom definitions into the libraries (tag "custom");
+    /// they override plugin entries with the same id.
+    pub fn sync_custom(&mut self) {
+        let c = self.character.custom.clone();
+        self.library
+            .retain(|e| e.plugin != CUSTOM && !c.traits.iter().any(|d| d.id == e.def.id));
+        self.library.extend(c.traits.iter().map(|d| LibraryEntry {
+            plugin: CUSTOM.into(),
+            def: d.clone(),
+            explanation: None,
+            translated_name: None,
+        }));
+        fn merge<D: Clone>(lib: &mut Vec<(String, D)>, custom: &[D], id: impl Fn(&D) -> &str) {
+            lib.retain(|(p, d)| p != CUSTOM && !custom.iter().any(|c| id(c) == id(d)));
+            lib.extend(custom.iter().map(|d| (CUSTOM.to_string(), d.clone())));
+        }
+        merge(&mut self.skill_library, &c.skills, |d| &d.id);
+        merge(&mut self.spell_library, &c.spells, |d| &d.id);
+        merge(&mut self.equipment_library, &c.equipment, |d| &d.id);
+    }
+
+    fn new_custom_id(&self, kind: &str) -> String {
+        let c = &self.character.custom;
+        let used: Vec<&str> = c
+            .traits
+            .iter()
+            .map(|d| d.id.as_str())
+            .chain(c.skills.iter().map(|d| d.id.as_str()))
+            .chain(c.spells.iter().map(|d| d.id.as_str()))
+            .chain(c.equipment.iter().map(|d| d.id.as_str()))
+            .collect();
+        (1..)
+            .map(|n| format!("custom-{kind}-{n}"))
+            .find(|id| !used.contains(&id.as_str()))
+            .unwrap()
+    }
+
+    /// Adds or replaces (by id) a user-made definition. `kind`: trait | skill | spell | equipment.
+    /// An empty id creates a new entry. Items already on the sheet get the new definition.
+    pub fn save_custom(&mut self, kind: &str, def: serde_json::Value) -> Result<SheetView, String> {
+        fn parse<D: serde::de::DeserializeOwned>(v: serde_json::Value) -> Result<D, String> {
+            serde_json::from_value(v).map_err(|e| format!("invalid definition: {e}"))
+        }
+        fn upsert<D: Clone>(list: &mut Vec<D>, d: D, id: impl Fn(&D) -> &str) {
+            match list.iter().position(|x| id(x) == id(&d)) {
+                Some(i) => list[i] = d,
+                None => list.push(d),
+            }
+        }
+        let mut v = def;
+        let blank_id = v
+            .get("id")
+            .and_then(|x| x.as_str())
+            .is_none_or(|x| x.trim().is_empty());
+        if blank_id {
+            v["id"] = self.new_custom_id(kind).into();
+        }
+        let name_ok = v
+            .get("name")
+            .and_then(|x| x.as_str())
+            .is_some_and(|x| !x.trim().is_empty());
+        if !name_ok {
+            return Err("a custom entry needs a name".into());
+        }
+        let ch = &mut self.character;
+        match kind {
+            "trait" => {
+                let d: TraitDef = parse(v)?;
+                for t in ch.traits.iter_mut().filter(|t| t.def.id == d.id) {
+                    t.def = TraitDef {
+                        description: None,
+                        ..d.clone()
+                    };
+                }
+                upsert(&mut ch.custom.traits, d, |d| &d.id);
+            }
+            "skill" => {
+                let d: SkillDef = parse(v)?;
+                for t in ch.skills.iter_mut().filter(|t| t.def.id == d.id) {
+                    t.def = SkillDef {
+                        description: None,
+                        ..d.clone()
+                    };
+                }
+                upsert(&mut ch.custom.skills, d, |d| &d.id);
+            }
+            "spell" => {
+                let d: SpellDef = parse(v)?;
+                for t in ch.spells.iter_mut().filter(|t| t.def.id == d.id) {
+                    t.def = SpellDef {
+                        description: None,
+                        ..d.clone()
+                    };
+                }
+                upsert(&mut ch.custom.spells, d, |d| &d.id);
+            }
+            "equipment" => {
+                let d: EquipmentDef = parse(v)?;
+                upsert(&mut ch.custom.equipment, d, |d| &d.id);
+            }
+            _ => return Err(format!("unknown custom kind '{kind}'")),
+        }
+        self.sync_custom();
+        Ok(self.view())
+    }
+
+    pub fn remove_custom(&mut self, kind: &str, id: &str) -> Result<SheetView, String> {
+        let c = &mut self.character.custom;
+        let n = match kind {
+            "trait" => {
+                let n = c.traits.len();
+                c.traits.retain(|d| d.id != id);
+                n - c.traits.len()
+            }
+            "skill" => {
+                let n = c.skills.len();
+                c.skills.retain(|d| d.id != id);
+                n - c.skills.len()
+            }
+            "spell" => {
+                let n = c.spells.len();
+                c.spells.retain(|d| d.id != id);
+                n - c.spells.len()
+            }
+            "equipment" => {
+                let n = c.equipment.len();
+                c.equipment.retain(|d| d.id != id);
+                n - c.equipment.len()
+            }
+            _ => return Err(format!("unknown custom kind '{kind}'")),
+        };
+        if n == 0 {
+            return Err("no such custom entry".into());
+        }
+        self.sync_custom();
+        Ok(self.view())
+    }
+
+    /// Writes the custom definitions as a user plugin folder under `root`
+    /// (default: the plugins directory). Returns the folder path.
+    pub fn export_custom_plugin(&self, root: Option<PathBuf>) -> Result<String, String> {
+        let c = &self.character.custom;
+        if c.is_empty() {
+            return Err("no custom entries to export".into());
+        }
+        let root = root
+            .or_else(|| self.plugin_dir.clone())
+            .ok_or("no plugins directory")?;
+        let slug: String = self
+            .character
+            .name
+            .chars()
+            .map(|ch| {
+                if ch.is_alphanumeric() {
+                    ch.to_lowercase().next().unwrap_or(ch)
+                } else {
+                    '-'
+                }
+            })
+            .collect::<String>()
+            .trim_matches('-')
+            .to_string();
+        let manifest = gurps_plugins::Manifest {
+            id: format!(
+                "user-{}",
+                if slug.is_empty() {
+                    "custom".into()
+                } else {
+                    slug
+                }
+            ),
+            name: format!("Своё: {}", self.character.name),
+            version: "0.1.0".into(),
+            depends: vec![],
+        };
+        let data = gurps_plugins::DataFile {
+            traits: c.traits.clone(),
+            skills: c.skills.clone(),
+            spells: c.spells.clone(),
+            equipment: c.equipment.clone(),
+            ..Default::default()
+        };
+        gurps_plugins::write_plugin(&root, &manifest, &data).map(|p| p.display().to_string())
     }
 
     pub fn history_view(&self) -> HistoryView {
@@ -666,7 +994,9 @@ impl AppState {
         self.character = gurps_io::load(path).map_err(|e| e.to_string())?;
         self.path = Some(path.into());
         self.reset_history();
-        Ok(self.view())
+        let v = self.view();
+        self.saved = self.character.clone();
+        Ok(v)
     }
 
     pub fn save(&mut self, path: Option<String>) -> Result<String, String> {
@@ -1745,6 +2075,158 @@ mod tests {
         assert_eq!(back.notes, "");
         assert_eq!(s.undo().unwrap().notes, "");
         assert_eq!(s.set_notes("  \n".into()).notes, "");
+    }
+
+    fn li(kind: gurps_core::LedgerKind, amount: i32, note: &str) -> LedgerInput {
+        LedgerInput {
+            date: "2026-10-23".into(),
+            amount,
+            kind,
+            note: note.into(),
+            skill: None,
+        }
+    }
+
+    #[test]
+    fn point_pool_ledger() {
+        use gurps_core::LedgerKind::*;
+        let mut s = state();
+        s.new_character(None);
+        let p = s.view().pool;
+        assert_eq!(
+            (p.entries.len(), p.starting, p.unspent, p.disadvantage_limit),
+            (1, 150, 150, 75)
+        );
+        s.record("x", |s| s.set_attribute("DX", 1)).unwrap(); // 20 pts
+        let v = s
+            .record("запись", |s| {
+                s.add_ledger_entry(li(SessionAward, 3, ""))
+            })
+            .unwrap();
+        assert_eq!(v.pool.entries[1].id, 2);
+        s.add_ledger_entry(li(GmBonus, 1, "подарок от Мастера"))
+            .unwrap();
+        s.add_ledger_entry(li(Influence, 2, "")).unwrap();
+        let p = s.view().pool;
+        assert_eq!(
+            (p.earned, p.spent_outside, p.character_cost, p.unspent),
+            (154, 2, 20, 132)
+        );
+        assert_eq!(s.view().budget, 152);
+        assert_eq!(
+            s.character.points_budget, 152,
+            "legacy field mirrors available points"
+        );
+        assert!(s.add_ledger_entry(li(Other, 1, " ")).is_err());
+        // edit and delete
+        let v = s.update_ledger_entry(3, li(GmBonus, 2, "роль")).unwrap();
+        assert_eq!(v.pool.entries[2].amount, 2);
+        assert_eq!(v.pool.entries[2].note, "роль");
+        assert!(s.update_ledger_entry(99, li(GmBonus, 2, "")).is_err());
+        s.record("удаление", |s| s.remove_ledger_entry(4)).unwrap();
+        assert_eq!(s.view().pool.spent_outside, 0);
+        s.undo().unwrap();
+        assert_eq!(s.view().pool.spent_outside, 2);
+        // negative unspent allowed
+        s.add_ledger_entry(li(BuyOff, 200, "")).unwrap();
+        assert!(s.view().pool.unspent < 0);
+        // disadvantage limit
+        assert_eq!(
+            s.set_disadvantage_limit(Some(40))
+                .unwrap()
+                .pool
+                .disadvantage_limit,
+            40
+        );
+        assert!(s.set_disadvantage_limit(Some(-1)).is_err());
+        assert!(
+            !s.set_disadvantage_limit(None)
+                .unwrap()
+                .pool
+                .disadvantage_limit_custom
+        );
+    }
+
+    #[test]
+    fn legacy_budget_migrates_on_load() {
+        let mut s = state();
+        let path = std::env::temp_dir().join(format!("gurps-legacy-{}.json", std::process::id()));
+        std::fs::write(&path, r#"{"format":"gurps-sheet","version":1,"character":{"name":"Old","points_budget":100}}"#).unwrap();
+        let v = s.load(&path.display().to_string()).unwrap();
+        assert_eq!(v.pool.entries.len(), 1);
+        assert_eq!(v.pool.entries[0].kind, gurps_core::LedgerKind::Starting);
+        assert_eq!((v.pool.starting, v.budget), (100, 100));
+        assert!(!v.history.dirty, "migration alone is not an unsaved change");
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn custom_definitions() {
+        let mut s = state();
+        s.new_character(Some("Маг".into()));
+        let spell = serde_json::json!({"name": "Искра", "difficulty": "VH", "college": ["Fire"],
+            "prerequisites": "Magery 1", "description": "**жжёт**"});
+        let v = s.record("своё", |s| s.save_custom("spell", spell)).unwrap();
+        let id = v.custom.spells[0].id.clone();
+        assert_eq!(id, "custom-spell-1");
+        let lib = s.spell_library_view();
+        let e = lib.iter().find(|e| e.def.id == id).unwrap();
+        assert_eq!(e.plugin, CUSTOM);
+        assert_eq!(e.explanation.as_deref(), Some("**жжёт**"));
+        s.add_spell(&id, Some(4)).unwrap();
+        // editing renames the sheet copy too
+        s.save_custom(
+            "spell",
+            serde_json::json!({"id": id, "name": "Искра!", "difficulty": "H"}),
+        )
+        .unwrap();
+        assert_eq!(s.character.spells[0].def.name, "Искра!");
+        assert!(s
+            .save_custom("spell", serde_json::json!({"name": " "}))
+            .is_err());
+        assert!(s
+            .save_custom("weapon", serde_json::json!({"name": "x"}))
+            .is_err());
+        s.save_custom(
+            "trait",
+            serde_json::json!({"name": "Везучесть в картах", "category": "advantage", "cost": 3}),
+        )
+        .unwrap();
+        s.add_trait("custom-trait-1", None).unwrap();
+        assert_eq!(s.view().sheet.points.advantages, 3);
+        s.save_custom(
+            "skill",
+            serde_json::json!({"name": "Гадание", "attribute": "IQ", "difficulty": "A"}),
+        )
+        .unwrap();
+        s.save_custom(
+            "equipment",
+            serde_json::json!({"name": "Колода", "weight": 0.1, "cost": 5}),
+        )
+        .unwrap();
+        // survives undo/redo and plugin reload
+        s.undo().unwrap();
+        assert!(s
+            .equipment_library_view()
+            .iter()
+            .all(|e| e.def.name != "Колода"));
+        s.redo().unwrap();
+        s.reload_plugins();
+        assert!(s
+            .equipment_library_view()
+            .iter()
+            .any(|e| e.def.name == "Колода" && e.plugin == CUSTOM));
+        // export
+        let root = std::env::temp_dir().join(format!("gurps-custom-{}", std::process::id()));
+        let dir = s.export_custom_plugin(Some(root.clone())).unwrap();
+        assert!(dir.ends_with("user-маг"), "{dir}");
+        let p = gurps_plugins::load_plugin(std::path::Path::new(&dir)).unwrap();
+        assert_eq!(p.spells.len(), 1);
+        std::fs::remove_dir_all(&root).unwrap();
+        // remove
+        s.remove_custom("spell", &id).unwrap();
+        assert!(s.spell_library_view().iter().all(|e| e.def.id != id));
+        assert!(s.remove_custom("spell", &id).is_err());
     }
 
     #[test]

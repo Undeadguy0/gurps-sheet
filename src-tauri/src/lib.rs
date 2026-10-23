@@ -57,6 +57,60 @@ fn set_attribute(state: S, key: String, level: i32) -> Result<SheetView, String>
 }
 
 #[tauri::command]
+fn add_ledger_entry(state: S, entry: state::LedgerInput) -> Result<SheetView, String> {
+    edit(&state, "запись в журнале очков", |s| {
+        s.add_ledger_entry(entry)
+    })
+}
+
+#[tauri::command]
+fn update_ledger_entry(state: S, id: u32, entry: state::LedgerInput) -> Result<SheetView, String> {
+    edit(
+        &state,
+        "правка записи журнала очков",
+        |s| s.update_ledger_entry(id, entry),
+    )
+}
+
+#[tauri::command]
+fn remove_ledger_entry(state: S, id: u32) -> Result<SheetView, String> {
+    edit(
+        &state,
+        "удаление записи журнала очков",
+        |s| s.remove_ledger_entry(id),
+    )
+}
+
+#[tauri::command]
+fn set_disadvantage_limit(state: S, limit: Option<i32>) -> Result<SheetView, String> {
+    edit(&state, "лимит недостатков", |s| {
+        s.set_disadvantage_limit(limit)
+    })
+}
+
+#[tauri::command]
+fn save_custom(state: S, kind: String, def: serde_json::Value) -> Result<SheetView, String> {
+    edit(&state, "своё определение", |s| {
+        s.save_custom(&kind, def)
+    })
+}
+
+#[tauri::command]
+fn remove_custom(state: S, kind: String, id: String) -> Result<SheetView, String> {
+    edit(
+        &state,
+        "удаление своего определения",
+        |s| s.remove_custom(&kind, &id),
+    )
+}
+
+#[tauri::command]
+fn export_custom_plugin(state: S) -> Result<String, String> {
+    let s = state.lock().map_err(|e| e.to_string())?;
+    s.export_custom_plugin(None)
+}
+
+#[tauri::command]
 fn set_notes(state: S, text: String) -> Result<SheetView, String> {
     edit(&state, "заметки", |s| Ok(s.set_notes(text)))
 }
@@ -449,6 +503,13 @@ pub fn run() {
             set_negative_rounding,
             set_name,
             set_notes,
+            add_ledger_entry,
+            update_ledger_entry,
+            remove_ledger_entry,
+            set_disadvantage_limit,
+            save_custom,
+            remove_custom,
+            export_custom_plugin,
             add_trait,
             set_trait_levels,
             remove_trait,
