@@ -36,6 +36,30 @@ export interface Sheet {
   basic_lift: StatRow;
   damage: { thrust: string; swing: string; based_on_st: number; st_value?: Value; explain?: string[] };
   points: PointsBreakdown;
+  encumbrance?: Encumbrance;
+}
+
+export interface EncumbranceLevel { level: number; name: string; max_weight: number; move_value: number; dodge: number }
+export interface Encumbrance {
+  level: number; name: string; carried_weight: number; total_weight: number; total_cost: number; carried_cost: number;
+  basic_lift: number; base_move: number; move_value: number; dodge_penalty: number; base_dodge: number; dodge: number;
+  overloaded: boolean; table: EncumbranceLevel[]; explain: string[];
+}
+
+export interface EquipmentDef {
+  id: string; name: string; weight: number; cost: number; container?: boolean; stats?: string | null;
+  page?: string | null; description?: LocalizedText | null;
+}
+/** Character's item (mock backend + tests); mirrors gurps_core::Equipment with the def flattened. */
+export interface EquipmentItem extends EquipmentDef {
+  quantity: number; carried?: boolean; contents?: EquipmentItem[]; source?: string | null; explanation?: string | null;
+}
+export interface EquipmentLibEntry extends EquipmentDef { plugin: string; explanation?: string | null; translated_name?: string | null }
+export interface EquipmentView {
+  path: number[]; depth: number; id: string; name: string; original_name?: string | null;
+  quantity: number; weight: number; cost: number; total_weight: number; total_cost: number;
+  carried: boolean; effectively_carried: boolean; container: boolean; stats?: string | null;
+  page?: string | null; source?: string | null; explanation?: string | null; default_explanation?: string | null; custom_explanation: boolean;
 }
 
 export type TraitCategory = 'advantage' | 'perk' | 'disadvantage' | 'quirk';
@@ -105,7 +129,7 @@ export interface SkillView extends ExplainedView {
 }
 export interface TechniqueView extends ExplainedView { skill: string; modifier: number; max: number; max_level?: number | null }
 
-export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; issues: Issue[]; path?: string | null; budget: number }
+export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; issues: Issue[]; path?: string | null; budget: number }
 
 export type Outcome = 'critical_success' | 'success' | 'failure' | 'critical_failure';
 export interface RollResult {
@@ -114,4 +138,4 @@ export interface RollResult {
 }
 
 /** Where the library came from (plugin_status command). */
-export interface PluginStatus { dir?: string | null; plugins: string[]; errors: string[]; traits: number; skills?: number }
+export interface PluginStatus { dir?: string | null; plugins: string[]; errors: string[]; traits: number; skills?: number; equipment?: number }

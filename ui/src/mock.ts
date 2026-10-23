@@ -3,8 +3,10 @@
 // rules is the Rust crate `gurps-rules`; this is a simplified mirror of it.
 import type {
   LibraryEntry, LocaleInfo, LocalizedText, RollResult, SheetView, StatRow, TraitDef, TraitView, Value, Outcome,
-  SkillDef, SkillLibrary, SkillView, TechniqueDef, TechniqueView,
+  SkillDef, SkillLibrary, SkillView, TechniqueDef, TechniqueView, EquipmentItem, EquipmentLibEntry, EquipmentView,
 } from './types';
+import { EQUIPMENT_CATALOG_RU, EQUIPMENT_DEFS } from './mockEquipment';
+import { carriedWeight, computeEncumbrance, totalCost, totalWeight } from './encumbrance';
 import { SKILL_CATALOG_RU, SKILL_DEFS, TALENT_DEF, TECHNIQUE_DEFS } from './mockSkills';
 import { computeSkills, computeTechniques, signedInt, enPts } from './skills';
 
@@ -65,6 +67,7 @@ export function outcome(roll: number, skill: number): Outcome {
 }
 
 Object.assign(CATALOG.ru, SKILL_CATALOG_RU);
+for (const [id, v] of Object.entries(EQUIPMENT_CATALOG_RU)) CATALOG.ru[`equipment-${id}`] = v;
 
 export class MockBackend {
   name = 'Пример (браузер)';
@@ -84,6 +87,30 @@ export class MockBackend {
   }
   private skillName(id: string) {
     return this.tr(id, 'skill')?.name ?? SKILL_DEFS.find((d) => d.id === id)?.name ?? id;
+  }
+  equipment: EquipmentItem[] = [];
+  equipmentLibrary(): EquipmentLibEntry[] {
+    return EQUIPMENT_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('equipment', d.id, d.description), translated_name: this.tr(d.id, 'equipment')?.name ?? null }));
+  }
+  private equipmentViews(): EquipmentView[] {
+    const out: EquipmentView[] = [];
+    const walk = (list: EquipmentItem[], path: number[], parentCarried: boolean) => list.forEach((e, i) => {
+      const p = [...path, i]; const n = this.tr(e.id, 'equipment')?.name; const lib = EQUIPMENT_DEFS.find((d) => d.id === e.id);
+      const dflt = this.text('equipment', e.id, lib?.description ?? e.description); const carried = parentCarried && e.carried !== false;
+      out.push({ path: p, depth: path.length, id: e.id, name: n ?? e.name, original_name: n ? e.name : null, quantity: e.quantity,
+        weight: e.weight, cost: e.cost, total_weight: totalWeight(e), total_cost: totalCost(e), carried: e.carried !== false,
+        effectively_carried: carried, container: !!e.container, stats: e.stats ?? null, page: e.page, source: e.source,
+        explanation: e.explanation?.trim() ? e.explanation : dflt, default_explanation: dflt, custom_explanation: !!e.explanation?.trim() });
+      walk(e.contents ?? [], p, carried);
+    });
+    walk(this.equipment, [], true);
+    return out;
+  }
+  private item(a: Record<string, unknown>): EquipmentItem {
+    let list = this.equipment; let e: EquipmentItem | undefined;
+    for (const i of a.path as number[]) { e = list[i]; if (!e) throw new Error('no such item'); list = e.contents ?? []; }
+    if (!e) throw new Error('no such item');
+    return e;
   }
   skillLibrary(): SkillLibrary {
     return {
@@ -180,11 +207,14 @@ export class MockBackend {
       default_explanation: this.plugText(t.def), custom_explanation: !!t.explanation?.trim() }));
     return {
       sheet: { name: this.name, attributes, secondary, basic_lift: this.row('BasicLift', blv),
-        damage: { thrust: '—', swing: '—', based_on_st: tot.ST }, points: p },
-      traits, skills, techniques,
+        damage: { thrust: '—', swing: '—', based_on_st: tot.ST }, points: p,
+        encumbrance: computeEncumbrance(this.equipment, bl(liftSt), tot.BasicMove, tot.BasicSpeed) },
+      traits, skills, techniques, equipment: this.equipmentViews(),
       issues: [...(p.unspent < 0 ? [{ severity: 'warning' as const, message: `over budget by ${enPts(-p.unspent)}` }] : []),
         ...this.skills.filter((s) => s.def.specialization_required && !s.specialization?.trim())
-          .map((s) => ({ severity: 'warning' as const, message: `skill '${s.def.name}' needs a specialization` }))],
+          .map((s) => ({ severity: 'warning' as const, message: `skill '${s.def.name}' needs a specialization` })),
+        ...(this.equipment.reduce((a, e) => a + carriedWeight(e), 0) > bl(liftSt) * 10 + 1e-9
+          ? [{ severity: 'warning' as const, message: 'carried weight is more than 10×BL: the character cannot move' }] : [])],
       path: null, budget: 150,
     };
   }
@@ -194,7 +224,7 @@ export class MockBackend {
 
   invoke(cmd: string, a: Record<string, unknown>): unknown {
     switch (cmd) {
-      case 'new_character': this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.name = (a.name as string) ?? 'New character'; return this.view();
+      case 'new_character': this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.equipment = []; this.name = (a.name as string) ?? 'New character'; return this.view();
       case 'get_sheet': return this.view();
       case 'set_name': this.name = a.name as string; return this.view();
       case 'set_attribute': this.levels[a.key as string] = a.level as number; return this.view();
@@ -226,7 +256,25 @@ export class MockBackend {
       case 'set_technique_points': this.tech(a).points = Math.max(0, a.points as number); return this.view();
       case 'set_technique_explanation': { const t = a.text as string | null; this.tech(a).explanation = t?.trim() ? t : undefined; return this.view(); }
       case 'remove_technique': this.tech(a); this.techniques.splice(a.index as number, 1); return this.view();
-      case 'plugin_status': case 'reload_plugins': return { dir: null, plugins: ['basic-set-sample (встроенная копия)', 'lang-ru (встроенная копия)'], errors: [], traits: LIBRARY.length, skills: SKILL_DEFS.length + TECHNIQUE_DEFS.length };
+      case 'list_equipment_library': return this.equipmentLibrary();
+      case 'add_equipment': {
+        const def = EQUIPMENT_DEFS.find((d) => d.id === a.id); if (!def) throw new Error('unknown item');
+        const { description: _d, ...rest } = def; void _d;
+        const e: EquipmentItem = { ...rest, quantity: Math.max(1, (a.quantity as number) ?? 1), source: 'basic-set-sample' };
+        const parent = a.parent as number[] | null | undefined;
+        if (parent?.length) { const c = this.item({ path: parent }); if (!c.container) throw new Error(`${c.name} is not a container`); (c.contents ??= []).push(e); }
+        else this.equipment.push(e);
+        return this.view();
+      }
+      case 'set_equipment_quantity': this.item(a).quantity = Math.max(0, a.quantity as number); return this.view();
+      case 'set_equipment_carried': this.item(a).carried = !!a.carried; return this.view();
+      case 'set_equipment_explanation': { const t = a.text as string | null; this.item(a).explanation = t?.trim() ? t : undefined; return this.view(); }
+      case 'remove_equipment': {
+        const path = a.path as number[]; this.item(a);
+        const list = path.length > 1 ? this.item({ path: path.slice(0, -1) }).contents! : this.equipment;
+        list.splice(path[path.length - 1], 1); return this.view();
+      }
+      case 'plugin_status': case 'reload_plugins': return { dir: null, plugins: ['basic-set-sample (встроенная копия)', 'lang-ru (встроенная копия)'], errors: [], traits: LIBRARY.length, skills: SKILL_DEFS.length + TECHNIQUE_DEFS.length, equipment: EQUIPMENT_DEFS.length };
       case 'get_locales': return this.locales();
       case 'set_locale': if ((a.locale as string)?.trim()) this.locale = a.locale as string; this.originalOnly = !!a.originalOnly; return this.view();
       case 'roll': {

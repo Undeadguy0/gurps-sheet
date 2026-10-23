@@ -1,6 +1,6 @@
 // Backend facade: Tauri commands when running inside the app, an in-browser
 // preview backend (mock.ts) when opened with plain `npm run dev`.
-import type { LibraryEntry, LocaleInfo, PluginStatus, RollResult, SheetView, SkillLibrary } from './types';
+import type { LibraryEntry, LocaleInfo, PluginStatus, RollResult, SheetView, SkillLibrary, EquipmentLibEntry } from './types';
 import { MockBackend } from './mock';
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -42,5 +42,11 @@ export const api = {
   setTechniquePoints: (index: number, points: number) => call<SheetView>('set_technique_points', { index, points }),
   setTechniqueExplanation: (index: number, text: string | null) => call<SheetView>('set_technique_explanation', { index, text }),
   removeTechnique: (index: number) => call<SheetView>('remove_technique', { index }),
+  listEquipmentLibrary: () => call<EquipmentLibEntry[]>('list_equipment_library'),
+  addEquipment: (id: string, quantity?: number, parent?: number[] | null) => call<SheetView>('add_equipment', { id, quantity, parent }),
+  setEquipmentQuantity: (path: number[], quantity: number) => call<SheetView>('set_equipment_quantity', { path, quantity }),
+  setEquipmentCarried: (path: number[], carried: boolean) => call<SheetView>('set_equipment_carried', { path, carried }),
+  setEquipmentExplanation: (path: number[], text: string | null) => call<SheetView>('set_equipment_explanation', { path, text }),
+  removeEquipment: (path: number[]) => call<SheetView>('remove_equipment', { path }),
   roll: (target: number, modifier = 0) => call<RollResult>('roll', { target, modifier }),
 };

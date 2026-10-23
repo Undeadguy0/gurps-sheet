@@ -1,0 +1,160 @@
+// GENERATED from plugins/basic-set-sample/data/equipment.toml and
+// plugins/lang-ru/locales/ru/basic-set-equipment.ftl for the browser preview backend.
+// Own-words texts, not book text; weights, costs and pages are unverified.
+import type { EquipmentDef } from './types';
+
+export const EQUIPMENT_DEFS: EquipmentDef[] = [
+  {
+    "id": "broadsword",
+    "name": "Broadsword",
+    "weight": 3,
+    "cost": 500,
+    "page": "B271",
+    "description": "A one-handed sword of about arm's length, balanced for both cutting and thrusting. A common sidearm for soldiers and the main weapon of many knights.\n\nUse it with the Broadsword skill. Its attacks and damage will be listed under weapons in a later version of the sheet; here it only counts towards weight and cost.\n"
+  },
+  {
+    "id": "small-knife",
+    "name": "Small Knife",
+    "weight": 0.5,
+    "cost": 30,
+    "page": "B272",
+    "description": "A short, light blade for everyday work: cutting rope, preparing food, whittling. In a pinch it is a weapon too, and it is small enough to hide or throw.\n\nCheap and almost weightless, so many characters carry more than one. Set the quantity instead of adding separate rows.\n"
+  },
+  {
+    "id": "large-knife",
+    "name": "Large Knife",
+    "weight": 1,
+    "cost": 40,
+    "page": "B272",
+    "description": "A long knife or short fighting blade, heavier than a utility knife and better suited to combat. Hunters and soldiers often wear one on the belt.\n\nUsed with the Knife skill. It counts towards weight and cost now; attack details come with weapons.\n"
+  },
+  {
+    "id": "small-shield",
+    "name": "Small Shield",
+    "weight": 8,
+    "cost": 40,
+    "stats": "DB 1",
+    "page": "B287",
+    "description": "A light round or square shield strapped to the forearm. It gives a modest bonus to defences and leaves the hand fairly free.\n\nThe defence bonus is noted in the stats column; it will be applied to Parry, Block and Dodge with the defences stage.\n"
+  },
+  {
+    "id": "medium-shield",
+    "name": "Medium Shield",
+    "weight": 15,
+    "cost": 60,
+    "stats": "DB 2",
+    "page": "B287",
+    "description": "The typical warrior's shield, large enough to cover much of the body. It gives a solid bonus to all active defences against attacks from the front.\n\nIt is fairly heavy, which matters for encumbrance. The bonus will be used in defence calculations in a later version.\n"
+  },
+  {
+    "id": "mail-shirt",
+    "name": "Mail Shirt",
+    "weight": 16,
+    "cost": 150,
+    "stats": "DR 4/2*",
+    "page": "B283",
+    "description": "A shirt of interlocking metal rings covering the torso. It stops cuts well but is less effective against crushing blows, which the asterisk in its protection value reminds you of.\n\nA common choice for soldiers who need protection without full armour. Worn armour is still carried weight.\n"
+  },
+  {
+    "id": "leather-jacket",
+    "name": "Leather Jacket",
+    "weight": 4,
+    "cost": 50,
+    "stats": "DR 1",
+    "page": "B283",
+    "description": "A heavy jacket of thick leather. It offers light protection and draws little attention, so it suits people who want some armour in town.\n\nLight enough that it rarely changes encumbrance on its own.\n"
+  },
+  {
+    "id": "backpack-frame",
+    "name": "Backpack, Frame",
+    "weight": 10,
+    "cost": 100,
+    "container": true,
+    "page": "B288",
+    "description": "A large pack on a rigid frame for long journeys. It holds a lot of gear and spreads the load, but is itself fairly heavy.\n\nIt is a container: add items into it with the + button on its row. If you mark the pack as not carried, everything inside stops counting towards encumbrance as well.\n"
+  },
+  {
+    "id": "backpack-small",
+    "name": "Backpack, Small",
+    "weight": 3,
+    "cost": 60,
+    "container": true,
+    "page": "B288",
+    "description": "A simple shoulder pack for a day's worth of supplies. Lighter and cheaper than a frame pack, but holds much less.\n\nIt is a container: items inside count towards encumbrance only while the pack is carried.\n"
+  },
+  {
+    "id": "personal-basics",
+    "name": "Personal Basics",
+    "weight": 1,
+    "cost": 5,
+    "page": "B288",
+    "description": "A small kit of everyday necessities: something to eat with, basic grooming items, a way to make fire and similar odds and ends.\n\nWithout it, the GM may impose small penalties on survival and everyday tasks. It is cheap and light, so most travellers simply carry one.\n"
+  },
+  {
+    "id": "rope-10yd",
+    "name": "Rope, 10 yards",
+    "weight": 1.5,
+    "cost": 5,
+    "page": "B288",
+    "description": "A coil of ordinary rope, strong enough to hold one person. Useful for climbing, tying things up and countless improvised tasks.\n\nBuy several if the party expects long descents; set the quantity rather than adding rows.\n"
+  },
+  {
+    "id": "torch",
+    "name": "Torch",
+    "weight": 1,
+    "cost": 3,
+    "page": "B288",
+    "description": "A stick wrapped in pitch-soaked cloth that burns for about an hour, giving light and a little warmth. It can also be waved at animals.\n\nOne hand is busy while it is held. Carry spares for long underground trips.\n"
+  }
+];
+
+export const EQUIPMENT_CATALOG_RU: Record<string, { name: string; description: string }> = {
+  "broadsword": {
+    "name": "Палаш",
+    "description": "Одноручный меч длиной примерно в руку, сбалансированный и для рубящих, и для колющих ударов. Обычное оружие солдат и основное — у многих рыцарей.\n\nИспользуется с навыком «Палаш». Атаки и урон появятся в разделе оружия в следующей версии листа; здесь он учитывается только в весе и стоимости.\n"
+  },
+  "small-knife": {
+    "name": "Малый нож",
+    "description": "Короткий лёгкий клинок для повседневной работы: резать верёвку, готовить еду, строгать. В крайнем случае это и оружие, к тому же его легко спрятать или метнуть.\n\nДешёв и почти ничего не весит, поэтому многие носят несколько. Укажите количество вместо отдельных строк.\n"
+  },
+  "large-knife": {
+    "name": "Большой нож",
+    "description": "Длинный нож или короткий боевой клинок, тяжелее хозяйственного и лучше годится для боя. Охотники и солдаты часто носят такой на поясе.\n\nИспользуется с навыком «Нож». Пока учитывается в весе и стоимости; параметры атак появятся вместе с оружием.\n"
+  },
+  "small-shield": {
+    "name": "Малый щит",
+    "description": "Лёгкий круглый или квадратный щит на предплечье. Даёт небольшой бонус к защите и почти не сковывает руку.\n\nБонус защиты записан в колонке характеристик; к парированию, блоку и уклонению он будет применяться на этапе защит.\n"
+  },
+  "medium-shield": {
+    "name": "Средний щит",
+    "description": "Обычный щит воина, достаточно большой, чтобы прикрыть значительную часть тела. Даёт заметный бонус ко всем активным защитам против атак спереди.\n\nДовольно тяжёлый — это сказывается на нагрузке. Бонус будет учитываться в расчёте защит в следующей версии.\n"
+  },
+  "mail-shirt": {
+    "name": "Кольчужная рубаха",
+    "description": "Рубаха из сцепленных металлических колец, закрывающая торс. Хорошо держит рубящие удары, но хуже защищает от дробящих — об этом напоминает звёздочка в значении защиты.\n\nЧастый выбор солдат, которым нужна защита без полного доспеха. Надетая броня тоже считается переносимым весом.\n"
+  },
+  "leather-jacket": {
+    "name": "Кожаная куртка",
+    "description": "Плотная куртка из толстой кожи. Даёт лёгкую защиту и не привлекает внимания, поэтому подходит тем, кто хочет немного брони в городе.\n\nДостаточно лёгкая, чтобы сама по себе редко менять уровень нагрузки.\n"
+  },
+  "backpack-frame": {
+    "name": "Рюкзак на раме",
+    "description": "Большой рюкзак на жёсткой раме для долгих походов. Вмещает много снаряжения и распределяет нагрузку, но и сам довольно тяжёл.\n\nЭто контейнер: добавляйте в него вещи кнопкой + в его строке. Если отметить рюкзак как не переносимый, всё его содержимое тоже перестанет учитываться в нагрузке.\n"
+  },
+  "backpack-small": {
+    "name": "Рюкзак малый",
+    "description": "Простой заплечный мешок с запасом на день. Легче и дешевле рюкзака на раме, но вмещает гораздо меньше.\n\nЭто контейнер: вещи внутри учитываются в нагрузке, только пока рюкзак при персонаже.\n"
+  },
+  "personal-basics": {
+    "name": "Личные мелочи",
+    "description": "Небольшой набор повседневных мелочей: чем поесть, простые средства гигиены, чем развести огонь и прочее.\n\nБез него ведущий может назначать небольшие штрафы к выживанию и бытовым делам. Он дешёвый и лёгкий, так что большинство путников просто носят его с собой.\n"
+  },
+  "rope-10yd": {
+    "name": "Верёвка, 10 ярдов",
+    "description": "Моток обычной верёвки, выдерживающей одного человека. Пригодится для лазания, связывания и множества других дел.\n\nЕсли группа ждёт длинных спусков, купите несколько — укажите количество вместо новых строк.\n"
+  },
+  "torch": {
+    "name": "Факел",
+    "description": "Палка, обмотанная пропитанной смолой тканью; горит около часа, даёт свет и немного тепла. Им можно отпугнуть зверя.\n\nПока факел в руке, она занята. Для долгих вылазок под землю берите запасные.\n"
+  }
+};
