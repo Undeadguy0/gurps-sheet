@@ -22,7 +22,10 @@
 //! ```
 #![cfg_attr(test, allow(clippy::field_reassign_with_default))]
 
+pub mod l10n;
 pub mod script;
+
+pub use l10n::{Catalog, LocEntry};
 
 use gurps_core::{LibraryItemDef, TraitDef};
 use serde::{Deserialize, Serialize};
@@ -45,6 +48,8 @@ pub enum PluginError {
     MissingDependency { plugin: String, missing: String },
     #[error("dependency cycle: {}", .0.join(" -> "))]
     Cycle(Vec<String>),
+    #[error("{0}")]
+    Locale(String),
     #[error("duplicate plugin id '{0}'")]
     Duplicate(String),
 }
@@ -99,6 +104,9 @@ pub struct Plugin {
     pub weapons: Vec<LibraryItemDef>,
     #[serde(default)]
     pub modifiers: Vec<LibraryItemDef>,
+    /// Fluent translations from `locales/<lang>/*.ftl`.
+    #[serde(default)]
+    pub locales: Catalog,
     #[serde(skip)]
     pub path: PathBuf,
 }
@@ -145,6 +153,7 @@ pub fn load_plugin(dir: &Path) -> Result<Plugin, PluginError> {
         equipment: all.equipment,
         weapons: all.weapons,
         modifiers: all.modifiers,
+        locales: l10n::load_dir(dir)?,
         path: dir.to_path_buf(),
     })
 }
@@ -233,6 +242,15 @@ pub fn resolve_order(manifests: &[Manifest]) -> Result<Vec<String>, PluginError>
         visit(id, &map, &mut Vec::new(), &mut done, &mut out)?;
     }
     Ok(out)
+}
+
+/// Merged translations of all plugins (later plugins override earlier ones).
+pub fn translations(plugins: &[Plugin]) -> Catalog {
+    let mut c = Catalog::default();
+    for p in plugins {
+        c.merge(&p.locales);
+    }
+    c
 }
 
 /// Flattened trait library; later plugins override earlier ones by id.
