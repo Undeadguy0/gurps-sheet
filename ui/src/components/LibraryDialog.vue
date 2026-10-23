@@ -63,7 +63,7 @@ function reset() { query.value = ''; cat.value = ''; }
             <dd>
               <span v-if="!preview.features.length" class="muted">нет (только стоимость)</span>
               <span v-for="(f, i) in preview.features" :key="i" class="num">
-                {{ f.type === 'attribute_bonus' ? `${f.target} +${f.amount}` : `ST для груза +${f.amount}` }}{{ f.per_level ? '/ур.' : '' }}
+                {{ f.type === 'attribute_bonus' ? `${f.target} +${f.amount}` : f.type === 'lifting_st_bonus' ? `ST для груза +${f.amount}` : `ST для урона +${f.amount}` }}{{ f.per_level ? '/ур.' : '' }}
               </span>
             </dd>
           </dl>

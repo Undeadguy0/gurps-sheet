@@ -130,7 +130,7 @@ const heading = (g: Row['group']) => ({ primary: 'Атрибуты', secondary: 
         </template>
       </tbody>
     </table>
-    <p class="panel__footnote muted">
+    <p class="panel__footnote muted" :title="sheet.damage.explain?.join('\n')">
       Урон: толчок <span class="num">{{ sheet.damage.thrust }}</span> · замах <span class="num">{{ sheet.damage.swing }}</span>
       (ST {{ sheet.damage.based_on_st }})
     </p>

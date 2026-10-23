@@ -29,7 +29,7 @@ export interface Sheet {
   attributes: StatRow[];
   secondary: StatRow[];
   basic_lift: StatRow;
-  damage: { thrust: string; swing: string; based_on_st: number };
+  damage: { thrust: string; swing: string; based_on_st: number; st_value?: Value; explain?: string[] };
   points: PointsBreakdown;
 }
 
@@ -37,17 +37,18 @@ export type TraitCategory = 'advantage' | 'perk' | 'disadvantage' | 'quirk';
 
 export type Feature =
   | { type: 'attribute_bonus'; target: string; amount: number; per_level?: boolean }
-  | { type: 'lifting_st_bonus'; amount: number; per_level?: boolean };
+  | { type: 'lifting_st_bonus'; amount: number; per_level?: boolean }
+  | { type: 'striking_st_bonus'; amount: number; per_level?: boolean };
 
 export interface TraitDef {
   id: string; name: string; category: TraitCategory; cost: number; cost_per_level: number;
-  max_levels?: number | null; page?: string | null; features: Feature[];
+  max_levels?: number | null; min_levels?: number | null; page?: string | null; features: Feature[];
 }
 export interface LibraryEntry extends TraitDef { plugin: string }
 
 export interface TraitView {
   index: number; id: string; name: string; category: TraitCategory; levels: number;
-  leveled: boolean; cost: number; page?: string | null; source?: string | null;
+  leveled: boolean; min_level: number; cost: number; page?: string | null; source?: string | null;
 }
 
 export interface Issue { severity: 'error' | 'warning'; message: string }

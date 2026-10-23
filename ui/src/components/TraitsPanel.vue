@@ -65,7 +65,7 @@ const summary = computed(() => `Преим ${props.points.advantages + props.poi
           <td v-for="cell in row.getVisibleCells()" :key="cell.id" :class="['cell', `cell--${cell.column.id}`, { 'is-num': (cell.column.columnDef.meta as any)?.num }]">
             <template v-if="cell.column.id === 'levels'">
               <span v-if="row.original.leveled" class="stepper">
-                <button class="btn btn--step" type="button" aria-label="Уменьшить уровень" :disabled="row.original.levels <= 1"
+                <button class="btn btn--step" type="button" aria-label="Уменьшить уровень" :disabled="row.original.levels <= row.original.min_level"
                   @click="emit('setLevels', row.original.index, row.original.levels - 1)">−</button>
                 <span class="stepper__value num">{{ row.original.levels }}</span>
                 <button class="btn btn--step" type="button" aria-label="Увеличить уровень"

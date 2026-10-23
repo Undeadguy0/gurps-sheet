@@ -83,7 +83,7 @@ export class MockBackend {
     p.total = p.attributes + p.secondary + p.advantages + p.perks + p.disadvantages + p.quirks;
     p.unspent = p.budget - p.total;
     const traits: TraitView[] = this.traits.map((t, index) => ({ index, id: t.def.id, name: this.name_(t), category: t.def.category,
-      levels: t.levels, leveled: !!t.def.cost_per_level, cost: this.cost(t), page: t.def.page, source: t.source }));
+      levels: t.levels, leveled: !!t.def.cost_per_level, min_level: t.def.min_levels ?? (t.def.cost_per_level ? 1 : 0), cost: this.cost(t), page: t.def.page, source: t.source }));
     return {
       sheet: { name: this.name, attributes, secondary, basic_lift: this.row('BasicLift', blv),
         damage: { thrust: '—', swing: '—', based_on_st: tot.ST }, points: p },
