@@ -28,7 +28,7 @@ pub mod script;
 
 pub use l10n::{Catalog, LocEntry};
 
-use gurps_core::{EquipmentDef, LibraryItemDef, SkillDef, TechniqueDef, TraitDef};
+use gurps_core::{EquipmentDef, LibraryItemDef, SkillDef, TechniqueDef, TraitDef, WeaponDef};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -77,7 +77,7 @@ pub struct DataFile {
     #[serde(default)]
     pub equipment: Vec<EquipmentDef>,
     #[serde(default)]
-    pub weapons: Vec<LibraryItemDef>,
+    pub weapons: Vec<WeaponDef>,
     #[serde(default)]
     pub modifiers: Vec<LibraryItemDef>,
 }
@@ -107,7 +107,7 @@ pub struct Plugin {
     #[serde(default)]
     pub equipment: Vec<EquipmentDef>,
     #[serde(default)]
-    pub weapons: Vec<LibraryItemDef>,
+    pub weapons: Vec<WeaponDef>,
     #[serde(default)]
     pub modifiers: Vec<LibraryItemDef>,
     /// Fluent translations from `locales/<lang>/*.ftl`.
@@ -295,6 +295,11 @@ pub fn equipment_library(plugins: &[Plugin]) -> Vec<(String, EquipmentDef)> {
     flatten(plugins, |p| &p.equipment, |e| &e.id)
 }
 
+/// Flattened weapon library; later plugins override earlier ones by id.
+pub fn weapon_library(plugins: &[Plugin]) -> Vec<(String, WeaponDef)> {
+    flatten(plugins, |p| &p.weapons, |w| &w.id)
+}
+
 /// Flattened technique library; later plugins override earlier ones by id.
 pub fn technique_library(plugins: &[Plugin]) -> Vec<(String, TechniqueDef)> {
     flatten(plugins, |p| &p.techniques, |s| &s.id)
@@ -447,6 +452,8 @@ name = "Rope"
 [[weapons]]
 id = "w"
 name = "Sword"
+skill = "broadsword"
+attacks = [{ mode = "swing", damage = "sw+1", damage_type = "cut", reach = "1", parry = 0 }]
 description = "w"
 [[modifiers]]
 id = "m"
@@ -587,5 +594,41 @@ description = "m"
                 e.id
             );
         }
+    }
+
+    #[test]
+    fn sample_weapons() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+        let plugins = load_all(&root).unwrap();
+        let ws = weapon_library(&plugins);
+        let eq = equipment_library(&plugins);
+        let cat = translations(&plugins);
+        for id in ["broadsword", "small-knife", "punch", "kick"] {
+            assert!(ws.iter().any(|(_, w)| w.id == id), "{id}");
+        }
+        for (_, w) in &ws {
+            if let Some(e) = &w.equipment {
+                assert!(eq.iter().any(|(_, d)| &d.id == e), "{} -> {e}", w.id);
+            }
+            for a in &w.attacks {
+                assert!(
+                    gurps_core::DamageExpr::parse(&a.damage).is_some(),
+                    "{}",
+                    a.damage
+                );
+            }
+            assert!(cat.name("ru", "weapon", &w.id).is_some(), "ru {}", w.id);
+            assert!(cat.description("ru", "weapon", &w.id).is_some());
+        }
+        let kick = &ws.iter().find(|(_, w)| w.id == "kick").unwrap().1;
+        assert_eq!(kick.attacks[0].parry, None);
+        let cr = trait_library(&plugins)
+            .into_iter()
+            .find(|(_, t)| t.id == "combat-reflexes")
+            .unwrap()
+            .1;
+        assert!(
+            matches!(cr.features[0], gurps_core::Feature::DefenseBonus { amount, .. } if amount == 1.0)
+        );
     }
 }

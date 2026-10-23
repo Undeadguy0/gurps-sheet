@@ -6,6 +6,7 @@
 //! * [`dice`] — 3d6 success rolls with critical rules.
 #![cfg_attr(test, allow(clippy::field_reassign_with_default))]
 
+pub mod combat;
 pub mod dice;
 pub mod encumbrance;
 pub mod points;

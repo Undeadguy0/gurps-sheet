@@ -1,3 +1,4 @@
+use crate::combat::{Defenses, WeaponRow};
 use crate::encumbrance::Encumbrance;
 use crate::points::{self, PointsBreakdown};
 use crate::skills::{compute_skills, compute_techniques, SkillRow, TechniqueRow};
@@ -47,6 +48,8 @@ pub struct Sheet {
     #[serde(default)]
     pub techniques: Vec<TechniqueRow>,
     pub encumbrance: Encumbrance,
+    pub weapons: Vec<WeaponRow>,
+    pub defenses: Defenses,
     pub points: PointsBreakdown,
 }
 
@@ -102,6 +105,7 @@ fn trait_bonuses(ch: &Character) -> Bonuses {
                     striking.push((t.display_name(), a));
                 }
                 Feature::SkillBonus { .. } => {} // see skills::compute_skills
+                Feature::DefenseBonus { .. } => {} // see combat::compute_defenses
             }
         }
     }
@@ -249,6 +253,17 @@ pub fn compute_sheet(ch: &Character) -> Sheet {
         tot(Stat::BasicMove),
         tot(Stat::BasicSpeed),
     );
+    let weapons = crate::combat::compute_weapons(
+        ch,
+        &crate::combat::Ctx {
+            skills: &skills,
+            techniques: &techniques,
+            attr: &|s| totals.get(&s).copied().unwrap_or(10.0),
+            thrust: thr,
+            swing: sw,
+        },
+    );
+    let defenses = crate::combat::compute_defenses(ch, &weapons, &skills, &encumbrance);
     Sheet {
         name: ch.name.clone(),
         attributes,
@@ -264,6 +279,8 @@ pub fn compute_sheet(ch: &Character) -> Sheet {
         skills,
         techniques,
         encumbrance,
+        weapons,
+        defenses,
         points: points::breakdown(ch),
     }
 }

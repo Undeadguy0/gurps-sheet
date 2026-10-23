@@ -6,9 +6,11 @@
 pub mod damage;
 pub mod equipment;
 pub mod skill;
+pub mod weapon;
 
 pub use equipment::{Equipment, EquipmentDef};
 pub use skill::{Difficulty, Skill, SkillDef, SkillDefault, Technique, TechniqueDef};
+pub use weapon::{AttackDef, DamageExpr, SkillDamageBonus, Weapon, WeaponDef};
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -181,6 +183,15 @@ pub enum Feature {
         #[serde(default)]
         per_level: bool,
     },
+    /// Adds to active defences (Combat Reflexes: +1 to Dodge, Parry and Block).
+    /// `defenses` lists "dodge" / "parry" / "block"; empty = all three.
+    DefenseBonus {
+        amount: f64,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        defenses: Vec<String>,
+        #[serde(default)]
+        per_level: bool,
+    },
     /// Talent: adds `amount` (per level if `per_level`) to every listed skill id.
     SkillBonus {
         skills: Vec<String>,
@@ -265,7 +276,6 @@ impl LibraryItemDef {
 }
 
 pub type SpellDef = LibraryItemDef;
-pub type WeaponDef = LibraryItemDef;
 pub type ModifierDef = LibraryItemDef;
 
 /// Trait definition (from a plugin library).
@@ -379,6 +389,9 @@ pub struct Character {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub techniques: Vec<Technique>,
     pub equipment: Vec<Equipment>,
+    /// Weapons (library snapshots); linked ones show only while their equipment is owned.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub weapons: Vec<Weapon>,
     pub notes: String,
 }
 
@@ -393,6 +406,7 @@ impl Default for Character {
             skills: Vec::new(),
             techniques: Vec::new(),
             equipment: Vec::new(),
+            weapons: Vec::new(),
             notes: String::new(),
         }
     }
