@@ -9,9 +9,11 @@
 pub mod combat;
 pub mod dice;
 pub mod encumbrance;
+pub mod modifiers;
 pub mod points;
 pub mod sheet;
 pub mod skills;
+pub mod spells;
 pub mod validate;
 pub mod value;
 

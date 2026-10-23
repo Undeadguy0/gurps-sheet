@@ -10,7 +10,7 @@
 //! and any number of `data/*.toml` files with `[[traits]]` tables
 //! (see [`gurps_core::TraitDef`]), `[[skills]]` ([`gurps_core::SkillDef`]),
 //! `[[techniques]]` ([`gurps_core::TechniqueDef`]) and, optionally, `[[spells]]`,
-//! `[[equipment]]`, `[[weapons]]`, `[[modifiers]]` (see [`gurps_core::LibraryItemDef`]).
+//! `[[equipment]]`, `[[weapons]]`, `[[modifiers]]` ([`gurps_core::SpellDef`], [`gurps_core::ModifierDef`]).
 //!
 //! Every entry may carry an optional Markdown `description`, either a plain
 //! string or a localized table:
@@ -28,7 +28,9 @@ pub mod script;
 
 pub use l10n::{Catalog, LocEntry};
 
-use gurps_core::{EquipmentDef, LibraryItemDef, SkillDef, TechniqueDef, TraitDef, WeaponDef};
+use gurps_core::{
+    EquipmentDef, ModifierDef, SkillDef, SpellDef, TechniqueDef, TraitDef, WeaponDef,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -73,13 +75,13 @@ pub struct DataFile {
     #[serde(default)]
     pub techniques: Vec<TechniqueDef>,
     #[serde(default)]
-    pub spells: Vec<LibraryItemDef>,
+    pub spells: Vec<SpellDef>,
     #[serde(default)]
     pub equipment: Vec<EquipmentDef>,
     #[serde(default)]
     pub weapons: Vec<WeaponDef>,
     #[serde(default)]
-    pub modifiers: Vec<LibraryItemDef>,
+    pub modifiers: Vec<ModifierDef>,
 }
 
 impl DataFile {
@@ -103,13 +105,13 @@ pub struct Plugin {
     #[serde(default)]
     pub techniques: Vec<TechniqueDef>,
     #[serde(default)]
-    pub spells: Vec<LibraryItemDef>,
+    pub spells: Vec<SpellDef>,
     #[serde(default)]
     pub equipment: Vec<EquipmentDef>,
     #[serde(default)]
     pub weapons: Vec<WeaponDef>,
     #[serde(default)]
-    pub modifiers: Vec<LibraryItemDef>,
+    pub modifiers: Vec<ModifierDef>,
     /// Fluent translations from `locales/<lang>/*.ftl`.
     #[serde(default)]
     pub locales: Catalog,
@@ -300,6 +302,16 @@ pub fn weapon_library(plugins: &[Plugin]) -> Vec<(String, WeaponDef)> {
     flatten(plugins, |p| &p.weapons, |w| &w.id)
 }
 
+/// Flattened spell library; later plugins override earlier ones by id.
+pub fn spell_library(plugins: &[Plugin]) -> Vec<(String, SpellDef)> {
+    flatten(plugins, |p| &p.spells, |s| &s.id)
+}
+
+/// Flattened trait-modifier library; later plugins override earlier ones by id.
+pub fn modifier_library(plugins: &[Plugin]) -> Vec<(String, ModifierDef)> {
+    flatten(plugins, |p| &p.modifiers, |m| &m.id)
+}
+
 /// Flattened technique library; later plugins override earlier ones by id.
 pub fn technique_library(plugins: &[Plugin]) -> Vec<(String, TechniqueDef)> {
     flatten(plugins, |p| &p.techniques, |s| &s.id)
@@ -458,6 +470,7 @@ description = "w"
 [[modifiers]]
 id = "m"
 name = "Mod"
+cost_percent = -10
 description = "m"
 "#;
         let df: DataFile = toml::from_str(src).unwrap();
@@ -592,6 +605,44 @@ description = "m"
                 e.explanation("en").is_some_and(|d| d.contains("\n\n")),
                 "{}",
                 e.id
+            );
+        }
+    }
+
+    #[test]
+    fn sample_spells_and_modifiers() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+        let plugins = load_all(&root).unwrap();
+        let sp = spell_library(&plugins);
+        let md = modifier_library(&plugins);
+        let cat = translations(&plugins);
+        assert_eq!(sp.len(), 6);
+        assert_eq!(md.len(), 6);
+        assert!(sp
+            .iter()
+            .any(|(_, s)| s.difficulty == gurps_core::Difficulty::VeryHard));
+        assert!(sp
+            .iter()
+            .all(|(_, s)| s.attribute == gurps_core::Stat::IQ && !s.college.is_empty()));
+        assert!(
+            md.iter().any(|(_, m)| m.cost_percent > 0)
+                && md.iter().any(|(_, m)| m.cost_percent < 0)
+        );
+        for (_, s) in &sp {
+            assert!(s.explanation("en").is_some(), "{}", s.id);
+            assert!(cat.name("ru", "spell", &s.id).is_some(), "ru name {}", s.id);
+            assert!(
+                cat.description("ru", "spell", &s.id).is_some(),
+                "ru text {}",
+                s.id
+            );
+        }
+        for (_, m) in &md {
+            assert!(m.explanation("en").is_some(), "{}", m.id);
+            assert!(
+                cat.description("ru", "modifier", &m.id).is_some(),
+                "ru text {}",
+                m.id
             );
         }
     }

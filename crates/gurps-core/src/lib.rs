@@ -5,11 +5,15 @@
 
 pub mod damage;
 pub mod equipment;
+pub mod modifier;
 pub mod skill;
+pub mod spell;
 pub mod weapon;
 
 pub use equipment::{Equipment, EquipmentDef};
+pub use modifier::{modified_cost, ModifierDef, TraitModifier};
 pub use skill::{Difficulty, Skill, SkillDef, SkillDefault, Technique, TechniqueDef};
+pub use spell::{Spell, SpellDef};
 pub use weapon::{AttackDef, DamageExpr, SkillDamageBonus, Weapon, WeaponDef};
 
 use serde::{Deserialize, Serialize};
@@ -192,6 +196,15 @@ pub enum Feature {
         #[serde(default)]
         per_level: bool,
     },
+    /// Magery-style bonus to spell levels (`amount` per level, so Magery 0 adds nothing).
+    /// `colleges` limits it (empty = all spells).
+    SpellBonus {
+        amount: f64,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        colleges: Vec<String>,
+        #[serde(default)]
+        per_level: bool,
+    },
     /// Talent: adds `amount` (per level if `per_level`) to every listed skill id.
     SkillBonus {
         skills: Vec<String>,
@@ -275,9 +288,6 @@ impl LibraryItemDef {
     }
 }
 
-pub type SpellDef = LibraryItemDef;
-pub type ModifierDef = LibraryItemDef;
-
 /// Trait definition (from a plugin library).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TraitDef {
@@ -336,6 +346,9 @@ pub struct Trait {
     /// User's own explanation (Markdown); overrides the plugin text when non-blank.
     #[serde(default, skip_serializing_if = "is_blank")]
     pub explanation: Option<String>,
+    /// Enhancements and limitations.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modifiers: Vec<TraitModifier>,
 }
 
 impl Trait {
@@ -345,6 +358,7 @@ impl Trait {
             levels,
             source: None,
             explanation: None,
+            modifiers: Vec::new(),
         }
     }
 
@@ -361,8 +375,23 @@ impl Trait {
         !is_blank(&self.explanation)
     }
 
-    pub fn cost(&self) -> i32 {
+    /// Cost before modifiers.
+    pub fn base_cost(&self) -> i32 {
         self.def.cost + self.def.cost_per_level * self.levels as i32
+    }
+
+    /// Sum of modifier percentages (before the -80% floor).
+    pub fn modifier_percent(&self) -> i32 {
+        self.modifiers.iter().map(|m| m.def.cost_percent).sum()
+    }
+
+    /// Final cost: base cost with modifiers applied (see [`modified_cost`]).
+    pub fn cost(&self) -> i32 {
+        if self.modifiers.is_empty() {
+            self.base_cost()
+        } else {
+            modified_cost(self.base_cost(), self.modifier_percent())
+        }
     }
 
     /// Display name including level, e.g. "Lifting ST 3".
@@ -388,6 +417,8 @@ pub struct Character {
     pub skills: Vec<Skill>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub techniques: Vec<Technique>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub spells: Vec<Spell>,
     pub equipment: Vec<Equipment>,
     /// Weapons (library snapshots); linked ones show only while their equipment is owned.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -405,6 +436,7 @@ impl Default for Character {
             traits: Vec::new(),
             skills: Vec::new(),
             techniques: Vec::new(),
+            spells: Vec::new(),
             equipment: Vec::new(),
             weapons: Vec::new(),
             notes: String::new(),

@@ -144,7 +144,7 @@ fn best_skill<'a>(skills: &'a [SkillRow], id: &str) -> Option<&'a SkillRow> {
 }
 
 pub fn compute_weapons(ch: &Character, c: &Ctx) -> Vec<WeaponRow> {
-    let (bonus, _) = defense_bonuses(ch);
+    let (bonus, names) = defense_bonuses(ch);
     let mut owned: Vec<(&str, bool)> = Vec::new();
     walk(&ch.equipment, true, &mut |e, carried| {
         owned.push((e.def.id.as_str(), carried))
@@ -292,7 +292,7 @@ pub fn compute_weapons(ch: &Character, c: &Ctx) -> Vec<WeaponRow> {
                                     String::new()
                                 },
                                 if bonus[1] != 0 {
-                                    format!(" {}", sg(bonus[1]))
+                                    format!(" {} ({})", sg(bonus[1]), names.join(", "))
                                 } else {
                                     String::new()
                                 }

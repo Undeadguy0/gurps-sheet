@@ -28,6 +28,9 @@ pub struct PointsBreakdown {
     pub disadvantages: i32,
     pub quirks: i32,
     pub skills: i32,
+    /// Points in spells.
+    #[serde(default)]
+    pub spells: i32,
     pub total: i32,
     pub budget: i32,
     pub unspent: i32,
@@ -54,8 +57,15 @@ pub fn breakdown(ch: &Character) -> PointsBreakdown {
         *slot += t.cost();
     }
     b.skills = crate::skills::skill_points(ch);
-    b.total =
-        b.attributes + b.secondary + b.advantages + b.perks + b.disadvantages + b.quirks + b.skills;
+    b.spells = crate::spells::spell_points(ch);
+    b.total = b.attributes
+        + b.secondary
+        + b.advantages
+        + b.perks
+        + b.disadvantages
+        + b.quirks
+        + b.skills
+        + b.spells;
     b.unspent = b.budget - b.total;
     b
 }

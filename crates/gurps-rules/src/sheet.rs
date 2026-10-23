@@ -2,6 +2,7 @@ use crate::combat::{Defenses, WeaponRow};
 use crate::encumbrance::Encumbrance;
 use crate::points::{self, PointsBreakdown};
 use crate::skills::{compute_skills, compute_techniques, SkillRow, TechniqueRow};
+use crate::spells::SpellRow;
 use crate::value::{fmt_num, SourceKind, Value};
 use gurps_core::damage::basic_damage;
 use gurps_core::{Character, Feature, Stat};
@@ -47,6 +48,8 @@ pub struct Sheet {
     pub skills: Vec<SkillRow>,
     #[serde(default)]
     pub techniques: Vec<TechniqueRow>,
+    #[serde(default)]
+    pub spells: Vec<SpellRow>,
     pub encumbrance: Encumbrance,
     pub weapons: Vec<WeaponRow>,
     pub defenses: Defenses,
@@ -106,6 +109,7 @@ fn trait_bonuses(ch: &Character) -> Bonuses {
                 }
                 Feature::SkillBonus { .. } => {} // see skills::compute_skills
                 Feature::DefenseBonus { .. } => {} // see combat::compute_defenses
+                Feature::SpellBonus { .. } => {} // see spells::compute_spells
             }
         }
     }
@@ -246,6 +250,7 @@ pub fn compute_sheet(ch: &Character) -> Sheet {
         .collect();
     let skills = compute_skills(ch, &|s| totals.get(&s).copied().unwrap_or(10.0));
     let techniques = compute_techniques(ch, &skills);
+    let spells = crate::spells::compute_spells(ch, &|s| totals.get(&s).copied().unwrap_or(10.0));
     let tot = |s: Stat| totals.get(&s).copied().unwrap_or(0.0);
     let encumbrance = crate::encumbrance::compute(
         &ch.equipment,
@@ -278,6 +283,7 @@ pub fn compute_sheet(ch: &Character) -> Sheet {
         },
         skills,
         techniques,
+        spells,
         encumbrance,
         weapons,
         defenses,
