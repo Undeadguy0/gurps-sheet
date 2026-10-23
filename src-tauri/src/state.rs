@@ -295,7 +295,33 @@ pub struct SheetView {
     pub path: Option<String>,
     pub budget: i32,
     pub rules: gurps_core::RulesOptions,
+    pub session: SessionView,
+    pub history: HistoryView,
 }
+
+/// Current HP/FP at the table (session state, not build points).
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionView {
+    pub hp: i32,
+    pub hp_max: i32,
+    pub fp: i32,
+    pub fp_max: i32,
+}
+
+/// Undo/redo state for the header buttons; labels are Russian action names.
+#[derive(Debug, Clone, Serialize)]
+pub struct HistoryView {
+    pub can_undo: bool,
+    pub can_redo: bool,
+    pub undo_label: Option<String>,
+    pub redo_label: Option<String>,
+    pub undo_depth: usize,
+    /// Character differs from the last saved/loaded/new state.
+    pub dirty: bool,
+}
+
+/// Maximum number of undo steps kept.
+pub const HISTORY_LIMIT: usize = 200;
 
 #[derive(Debug)]
 pub struct AppState {
@@ -320,6 +346,13 @@ pub struct AppState {
     pub original_only: bool,
     /// Merged Fluent translations of all plugins.
     pub catalog: gurps_plugins::Catalog,
+    /// Undo stack: (action label, character before the action); newest last.
+    pub undo_stack: std::collections::VecDeque<(String, Character)>,
+    /// Redo stack: (action label, character after the action).
+    pub redo_stack: Vec<(String, Character)>,
+    /// Character as last saved/loaded/created (for the dirty flag).
+    pub saved: Character,
+    pub rng: SplitMix,
 }
 
 pub const DEFAULT_LOCALE: &str = "ru";
@@ -342,6 +375,10 @@ impl Default for AppState {
             locale: DEFAULT_LOCALE.into(),
             original_only: false,
             catalog: Default::default(),
+            undo_stack: Default::default(),
+            redo_stack: Vec::new(),
+            saved: Character::default(),
+            rng: SplitMix::from_time(),
         }
     }
 }
@@ -420,6 +457,8 @@ impl AppState {
             techniques: self.technique_views(&sheet),
             spells: self.spell_views(&sheet),
             rules: self.character.rules.clone(),
+            session: self.session_view(&sheet),
+            history: self.history_view(),
             equipment: self.equipment_views(),
             weapons: self.weapon_views(&sheet),
             sheet,
@@ -479,12 +518,151 @@ impl AppState {
             }
         }
         self.path = None;
+        self.reset_history();
         self.view()
+    }
+
+    fn reset_history(&mut self) {
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.saved = self.character.clone();
+    }
+
+    /// Runs one edit and records it for undo when the character changed.
+    /// On error the character is restored, so failed edits never leave half-changes.
+    pub fn record<T>(
+        &mut self,
+        label: impl Into<String>,
+        f: impl FnOnce(&mut Self) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let before = self.character.clone();
+        match f(self) {
+            Ok(v) => {
+                if self.character != before {
+                    let action: String = label.into();
+                    let label = match self.changed_item(&before) {
+                        Some(n) => format!("{action} «{n}»"),
+                        None => action,
+                    };
+                    self.undo_stack.push_back((label, before));
+                    while self.undo_stack.len() > HISTORY_LIMIT {
+                        self.undo_stack.pop_front();
+                    }
+                    self.redo_stack.clear();
+                }
+                Ok(v)
+            }
+            Err(e) => {
+                self.character = before;
+                Err(e)
+            }
+        }
+    }
+
+    /// Name (UI language) of the first list item that differs between `before` and the
+    /// current character: the added, removed or edited trait/skill/spell/…
+    fn changed_item(&self, before: &Character) -> Option<String> {
+        fn diff<T: PartialEq>(a: &[T], b: &[T]) -> Option<(bool, usize)> {
+            let i = a.iter().zip(b).position(|(x, y)| x != y);
+            match (i, a.len().cmp(&b.len())) {
+                (Some(i), std::cmp::Ordering::Greater) | (Some(i), std::cmp::Ordering::Equal) => {
+                    Some((a.len() > b.len(), i))
+                }
+                (Some(i), std::cmp::Ordering::Less) => Some((false, i)),
+                (None, std::cmp::Ordering::Equal) => None,
+                (None, std::cmp::Ordering::Greater) => Some((true, b.len())),
+                (None, std::cmp::Ordering::Less) => Some((false, a.len())),
+            }
+        }
+        let now = &self.character;
+        macro_rules! check {
+            ($field:ident, $kind:expr) => {
+                if let Some((from_before, i)) = diff(&before.$field, &now.$field) {
+                    let item = if from_before {
+                        &before.$field[i]
+                    } else {
+                        &now.$field[i]
+                    };
+                    return Some(
+                        self.translated_kind($kind, &item.def.id)
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| item.def.name.clone()),
+                    );
+                }
+            };
+        }
+        check!(traits, "trait");
+        check!(skills, "skill");
+        check!(techniques, "technique");
+        check!(spells, "spell");
+        check!(equipment, "equipment");
+        check!(weapons, "weapon");
+        None
+    }
+
+    pub fn undo(&mut self) -> Result<SheetView, String> {
+        let (label, prev) = self.undo_stack.pop_back().ok_or("nothing to undo")?;
+        let cur = std::mem::replace(&mut self.character, prev);
+        self.redo_stack.push((label, cur));
+        Ok(self.view())
+    }
+
+    pub fn redo(&mut self) -> Result<SheetView, String> {
+        let (label, next) = self.redo_stack.pop().ok_or("nothing to redo")?;
+        let cur = std::mem::replace(&mut self.character, next);
+        self.undo_stack.push_back((label, cur));
+        Ok(self.view())
+    }
+
+    pub fn history_view(&self) -> HistoryView {
+        HistoryView {
+            can_undo: !self.undo_stack.is_empty(),
+            can_redo: !self.redo_stack.is_empty(),
+            undo_label: self.undo_stack.back().map(|(l, _)| l.clone()),
+            redo_label: self.redo_stack.last().map(|(l, _)| l.clone()),
+            undo_depth: self.undo_stack.len(),
+            dirty: self.character != self.saved,
+        }
+    }
+
+    fn session_view(&self, sheet: &gurps_rules::Sheet) -> SessionView {
+        let max = |st: Stat| sheet.row(st).map(|r| r.total.floor() as i32).unwrap_or(10);
+        let (hp_max, fp_max) = (max(Stat::HP), max(Stat::FP));
+        let ss = &self.character.session;
+        SessionView {
+            hp: ss.hp.unwrap_or(hp_max),
+            hp_max,
+            fp: ss.fp.unwrap_or(fp_max),
+            fp_max,
+        }
+    }
+
+    /// Sets current HP or FP (`None` = reset to maximum). HP is kept within
+    /// [-5×max, max] (death threshold, B327 # unverified), FP within [-max, max].
+    pub fn set_current(&mut self, stat: &str, value: Option<i32>) -> Result<SheetView, String> {
+        let sheet = gurps_rules::compute_sheet(&self.character);
+        let sv = self.session_view(&sheet);
+        let ss = &mut self.character.session;
+        match stat {
+            "HP" => {
+                ss.hp = value
+                    .map(|v| v.clamp(-5 * sv.hp_max, sv.hp_max))
+                    .filter(|&v| v != sv.hp_max)
+            }
+            "FP" => {
+                ss.fp = value
+                    .map(|v| v.clamp(-sv.fp_max, sv.fp_max))
+                    .filter(|&v| v != sv.fp_max)
+            }
+            _ => return Err(format!("unknown session value {stat}")),
+        }
+        Ok(self.view())
     }
 
     pub fn load(&mut self, path: &str) -> Result<SheetView, String> {
         self.character = gurps_io::load(path).map_err(|e| e.to_string())?;
         self.path = Some(path.into());
+        self.reset_history();
         Ok(self.view())
     }
 
@@ -495,6 +673,7 @@ impl AppState {
             .ok_or("no file path given")?;
         gurps_io::save(&p, &self.character).map_err(|e| e.to_string())?;
         self.path = Some(p.clone());
+        self.saved = self.character.clone();
         Ok(p.display().to_string())
     }
 
@@ -1402,8 +1581,25 @@ impl AppState {
         Ok(self.view())
     }
 
-    pub fn roll(target: i32, modifier: i32) -> RollResult {
-        success_roll(target, modifier, &mut SplitMix::from_time())
+    /// 3d6 success roll; `seed` makes it deterministic (tests, replays).
+    pub fn roll(&mut self, target: i32, modifier: i32, seed: Option<u64>) -> RollResult {
+        match seed {
+            Some(s) => success_roll(target, modifier, &mut SplitMix(s)),
+            None => success_roll(target, modifier, &mut self.rng),
+        }
+    }
+
+    pub fn roll_damage(
+        &mut self,
+        expr: &str,
+        crushing: bool,
+        seed: Option<u64>,
+    ) -> Result<gurps_rules::dice::DamageRoll, String> {
+        let r = match seed {
+            Some(s) => gurps_rules::dice::damage_roll(expr, crushing, &mut SplitMix(s)),
+            None => gurps_rules::dice::damage_roll(expr, crushing, &mut self.rng),
+        };
+        r.ok_or_else(|| format!("cannot parse damage {expr}"))
     }
 }
 
@@ -1434,6 +1630,95 @@ mod tests {
         assert!(s.remove_trait(5).is_err());
         assert!(s.set_attribute("BasicLift", 1).is_err());
         assert!(s.add_trait("nope", None).is_err());
+    }
+
+    #[test]
+    fn undo_redo_history() {
+        let mut s = state();
+        s.new_character(Some("Hero".into()));
+        assert!(!s.history_view().can_undo && !s.history_view().dirty);
+        s.record("изменение ST", |s| s.set_attribute("ST", 2))
+            .unwrap();
+        s.record("добавление черты", |s| {
+            s.add_trait("combat-reflexes", None)
+        })
+        .unwrap();
+        let h = s.history_view();
+        assert_eq!(h.undo_depth, 2);
+        assert_eq!(
+            h.undo_label.as_deref(),
+            Some("добавление черты «Боевые рефлексы»")
+        );
+        assert!(h.dirty);
+        // failed edit: not recorded, character untouched
+        assert!(s.record("x", |s| s.remove_trait(9)).is_err());
+        // no-op edit: not recorded
+        s.record("изменение ST", |s| s.set_attribute("ST", 2))
+            .unwrap();
+        assert_eq!(s.history_view().undo_depth, 2);
+        let v = s.undo().unwrap();
+        assert!(v.traits.is_empty());
+        assert_eq!(
+            v.history.redo_label.as_deref(),
+            Some("добавление черты «Боевые рефлексы»")
+        );
+        s.undo().unwrap();
+        assert!(!s.history_view().dirty, "back at the new-character state");
+        assert!(s.undo().is_err());
+        let v = s.redo().unwrap();
+        assert_eq!(v.sheet.points.attributes, 20);
+        // a new edit clears redo
+        s.record("переименование", |s| {
+            Ok(s.set_name("B".into()))
+        })
+        .unwrap();
+        assert!(!s.history_view().can_redo);
+        assert!(s.redo().is_err());
+        // bounded
+        for i in 0..250 {
+            s.record("изменение DX", |s| {
+                s.set_attribute("DX", i % 7 + 1)
+            })
+            .unwrap();
+        }
+        assert_eq!(s.history_view().undo_depth, HISTORY_LIMIT);
+        // session values are undoable and separate from build points
+        let pts = s.view().sheet.points.total;
+        let v = s
+            .record("текущие HP", |s| s.set_current("HP", Some(4)))
+            .unwrap();
+        assert_eq!(
+            (v.session.hp, v.session.hp_max, v.sheet.points.total),
+            (4, 12, pts)
+        );
+        assert_eq!(s.set_current("HP", Some(-500)).unwrap().session.hp, -60);
+        assert_eq!(s.set_current("FP", Some(99)).unwrap().session.fp, 10);
+        assert!(s.character.session.fp.is_none(), "max is stored as None");
+        s.undo().unwrap();
+        assert_eq!(s.view().session.hp, 12);
+        assert!(s.set_current("XP", None).is_err());
+        // load/new clear history; save resets dirty
+        let dir = std::env::temp_dir().join("gurps-undo-test.json");
+        s.save(Some(dir.display().to_string())).unwrap();
+        assert!(!s.history_view().dirty && s.history_view().can_undo);
+        s.load(&dir.display().to_string()).unwrap();
+        assert!(!s.history_view().can_undo && !s.history_view().can_redo);
+        s.new_character(None);
+        assert_eq!(s.history_view().undo_depth, 0);
+    }
+
+    #[test]
+    fn seeded_rolls() {
+        let mut s = state();
+        let a = s.roll(12, -1, Some(42));
+        assert_eq!(a, s.roll(12, -1, Some(42)));
+        assert_eq!(a.effective, 11);
+        assert_eq!(a.margin, 11 - a.roll);
+        assert_eq!(a.outcome, gurps_rules::dice::outcome(a.roll, 11));
+        let d = s.roll_damage("2d-1", false, Some(5)).unwrap();
+        assert_eq!(d, s.roll_damage("2d-1", false, Some(5)).unwrap());
+        assert_eq!(d.dice.len(), 2);
+        assert!(s.roll_damage("zz", false, None).is_err());
     }
 
     #[test]

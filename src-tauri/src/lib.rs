@@ -1,6 +1,6 @@
 mod state;
 
-use gurps_rules::dice::RollResult;
+use gurps_rules::dice::{DamageRoll, RollResult};
 pub use state::{AppState, SheetView};
 use state::{
     EquipmentLibEntry, LibraryEntry, LocaleInfo, ModifierLibEntry, PluginStatus, SkillLibrary,
@@ -14,6 +14,17 @@ type S<'a> = State<'a, Mutex<AppState>>;
 
 fn lock<'a>(s: &'a S) -> std::sync::MutexGuard<'a, AppState> {
     s.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Runs an undoable character edit and returns the fresh view (with history state).
+fn edit(
+    state: &S,
+    label: impl Into<String>,
+    f: impl FnOnce(&mut AppState) -> Result<SheetView, String>,
+) -> Result<SheetView, String> {
+    let mut st = lock(state);
+    st.record(label, f)?;
+    Ok(st.view())
 }
 
 #[tauri::command]
@@ -33,32 +44,44 @@ fn save(state: S, path: Option<String>) -> Result<String, String> {
 
 #[tauri::command]
 fn set_negative_rounding(state: S, mode: String) -> Result<SheetView, String> {
-    lock(&state).set_negative_rounding(&mode)
+    edit(&state, "правило округления", |s| {
+        s.set_negative_rounding(&mode)
+    })
 }
 
 #[tauri::command]
 fn set_attribute(state: S, key: String, level: i32) -> Result<SheetView, String> {
-    lock(&state).set_attribute(&key, level)
+    edit(&state, format!("изменение {key}"), |s| {
+        s.set_attribute(&key, level)
+    })
 }
 
 #[tauri::command]
-fn set_name(state: S, name: String) -> SheetView {
-    lock(&state).set_name(name)
+fn set_name(state: S, name: String) -> Result<SheetView, String> {
+    edit(&state, "переименование", |s| {
+        Ok(s.set_name(name))
+    })
 }
 
 #[tauri::command]
 fn add_trait(state: S, id: String, levels: Option<u32>) -> Result<SheetView, String> {
-    lock(&state).add_trait(&id, levels)
+    edit(&state, "добавление черты", |s| {
+        s.add_trait(&id, levels)
+    })
 }
 
 #[tauri::command]
 fn set_trait_levels(state: S, index: usize, levels: u32) -> Result<SheetView, String> {
-    lock(&state).set_trait_levels(index, levels)
+    edit(&state, "уровень черты", |s| {
+        s.set_trait_levels(index, levels)
+    })
 }
 
 #[tauri::command]
 fn remove_trait(state: S, index: usize) -> Result<SheetView, String> {
-    lock(&state).remove_trait(index)
+    edit(&state, "удаление черты", |s| {
+        s.remove_trait(index)
+    })
 }
 
 #[tauri::command]
@@ -67,7 +90,9 @@ fn set_trait_explanation(
     index: usize,
     text: Option<String>,
 ) -> Result<SheetView, String> {
-    lock(&state).set_trait_explanation(index, text)
+    edit(&state, "пояснение черты", |s| {
+        s.set_trait_explanation(index, text)
+    })
 }
 
 #[tauri::command]
@@ -102,12 +127,16 @@ fn add_skill(
     specialization: Option<String>,
     points: Option<i32>,
 ) -> Result<SheetView, String> {
-    lock(&state).add_skill(&id, specialization, points)
+    edit(&state, "добавление навыка", |s| {
+        s.add_skill(&id, specialization, points)
+    })
 }
 
 #[tauri::command]
 fn set_skill_points(state: S, index: usize, points: i32) -> Result<SheetView, String> {
-    lock(&state).set_skill_points(index, points)
+    edit(&state, "очки навыка", |s| {
+        s.set_skill_points(index, points)
+    })
 }
 
 #[tauri::command]
@@ -116,7 +145,9 @@ fn set_skill_specialization(
     index: usize,
     specialization: Option<String>,
 ) -> Result<SheetView, String> {
-    lock(&state).set_skill_specialization(index, specialization)
+    edit(&state, "специализация навыка", |s| {
+        s.set_skill_specialization(index, specialization)
+    })
 }
 
 #[tauri::command]
@@ -125,22 +156,30 @@ fn set_skill_explanation(
     index: usize,
     text: Option<String>,
 ) -> Result<SheetView, String> {
-    lock(&state).set_skill_explanation(index, text)
+    edit(&state, "пояснение навыка", |s| {
+        s.set_skill_explanation(index, text)
+    })
 }
 
 #[tauri::command]
 fn remove_skill(state: S, index: usize) -> Result<SheetView, String> {
-    lock(&state).remove_skill(index)
+    edit(&state, "удаление навыка", |s| {
+        s.remove_skill(index)
+    })
 }
 
 #[tauri::command]
 fn add_technique(state: S, id: String, points: Option<i32>) -> Result<SheetView, String> {
-    lock(&state).add_technique(&id, points)
+    edit(&state, "добавление приёма", |s| {
+        s.add_technique(&id, points)
+    })
 }
 
 #[tauri::command]
 fn set_technique_points(state: S, index: usize, points: i32) -> Result<SheetView, String> {
-    lock(&state).set_technique_points(index, points)
+    edit(&state, "очки приёма", |s| {
+        s.set_technique_points(index, points)
+    })
 }
 
 #[tauri::command]
@@ -149,12 +188,16 @@ fn set_technique_explanation(
     index: usize,
     text: Option<String>,
 ) -> Result<SheetView, String> {
-    lock(&state).set_technique_explanation(index, text)
+    edit(&state, "пояснение приёма", |s| {
+        s.set_technique_explanation(index, text)
+    })
 }
 
 #[tauri::command]
 fn remove_technique(state: S, index: usize) -> Result<SheetView, String> {
-    lock(&state).remove_technique(index)
+    edit(&state, "удаление приёма", |s| {
+        s.remove_technique(index)
+    })
 }
 
 #[tauri::command]
@@ -169,17 +212,23 @@ fn add_equipment(
     quantity: Option<u32>,
     parent: Option<Vec<usize>>,
 ) -> Result<SheetView, String> {
-    lock(&state).add_equipment(&id, quantity, parent)
+    edit(&state, "добавление снаряжения", |s| {
+        s.add_equipment(&id, quantity, parent)
+    })
 }
 
 #[tauri::command]
 fn set_equipment_quantity(state: S, path: Vec<usize>, quantity: u32) -> Result<SheetView, String> {
-    lock(&state).set_equipment_quantity(&path, quantity)
+    edit(&state, "количество снаряжения", |s| {
+        s.set_equipment_quantity(&path, quantity)
+    })
 }
 
 #[tauri::command]
 fn set_equipment_carried(state: S, path: Vec<usize>, carried: bool) -> Result<SheetView, String> {
-    lock(&state).set_equipment_carried(&path, carried)
+    edit(&state, "при себе / оставлено", |s| {
+        s.set_equipment_carried(&path, carried)
+    })
 }
 
 #[tauri::command]
@@ -188,12 +237,16 @@ fn set_equipment_explanation(
     path: Vec<usize>,
     text: Option<String>,
 ) -> Result<SheetView, String> {
-    lock(&state).set_equipment_explanation(&path, text)
+    edit(&state, "пояснение снаряжения", |s| {
+        s.set_equipment_explanation(&path, text)
+    })
 }
 
 #[tauri::command]
 fn remove_equipment(state: S, path: Vec<usize>) -> Result<SheetView, String> {
-    lock(&state).remove_equipment(&path)
+    edit(&state, "удаление снаряжения", |s| {
+        s.remove_equipment(&path)
+    })
 }
 
 #[tauri::command]
@@ -203,12 +256,16 @@ fn list_weapon_library(state: S) -> Vec<WeaponLibEntry> {
 
 #[tauri::command]
 fn add_weapon(state: S, id: String) -> Result<SheetView, String> {
-    lock(&state).add_weapon(&id)
+    edit(&state, "добавление оружия", |s| {
+        s.add_weapon(&id)
+    })
 }
 
 #[tauri::command]
 fn remove_weapon(state: S, index: usize) -> Result<SheetView, String> {
-    lock(&state).remove_weapon(index)
+    edit(&state, "удаление оружия", |s| {
+        s.remove_weapon(index)
+    })
 }
 
 #[tauri::command]
@@ -217,7 +274,9 @@ fn set_weapon_explanation(
     index: usize,
     text: Option<String>,
 ) -> Result<SheetView, String> {
-    lock(&state).set_weapon_explanation(index, text)
+    edit(&state, "пояснение оружия", |s| {
+        s.set_weapon_explanation(index, text)
+    })
 }
 
 #[tauri::command]
@@ -227,12 +286,16 @@ fn list_spell_library(state: S) -> Vec<SpellLibEntry> {
 
 #[tauri::command]
 fn add_spell(state: S, id: String, points: Option<i32>) -> Result<SheetView, String> {
-    lock(&state).add_spell(&id, points)
+    edit(&state, "добавление заклинания", |s| {
+        s.add_spell(&id, points)
+    })
 }
 
 #[tauri::command]
 fn set_spell_points(state: S, index: usize, points: i32) -> Result<SheetView, String> {
-    lock(&state).set_spell_points(index, points)
+    edit(&state, "очки заклинания", |s| {
+        s.set_spell_points(index, points)
+    })
 }
 
 #[tauri::command]
@@ -241,12 +304,16 @@ fn set_spell_explanation(
     index: usize,
     text: Option<String>,
 ) -> Result<SheetView, String> {
-    lock(&state).set_spell_explanation(index, text)
+    edit(&state, "пояснение заклинания", |s| {
+        s.set_spell_explanation(index, text)
+    })
 }
 
 #[tauri::command]
 fn remove_spell(state: S, index: usize) -> Result<SheetView, String> {
-    lock(&state).remove_spell(index)
+    edit(&state, "удаление заклинания", |s| {
+        s.remove_spell(index)
+    })
 }
 
 #[tauri::command]
@@ -256,12 +323,18 @@ fn list_modifier_library(state: S) -> Vec<ModifierLibEntry> {
 
 #[tauri::command]
 fn add_trait_modifier(state: S, trait_index: usize, id: String) -> Result<SheetView, String> {
-    lock(&state).add_trait_modifier(trait_index, &id)
+    edit(
+        &state,
+        "добавление модификатора",
+        |s| s.add_trait_modifier(trait_index, &id),
+    )
 }
 
 #[tauri::command]
 fn remove_trait_modifier(state: S, trait_index: usize, index: usize) -> Result<SheetView, String> {
-    lock(&state).remove_trait_modifier(trait_index, index)
+    edit(&state, "удаление модификатора", |s| {
+        s.remove_trait_modifier(trait_index, index)
+    })
 }
 
 #[tauri::command]
@@ -271,12 +344,44 @@ fn set_modifier_explanation(
     index: usize,
     text: Option<String>,
 ) -> Result<SheetView, String> {
-    lock(&state).set_modifier_explanation(trait_index, index, text)
+    edit(&state, "пояснение модификатора", |s| {
+        s.set_modifier_explanation(trait_index, index, text)
+    })
 }
 
 #[tauri::command]
-fn roll(target: i32, modifier: Option<i32>) -> RollResult {
-    AppState::roll(target, modifier.unwrap_or(0))
+fn roll(state: S, target: i32, modifier: Option<i32>, seed: Option<u64>) -> RollResult {
+    lock(&state).roll(target, modifier.unwrap_or(0), seed)
+}
+
+#[tauri::command]
+fn roll_damage(
+    state: S,
+    expr: String,
+    crushing: Option<bool>,
+    seed: Option<u64>,
+) -> Result<DamageRoll, String> {
+    lock(&state).roll_damage(&expr, crushing.unwrap_or(false), seed)
+}
+
+#[tauri::command]
+fn undo(state: S) -> Result<SheetView, String> {
+    lock(&state).undo()
+}
+
+#[tauri::command]
+fn redo(state: S) -> Result<SheetView, String> {
+    lock(&state).redo()
+}
+
+/// Current HP/FP at the table; `value: null` resets to maximum. Undoable.
+#[tauri::command]
+fn set_current(state: S, stat: String, value: Option<i32>) -> Result<SheetView, String> {
+    let label = match (stat.as_str(), value) {
+        ("HP", None) | ("FP", None) => format!("сброс {stat}"),
+        _ => format!("текущие {stat}"),
+    };
+    edit(&state, label, |s| s.set_current(&stat, value))
 }
 
 /// Plugin directory candidates, in priority order:
@@ -377,7 +482,11 @@ pub fn run() {
             set_modifier_explanation,
             plugin_status,
             reload_plugins,
-            roll
+            roll,
+            roll_damage,
+            undo,
+            redo,
+            set_current
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

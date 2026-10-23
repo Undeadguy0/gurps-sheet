@@ -129,6 +129,41 @@ pub fn success_roll(target: i32, modifier: i32, rng: &mut impl DiceRng) -> RollR
     }
 }
 
+/// A damage roll (e.g. "2d-1"): dice, adds and the total with the minimum applied
+/// (B378, # unverified: 0 for crushing, otherwise 1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DamageRoll {
+    pub expr: String,
+    pub dice: Vec<u8>,
+    pub adds: i32,
+    pub total: i32,
+}
+
+/// Parses "NdM", "Nd", "Nd+K", "Nd-K" (ignores a trailing damage type).
+pub fn parse_dice(expr: &str) -> Option<(u32, i32)> {
+    let s = expr.split_whitespace().next()?;
+    let (n, rest) = s.split_once('d')?;
+    let n: u32 = n.parse().ok()?;
+    let adds = if rest.is_empty() {
+        0
+    } else {
+        rest.parse().ok()?
+    };
+    (n > 0 && n <= 100).then_some((n, adds))
+}
+
+pub fn damage_roll(expr: &str, crushing: bool, rng: &mut impl DiceRng) -> Option<DamageRoll> {
+    let (n, adds) = parse_dice(expr)?;
+    let dice: Vec<u8> = (0..n).map(|_| rng.d6()).collect();
+    let sum = dice.iter().map(|&d| d as i32).sum::<i32>() + adds;
+    Some(DamageRoll {
+        expr: expr.into(),
+        dice,
+        adds,
+        total: sum.max(if crushing { 0 } else { 1 }),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::Outcome::*;
@@ -184,6 +219,27 @@ mod tests {
         assert_eq!(r.outcome, CriticalSuccess);
         let mut rng = FixedDice::new(vec![6]);
         assert_eq!(success_roll(20, 0, &mut rng).outcome, CriticalFailure);
+    }
+
+    #[test]
+    fn damage_rolls() {
+        assert_eq!(parse_dice("2d-1"), Some((2, -1)));
+        assert_eq!(parse_dice("1d"), Some((1, 0)));
+        assert_eq!(parse_dice("1d+2 cut"), Some((1, 2)));
+        assert_eq!(parse_dice("x"), None);
+        let mut rng = FixedDice::new(vec![1]);
+        let r = damage_roll("1d-3", false, &mut rng).unwrap();
+        assert_eq!((r.dice.clone(), r.total), (vec![1], 1));
+        assert_eq!(damage_roll("1d-3", true, &mut rng).unwrap().total, 0);
+        let mut rng = FixedDice::new(vec![6, 5]);
+        assert_eq!(damage_roll("2d+1", false, &mut rng).unwrap().total, 12);
+    }
+
+    #[test]
+    fn seeded_is_deterministic() {
+        let a = success_roll(12, 0, &mut SplitMix(7));
+        let b = success_roll(12, 0, &mut SplitMix(7));
+        assert_eq!(a, b);
     }
 
     #[test]

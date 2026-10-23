@@ -434,6 +434,25 @@ pub struct Character {
     /// Optional rules switches (house rules), stored with the character.
     #[serde(skip_serializing_if = "RulesOptions::is_default")]
     pub rules: RulesOptions,
+    /// Play-session state (current HP/FP); separate from build points.
+    #[serde(skip_serializing_if = "Session::is_default")]
+    pub session: Session,
+}
+
+/// Current values at the table. `None` = at maximum.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Session {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hp: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fp: Option<i32>,
+}
+
+impl Session {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// Per-character rules options.
@@ -465,6 +484,7 @@ impl Default for Character {
             weapons: Vec::new(),
             notes: String::new(),
             rules: RulesOptions::default(),
+            session: Session::default(),
         }
     }
 }
