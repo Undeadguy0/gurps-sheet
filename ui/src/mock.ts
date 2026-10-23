@@ -1,0 +1,118 @@
+// Browser-preview backend. Used ONLY when the UI runs outside Tauri (plain Vite dev),
+// so designers can work on the UI without the Rust app. The source of truth for all
+// rules is the Rust crate `gurps-rules`; this is a simplified mirror of it.
+import type {
+  LibraryEntry, RollResult, SheetView, StatRow, TraitDef, TraitView, Value, Outcome,
+} from './types';
+
+interface MockTrait { def: TraitDef; levels: number; source: string }
+
+const COST: Record<string, number> = {
+  ST: 10, DX: 20, IQ: 20, HT: 10, HP: 2, Will: 5, Per: 5, FP: 3, BasicSpeed: 5, BasicMove: 5,
+};
+const LABEL: Record<string, string> = { BasicSpeed: 'Basic Speed', BasicMove: 'Basic Move', BasicLift: 'Basic Lift' };
+const PRIMARY = ['ST', 'DX', 'IQ', 'HT'];
+const SECONDARY = ['HP', 'Will', 'Per', 'FP', 'BasicSpeed', 'BasicMove'];
+
+const LIBRARY: LibraryEntry[] = [
+  { plugin: 'basic-set-sample', id: 'increased-st-example', name: 'Increased ST (example)', category: 'advantage', cost: 0, cost_per_level: 10, page: 'example', features: [{ type: 'attribute_bonus', target: 'ST', amount: 1, per_level: true }] },
+  { plugin: 'basic-set-sample', id: 'lifting-st', name: 'Lifting ST', category: 'advantage', cost: 0, cost_per_level: 3, page: 'B65', features: [{ type: 'lifting_st_bonus', amount: 1, per_level: true }] },
+  { plugin: 'basic-set-sample', id: 'combat-reflexes', name: 'Combat Reflexes', category: 'advantage', cost: 15, cost_per_level: 0, page: 'B43', features: [] },
+  { plugin: 'basic-set-sample', id: 'overconfidence', name: 'Overconfidence', category: 'disadvantage', cost: -5, cost_per_level: 0, page: 'B148', features: [] },
+];
+
+const fmt = (v: number) => (Number.isInteger(v) ? String(v) : String(+v.toFixed(2)));
+const bl = (st: number) => { const v = (st * st) / 5; return v >= 10 ? Math.round(v) : Math.round(v * 10) / 10; };
+
+export function outcome(roll: number, skill: number): Outcome {
+  if (roll <= 4 || (roll === 5 && skill >= 15) || (roll === 6 && skill >= 16)) return 'critical_success';
+  if (roll === 18) return 'critical_failure';
+  if (roll === 17) return skill <= 15 ? 'critical_failure' : 'failure';
+  if (roll >= skill + 10) return 'critical_failure';
+  return roll <= skill ? 'success' : 'failure';
+}
+
+export class MockBackend {
+  name = 'Пример (браузер)';
+  levels: Record<string, number> = {};
+  traits: MockTrait[] = [];
+
+  private name_(t: MockTrait) { return t.def.cost_per_level ? `${t.def.name} ${t.levels}` : t.def.name; }
+  private cost(t: MockTrait) { return t.def.cost + t.def.cost_per_level * t.levels; }
+
+  private row(key: string, v: Value): StatRow {
+    const level = this.levels[key] ?? 0;
+    const total = v.base + v.contributions.reduce((a, c) => a + c.amount, 0);
+    const explain = [`base ${fmt(v.base)} (${v.base_reason})`,
+      ...v.contributions.map((c) => `${c.amount >= 0 ? '+' : ''}${fmt(c.amount)} ${c.reason}`), `= ${fmt(total)}`];
+    return { key, label: LABEL[key] ?? key, level, points: level * (COST[key] ?? 0), total, value: v, explain };
+  }
+
+  private value(key: string, base: number, reason: string): Value {
+    const v: Value = { base, base_reason: reason, contributions: [] };
+    const lv = this.levels[key] ?? 0;
+    const step = key === 'BasicSpeed' ? 0.25 : 1;
+    if (lv) v.contributions.push({ source: { kind: 'purchased' }, amount: lv * step, reason: `purchased (${lv * COST[key]} pts)` });
+    for (const t of this.traits) for (const f of t.def.features)
+      if (f.type === 'attribute_bonus' && f.target === key) {
+        const n = this.name_(t);
+        v.contributions.push({ source: { kind: 'trait', ref: n }, amount: f.per_level ? f.amount * Math.max(1, t.levels) : f.amount, reason: `from trait ${n}` });
+      }
+    return v;
+  }
+
+  view(): SheetView {
+    const tot: Record<string, number> = {};
+    const attributes = PRIMARY.map((k) => { const r = this.row(k, this.value(k, 10, 'default')); tot[k] = r.total; return r; });
+    const secondary: StatRow[] = [];
+    for (const k of SECONDARY) {
+      const [b, why] = k === 'HP' ? [tot.ST, `= ST ${tot.ST}`] : k === 'Will' || k === 'Per' ? [tot.IQ, `= IQ ${tot.IQ}`]
+        : k === 'FP' ? [tot.HT, `= HT ${tot.HT}`] : k === 'BasicSpeed' ? [(tot.DX + tot.HT) / 4, `= (DX ${tot.DX} + HT ${tot.HT}) / 4`]
+        : [Math.floor(tot.BasicSpeed), `= floor(Basic Speed ${fmt(tot.BasicSpeed)})`];
+      const r = this.row(k, this.value(k, b as number, why as string)); tot[k] = r.total; secondary.push(r);
+    }
+    let liftSt = tot.ST; const blv: Value = { base: bl(tot.ST), base_reason: `= ST ${tot.ST}² / 5`, contributions: [] };
+    for (const t of this.traits) for (const f of t.def.features) if (f.type === 'lifting_st_bonus') {
+      const prev = bl(liftSt); liftSt += f.per_level ? f.amount * Math.max(1, t.levels) : f.amount;
+      blv.contributions.push({ source: { kind: 'trait', ref: this.name_(t) }, amount: bl(liftSt) - prev, reason: `from trait ${this.name_(t)} (ST ${liftSt} for lifting)` });
+    }
+    const sum = (ks: string[]) => ks.reduce((a, k) => a + (this.levels[k] ?? 0) * COST[k], 0);
+    const cat = (c: string) => this.traits.filter((t) => t.def.category === c).reduce((a, t) => a + this.cost(t), 0);
+    const p = { attributes: sum(PRIMARY), secondary: sum(SECONDARY), advantages: cat('advantage'), perks: cat('perk'),
+      disadvantages: cat('disadvantage'), quirks: cat('quirk'), skills: 0, total: 0, budget: 150, unspent: 0 };
+    p.total = p.attributes + p.secondary + p.advantages + p.perks + p.disadvantages + p.quirks;
+    p.unspent = p.budget - p.total;
+    const traits: TraitView[] = this.traits.map((t, index) => ({ index, id: t.def.id, name: this.name_(t), category: t.def.category,
+      levels: t.levels, leveled: !!t.def.cost_per_level, cost: this.cost(t), page: t.def.page, source: t.source }));
+    return {
+      sheet: { name: this.name, attributes, secondary, basic_lift: this.row('BasicLift', blv),
+        damage: { thrust: '—', swing: '—', based_on_st: tot.ST }, points: p },
+      traits, issues: p.unspent < 0 ? [{ severity: 'warning', message: `over budget by ${-p.unspent} points` }] : [],
+      path: null, budget: 150,
+    };
+  }
+
+  invoke(cmd: string, a: Record<string, unknown>): unknown {
+    switch (cmd) {
+      case 'new_character': this.levels = {}; this.traits = []; this.name = (a.name as string) ?? 'New character'; return this.view();
+      case 'get_sheet': return this.view();
+      case 'set_name': this.name = a.name as string; return this.view();
+      case 'set_attribute': this.levels[a.key as string] = a.level as number; return this.view();
+      case 'add_trait': {
+        const def = LIBRARY.find((l) => l.id === a.id); if (!def) throw new Error('unknown trait');
+        this.traits.push({ def, levels: (a.levels as number) ?? (def.cost_per_level ? 1 : 0), source: def.plugin }); return this.view();
+      }
+      case 'set_trait_levels': this.traits[a.index as number].levels = a.levels as number; return this.view();
+      case 'remove_trait': this.traits.splice(a.index as number, 1); return this.view();
+      case 'list_library': return LIBRARY;
+      case 'roll': {
+        const dice = [0, 0, 0].map(() => 1 + Math.floor(Math.random() * 6)) as [number, number, number];
+        const roll = dice[0] + dice[1] + dice[2]; const effective = (a.target as number) + ((a.modifier as number) ?? 0);
+        const r: RollResult = { target: a.target as number, modifier: (a.modifier as number) ?? 0, effective, dice, roll, margin: effective - roll, outcome: outcome(roll, effective) };
+        return r;
+      }
+      case 'load': case 'save': throw new Error('Файлы доступны только в приложении Tauri');
+      default: throw new Error(`unknown command ${cmd}`);
+    }
+  }
+}
