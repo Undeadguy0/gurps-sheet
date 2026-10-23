@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import LibraryExplanation from './LibraryExplanation.vue';
 import { computed, nextTick, onMounted, ref } from 'vue';
 import type { LibraryEntry, PluginStatus, TraitCategory } from '../types';
 import { api, inTauri } from '../api';
 import { CATEGORY_LABEL, featureText } from '../labels';
-import { excerpt, renderMarkdown } from '../markdown';
+import { excerpt } from '../markdown';
 import { matchesLibrary } from '../i18n';
 
 const props = defineProps<{ library: LibraryEntry[] }>();
@@ -72,11 +73,7 @@ function reset() { query.value = ''; cat.value = ''; }
               {{ CATEGORY_LABEL[preview.category] }} · <span class="num">{{ costText(preview) }}</span> оч.<template v-if="preview.page"> · стр. {{ preview.page }}</template>
             </p>
           </header>
-          <section class="library-preview__section" aria-labelledby="lib-expl-title">
-            <h4 id="lib-expl-title" class="library-preview__label">Пояснение</h4>
-            <div v-if="preview.explanation" class="library-preview__explanation md" v-html="renderMarkdown(preview.explanation)"></div>
-            <p v-else class="muted">Пояснения в плагине нет.</p>
-          </section>
+          <LibraryExplanation :text="preview.explanation" />
           <section v-if="preview.features.length" class="library-preview__section" aria-labelledby="lib-fx-title">
             <h4 id="lib-fx-title" class="library-preview__label">Эффекты на листе</h4>
             <ul class="library-preview__effects">

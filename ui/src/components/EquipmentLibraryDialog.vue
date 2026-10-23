@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import LibraryExplanation from './LibraryExplanation.vue';
 import { computed, nextTick, onMounted, ref } from 'vue';
 import type { EquipmentLibEntry } from '../types';
 import { matchesLibrary } from '../i18n';
 import { lb, money } from '../encumbrance';
-import { excerpt, renderMarkdown } from '../markdown';
+import { excerpt } from '../markdown';
 
 const props = defineProps<{ library: EquipmentLibEntry[]; target?: string | null }>();
 const emit = defineEmits<{ close: []; add: [string, number] }>();
@@ -45,11 +46,7 @@ const add = (e: EquipmentLibEntry) => emit('add', e.id, Math.max(1, Math.floor(q
               <template v-if="preview.container"> · контейнер</template><template v-if="preview.page"> · стр. {{ preview.page }}</template>
             </p>
           </header>
-          <section class="library-preview__section">
-            <h4 class="library-preview__label">Пояснение</h4>
-            <div v-if="preview.explanation" class="library-preview__explanation md" v-html="renderMarkdown(preview.explanation)"></div>
-            <p v-else class="muted">Пояснения в плагине нет.</p>
-          </section>
+          <LibraryExplanation :text="preview.explanation" />
           <label class="skill-details__spec">Количество: <input v-model.number="qty" class="field field--qty" type="number" min="1" step="1" /></label>
           <p class="library-preview__note muted">Плагин: {{ preview.plugin }}</p>
           <button class="btn btn--primary" type="button" @click="add(preview)">Добавить</button>

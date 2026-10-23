@@ -5,8 +5,8 @@ import { createColumnHelper, FlexRender, getCoreRowModel, useVueTable } from '@t
 import type { Encumbrance, EquipmentView } from '../types';
 import { LEVEL_LABEL_RU, lb, money } from '../encumbrance';
 import { ITEMS, plural } from '../plural';
-import { excerpt, renderMarkdown } from '../markdown';
-import ExplanationEditor from './ExplanationEditor.vue';
+import { excerpt } from '../markdown';
+import ExplanationRows from './ExplanationRows.vue';
 
 const props = defineProps<{ items: EquipmentView[]; encumbrance?: Encumbrance | null }>();
 const emit = defineEmits<{
@@ -127,17 +127,11 @@ const count = computed(() => props.items.reduce((a, v) => a + v.quantity, 0));
               <span v-else><FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" /></span>
             </td>
           </tr>
-          <tr v-if="expanded.has(row.id)" class="explanation-row">
-            <td :colspan="row.getVisibleCells().length">
+          <ExplanationRows :open="expanded.has(row.id)" :colspan="row.getVisibleCells().length" :label="row.original.name"
+            :text="row.original.explanation" :default-text="row.original.default_explanation" :custom="row.original.custom_explanation"
+            @save="(t) => emit('setExplanation', row.original.path, t)">
               <p class="muted">{{ row.original.quantity }} × {{ lb(row.original.weight) }} = {{ lb(row.original.quantity * row.original.weight) }}<template v-if="row.original.container">, с содержимым {{ lb(row.original.total_weight) }}</template>; {{ row.original.quantity }} × {{ money(row.original.cost) }}<template v-if="row.original.source"> · плагин {{ row.original.source }}</template></p>
-              <ExplanationEditor :text="row.original.explanation" :default-text="row.original.default_explanation"
-                :custom="row.original.custom_explanation" :label="row.original.name"
-                @save="(t) => emit('setExplanation', row.original.path, t)" />
-            </td>
-          </tr>
-          <tr v-else-if="row.original.explanation" class="explanation-row explanation-row--print-only">
-            <td :colspan="row.getVisibleCells().length"><div class="md" v-html="renderMarkdown(row.original.explanation)"></div></td>
-          </tr>
+          </ExplanationRows>
         </template>
       </tbody>
     </table>

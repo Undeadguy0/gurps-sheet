@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import LibraryExplanation from './LibraryExplanation.vue';
 import { computed, nextTick, onMounted, ref } from 'vue';
 import type { SkillLibEntry, SkillLibrary, TechniqueLibEntry } from '../types';
 import { matchesLibrary } from '../i18n';
 import { DIFF_LABEL, signedInt } from '../skills';
-import { excerpt, renderMarkdown } from '../markdown';
+import { excerpt } from '../markdown';
 
 const props = defineProps<{ library: SkillLibrary }>();
 const emit = defineEmits<{ close: []; addSkill: [string, string | null]; addTechnique: [string] }>();
@@ -61,11 +62,7 @@ function switchTab(t: 'skill' | 'technique') { tab.value = t; previewId.value = 
               <template v-if="preview.page"> · стр. {{ preview.page }}</template>
             </p>
           </header>
-          <section class="library-preview__section">
-            <h4 class="library-preview__label">Пояснение</h4>
-            <div v-if="preview.explanation" class="library-preview__explanation md" v-html="renderMarkdown(preview.explanation)"></div>
-            <p v-else class="muted">Пояснения в плагине нет.</p>
-          </section>
+          <LibraryExplanation :text="preview.explanation" />
           <section class="library-preview__section">
             <h4 class="library-preview__label">На листе</h4>
             <ul class="library-preview__effects">

@@ -3,8 +3,8 @@ import { computed, ref } from 'vue';
 import { createColumnHelper, FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table';
 import type { AttackView, WeaponView } from '../types';
 import { tx } from '../engineRu';
-import { excerpt, renderMarkdown } from '../markdown';
-import ExplanationEditor from './ExplanationEditor.vue';
+import { excerpt } from '../markdown';
+import ExplanationRows from './ExplanationRows.vue';
 
 const props = defineProps<{ weapons: WeaponView[] }>();
 const emit = defineEmits<{ add: []; remove: [number]; setExplanation: [number, string | null] }>();
@@ -90,21 +90,15 @@ const parryText = (a: AttackView) => (!a.can_parry ? 'нет' : a.parry == null 
               <span v-else><FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" /></span>
             </td>
           </tr>
-          <tr v-if="expanded.has(row.original.w.index) && row.original.first" class="explanation-row">
-            <td :colspan="row.getVisibleCells().length">
+          <ExplanationRows v-if="row.original.first" :open="expanded.has(row.original.w.index)" :colspan="row.getVisibleCells().length" :label="row.original.w.name"
+            :text="row.original.w.explanation" :default-text="row.original.w.default_explanation" :custom="row.original.w.custom_explanation"
+            @save="(t) => emit('setExplanation', row.original.w.index, t)">
               <div v-for="(a, i) in row.original.w.attacks" :key="i">
                 <strong>{{ mode(a.mode) }}:</strong>
                 <ul class="skill-details__explain num"><li v-for="(l, j) in a.explain" :key="j">{{ tx(l) }}</li></ul>
               </div>
               <p class="muted"><template v-if="row.original.w.page">стр. {{ row.original.w.page }}</template><template v-if="row.original.w.source"> · плагин {{ row.original.w.source }}</template></p>
-              <ExplanationEditor :text="row.original.w.explanation" :default-text="row.original.w.default_explanation"
-                :custom="row.original.w.custom_explanation" :label="row.original.w.name"
-                @save="(t) => emit('setExplanation', row.original.w.index, t)" />
-            </td>
-          </tr>
-          <tr v-else-if="row.original.first && row.original.w.explanation" class="explanation-row explanation-row--print-only">
-            <td :colspan="row.getVisibleCells().length"><div class="md" v-html="renderMarkdown(row.original.w.explanation)"></div></td>
-          </tr>
+          </ExplanationRows>
         </template>
       </tbody>
     </table>

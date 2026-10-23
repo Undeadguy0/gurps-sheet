@@ -6,8 +6,8 @@ import { createColumnHelper, FlexRender, getCoreRowModel, getSortedRowModel, use
 import type { SkillView, TechniqueView } from '../types';
 import { DIFF_LABEL, nextPoints, nextTechniquePoints, prevPoints, prevTechniquePoints } from '../skills';
 import type { Difficulty } from '../types';
-import { excerpt, renderMarkdown } from '../markdown';
-import ExplanationEditor from './ExplanationEditor.vue';
+import { excerpt } from '../markdown';
+import ExplanationRows from './ExplanationRows.vue';
 
 const props = defineProps<{ skills: SkillView[]; techniques: TechniqueView[]; points: number }>();
 const emit = defineEmits<{
@@ -128,8 +128,9 @@ function saveSpec(v: SkillView) {
               <span v-else><FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" /></span>
             </td>
           </tr>
-          <tr v-if="expanded.has(row.id)" class="explanation-row">
-            <td :colspan="row.getVisibleCells().length">
+          <ExplanationRows :open="expanded.has(row.id)" :colspan="row.getVisibleCells().length" :label="row.original.v.name"
+            :text="row.original.v.explanation" :default-text="row.original.v.default_explanation" :custom="row.original.v.custom_explanation"
+            @save="(t) => emit('setExplanation', row.original.kind, row.original.v.index, t)">
               <div class="skill-details">
                 <label v-if="row.original.kind === 'skill' && (row.original.v.specialization_required || row.original.v.specialization || row.original.v.specializations.length)" class="skill-details__spec">
                   Специализация<span v-if="row.original.v.specialization_required"> (обязательна)</span>:
@@ -144,14 +145,7 @@ function saveSpec(v: SkillView) {
                 </p>
                 <ul class="skill-details__explain num"><li v-for="(l, i) in row.original.v.explain" :key="i">{{ tx(l) }}</li></ul>
               </div>
-              <ExplanationEditor :text="row.original.v.explanation" :default-text="row.original.v.default_explanation"
-                :custom="row.original.v.custom_explanation" :label="row.original.v.name"
-                @save="(t) => emit('setExplanation', row.original.kind, row.original.v.index, t)" />
-            </td>
-          </tr>
-          <tr v-else-if="row.original.v.explanation" class="explanation-row explanation-row--print-only">
-            <td :colspan="row.getVisibleCells().length"><div class="md" v-html="renderMarkdown(row.original.v.explanation)"></div></td>
-          </tr>
+          </ExplanationRows>
         </template>
       </tbody>
     </table>

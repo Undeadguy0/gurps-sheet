@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import LibraryExplanation from './LibraryExplanation.vue';
 import { computed, nextTick, onMounted, ref } from 'vue';
 import type { WeaponLibEntry } from '../types';
 import { matchesLibrary } from '../i18n';
-import { excerpt, renderMarkdown } from '../markdown';
+import { excerpt } from '../markdown';
 
 const props = defineProps<{ library: WeaponLibEntry[]; owned: string[] }>();
 const emit = defineEmits<{ close: []; add: [string] }>();
@@ -44,11 +45,7 @@ const add = (e: WeaponLibEntry) => { if (!has(e)) emit('add', e.id); };
             <li v-for="(a, i) in preview.attacks" :key="i">{{ a.mode }}: {{ a.damage }} {{ a.damage_type }}<template v-if="a.reach">, досяг. {{ a.reach }}</template>,
               парир. {{ a.parry == null ? 'нет' : a.parry === 0 ? '0' : a.parry }}</li>
           </ul>
-          <section class="library-preview__section">
-            <h4 class="library-preview__label">Пояснение</h4>
-            <div v-if="preview.explanation" class="library-preview__explanation md" v-html="renderMarkdown(preview.explanation)"></div>
-            <p v-else class="muted">Пояснения в плагине нет.</p>
-          </section>
+          <LibraryExplanation :text="preview.explanation" />
           <p v-if="preview.equipment" class="library-preview__note muted">Оружие появляется само, когда предмет есть в снаряжении.</p>
           <p class="library-preview__note muted">Плагин: {{ preview.plugin }}</p>
           <button class="btn btn--primary" type="button" :disabled="has(preview)" @click="add(preview)">{{ has(preview) ? 'Уже есть' : 'Добавить' }}</button>
