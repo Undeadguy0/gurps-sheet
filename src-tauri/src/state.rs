@@ -42,6 +42,15 @@ pub struct LibraryEntry {
     pub translated_name: Option<String>,
 }
 
+/// Where library data came from (shown in the UI; helps spot stale data).
+#[derive(Debug, Clone, Serialize)]
+pub struct PluginStatus {
+    pub dir: Option<String>,
+    pub plugins: Vec<String>,
+    pub errors: Vec<String>,
+    pub traits: usize,
+}
+
 /// Language settings for the UI switcher.
 #[derive(Debug, Clone, Serialize)]
 pub struct LocaleInfo {
@@ -66,6 +75,10 @@ pub struct AppState {
     pub library: Vec<LibraryEntry>,
     pub path: Option<PathBuf>,
     pub plugin_errors: Vec<String>,
+    /// Directory the library was loaded from.
+    pub plugin_dir: Option<PathBuf>,
+    /// Loaded plugin ids with versions, in load order.
+    pub plugin_ids: Vec<String>,
     /// UI locale used to resolve localized plugin text (default "ru").
     pub locale: String,
     /// Show plugin originals only (no translations).
@@ -83,6 +96,8 @@ impl Default for AppState {
             library: Vec::new(),
             path: None,
             plugin_errors: Vec::new(),
+            plugin_dir: None,
+            plugin_ids: Vec::new(),
             locale: DEFAULT_LOCALE.into(),
             original_only: false,
             catalog: Default::default(),
@@ -92,25 +107,52 @@ impl Default for AppState {
 
 impl AppState {
     pub fn with_plugins(dir: Option<PathBuf>) -> Self {
-        let mut s = Self::default();
-        if let Some(dir) = dir {
-            match gurps_plugins::load_all(&dir) {
-                Ok(plugins) => {
-                    s.catalog = gurps_plugins::translations(&plugins);
-                    s.library = gurps_plugins::trait_library(&plugins)
-                        .into_iter()
-                        .map(|(plugin, def)| LibraryEntry {
-                            plugin,
-                            explanation: None,
-                            translated_name: None,
-                            def,
-                        })
-                        .collect();
-                }
-                Err(e) => s.plugin_errors.push(e.to_string()),
-            }
-        }
+        let mut s = Self {
+            plugin_dir: dir,
+            ..Self::default()
+        };
+        s.reload_plugins();
         s
+    }
+
+    /// (Re)reads plugin data from `plugin_dir`; nothing is cached between runs.
+    pub fn reload_plugins(&mut self) {
+        self.library.clear();
+        self.catalog = Default::default();
+        self.plugin_errors.clear();
+        self.plugin_ids.clear();
+        let Some(dir) = self.plugin_dir.clone() else {
+            self.plugin_errors.push("no plugins directory found".into());
+            return;
+        };
+        match gurps_plugins::load_all(&dir) {
+            Ok(plugins) => {
+                self.plugin_ids = plugins
+                    .iter()
+                    .map(|p| format!("{} {}", p.manifest.id, p.manifest.version))
+                    .collect();
+                self.catalog = gurps_plugins::translations(&plugins);
+                self.library = gurps_plugins::trait_library(&plugins)
+                    .into_iter()
+                    .map(|(plugin, def)| LibraryEntry {
+                        plugin,
+                        def,
+                        explanation: None,
+                        translated_name: None,
+                    })
+                    .collect();
+            }
+            Err(e) => self.plugin_errors.push(e.to_string()),
+        }
+    }
+
+    pub fn plugin_status(&self) -> PluginStatus {
+        PluginStatus {
+            dir: self.plugin_dir.as_ref().map(|p| p.display().to_string()),
+            plugins: self.plugin_ids.clone(),
+            errors: self.plugin_errors.clone(),
+            traits: self.library.len(),
+        }
     }
 
     pub fn view(&self) -> SheetView {
@@ -428,5 +470,18 @@ mod tests {
         // user override wins over the translation
         let v = s.set_trait_explanation(0, Some("своё".into())).unwrap();
         assert_eq!(v.traits[0].explanation.as_deref(), Some("своё"));
+    }
+
+    #[test]
+    fn plugin_status_and_reload() {
+        let mut s = state();
+        let st = s.plugin_status();
+        assert!(st.errors.is_empty(), "{:?}", st.errors);
+        assert!(st.plugins.iter().any(|p| p.starts_with("lang-ru")));
+        assert!(st.traits >= 20);
+        s.reload_plugins();
+        assert_eq!(s.plugin_status().traits, st.traits);
+        let bad = AppState::with_plugins(None);
+        assert!(!bad.plugin_status().errors.is_empty());
     }
 }

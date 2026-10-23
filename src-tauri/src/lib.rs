@@ -2,7 +2,7 @@ mod state;
 
 use gurps_rules::dice::RollResult;
 pub use state::{AppState, SheetView};
-use state::{LibraryEntry, LocaleInfo};
+use state::{LibraryEntry, LocaleInfo, PluginStatus};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::State;
@@ -87,15 +87,53 @@ fn roll(target: i32, modifier: Option<i32>) -> RollResult {
     AppState::roll(target, modifier.unwrap_or(0))
 }
 
-/// Plugin directory: `$GURPS_PLUGINS`, else `./plugins` or `../plugins` (dev).
-fn plugin_dir() -> Option<PathBuf> {
+/// Plugin directory candidates, in priority order:
+/// 1. `$GURPS_PLUGINS`;
+/// 2. `plugins/` next to the executable (installed/portable app);
+/// 3. debug builds only: the repo's `plugins/` (from `CARGO_MANIFEST_DIR`), so
+///    `cargo tauri dev` / `npm run tauri dev` always load the working-tree data
+///    regardless of the current directory;
+/// 4. `./plugins`, `../plugins` relative to the current directory.
+fn plugin_dir_candidates() -> Vec<PathBuf> {
+    let mut v = Vec::new();
     if let Ok(p) = std::env::var("GURPS_PLUGINS") {
-        return Some(p.into());
+        v.push(PathBuf::from(p));
     }
-    ["plugins", "../plugins"]
-        .iter()
-        .map(PathBuf::from)
+    if let Some(d) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|p| p.join("plugins")))
+    {
+        v.push(d);
+    }
+    if cfg!(debug_assertions) {
+        v.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../plugins"));
+    }
+    v.extend(["plugins", "../plugins"].iter().map(PathBuf::from));
+    v
+}
+
+fn plugin_dir() -> Option<PathBuf> {
+    let dir = plugin_dir_candidates()
+        .into_iter()
         .find(|p| p.is_dir())
+        .map(|p| p.canonicalize().unwrap_or(p));
+    match &dir {
+        Some(d) => eprintln!("gurps-sheet: loading plugins from {}", d.display()),
+        None => eprintln!("gurps-sheet: no plugins directory found (set GURPS_PLUGINS)"),
+    }
+    dir
+}
+
+#[tauri::command]
+fn plugin_status(state: S) -> PluginStatus {
+    lock(&state).plugin_status()
+}
+
+#[tauri::command]
+fn reload_plugins(state: S) -> PluginStatus {
+    let mut st = lock(&state);
+    st.reload_plugins();
+    st.plugin_status()
 }
 
 pub fn run() {
@@ -115,6 +153,8 @@ pub fn run() {
             set_locale,
             get_sheet,
             list_library,
+            plugin_status,
+            reload_plugins,
             roll
         ])
         .run(tauri::generate_context!())
