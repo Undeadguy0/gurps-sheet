@@ -4,6 +4,9 @@
 #![cfg_attr(test, allow(clippy::field_reassign_with_default))]
 
 pub mod damage;
+pub mod skill;
+
+pub use skill::{Difficulty, Skill, SkillDef, SkillDefault, Technique, TechniqueDef};
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -176,6 +179,13 @@ pub enum Feature {
         #[serde(default)]
         per_level: bool,
     },
+    /// Talent: adds `amount` (per level if `per_level`) to every listed skill id.
+    SkillBonus {
+        skills: Vec<String>,
+        amount: f64,
+        #[serde(default)]
+        per_level: bool,
+    },
 }
 
 /// Multi-line Markdown text from plugin data: either a plain string or a
@@ -252,7 +262,6 @@ impl LibraryItemDef {
     }
 }
 
-pub type SkillDef = LibraryItemDef;
 pub type SpellDef = LibraryItemDef;
 pub type EquipmentDef = LibraryItemDef;
 pub type WeaponDef = LibraryItemDef;
@@ -377,6 +386,10 @@ pub struct Character {
     pub points_budget: i32,
     pub attributes: Attributes,
     pub traits: Vec<Trait>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub skills: Vec<Skill>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub techniques: Vec<Technique>,
     pub equipment: Vec<Equipment>,
     pub notes: String,
 }
@@ -389,6 +402,8 @@ impl Default for Character {
             points_budget: 150,
             attributes: Attributes::default(),
             traits: Vec::new(),
+            skills: Vec::new(),
+            techniques: Vec::new(),
             equipment: Vec::new(),
             notes: String::new(),
         }

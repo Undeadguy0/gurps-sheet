@@ -180,4 +180,56 @@ mod tests {
             assert!(ch.traits.iter().all(|t| t.explanation.is_none()));
         }
     }
+
+    #[test]
+    fn skills_roundtrip_and_old_files() {
+        use gurps_core::{
+            Difficulty, Skill, SkillDef, SkillDefault, Stat, Technique, TechniqueDef,
+        };
+        let mut ch = sample();
+        assert!(
+            !to_string(&ch).unwrap().contains("\"skills\""),
+            "empty list skipped"
+        );
+        let mut s = Skill::new(
+            SkillDef {
+                id: "survival".into(),
+                name: "Survival".into(),
+                attribute: Stat::Per,
+                difficulty: Difficulty::Average,
+                defaults: vec![SkillDefault::Attribute {
+                    attribute: Stat::Per,
+                    modifier: -5,
+                }],
+                specialization_required: true,
+                specializations: vec!["Woodlands".into()],
+                page: Some("B223".into()),
+                description: None,
+            },
+            2,
+        );
+        s.specialization = Some("Woodlands".into());
+        s.explanation = Some("my **notes**".into());
+        ch.skills.push(s);
+        ch.techniques.push(Technique::new(
+            TechniqueDef {
+                id: "kicking".into(),
+                name: "Kicking".into(),
+                skill: "brawling".into(),
+                difficulty: Difficulty::Hard,
+                modifier: -2,
+                max: 0,
+                page: None,
+                description: None,
+            },
+            2,
+        ));
+        let txt = to_string(&ch).unwrap();
+        assert!(txt.contains("\"difficulty\": \"H\""));
+        assert_eq!(from_str(&txt).unwrap(), ch);
+        // files written before skills existed still load with empty lists
+        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/hero.json");
+        let old = load(p).unwrap();
+        assert!(old.skills.is_empty() && old.techniques.is_empty());
+    }
 }
