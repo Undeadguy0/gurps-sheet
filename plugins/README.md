@@ -48,6 +48,27 @@ description = '''Own-words Markdown explanation.'''
 Fluent keys: `equipment-<id>`. Encumbrance: carried weight vs Basic Lift ×1/2/3/6/10 →
 levels 0–4; Move ×1/0.8/0.6/0.4/0.2 rounded down; Dodge −level.
 
+### Weapons / Оружие
+
+`data/weapons.toml`, `[[weapons]]`: `id`, `name`, `skill` (skill id), optional `equipment`
+(equipment id: the weapon shows while the item is owned and is added with it), `page`,
+`description`, and `attacks`. Each attack has:
+
+- `mode` (`swing`, `thrust`, `punch`, `kick`…), `damage` (`sw+1`, `thr-1`, `thr`…), `damage_type` (`cut`, `imp`, `cr`);
+- `reach` (`C`, `1`, `C,1`), `parry` (modifier, e.g. `-1`; omit for "cannot parry");
+- optional `technique` (technique id used if the character has it), `skill_modifier`
+  (e.g. Kick = Brawling −2), `defaults` (attribute/skill defaults if the skill is not learned);
+- optional `skill_damage_bonus = { min_relative = 2, per_die = 1 }`: +per_die per die of damage
+  when the skill is at least attribute + min_relative (Brawling-style bonus).
+
+Damage dice come from the striking ST table (Striking ST counts); adds are folded into the
+dice (2d-1 +1 = 2d). Shield DB comes from `stats = "DB 2"` on equipment, armor DR from `"DR 2"`.
+Combat Reflexes-style traits use `features = [{ type = "defense_bonus", amount = 1 }]`
+(`defenses = ["dodge"]` limits it). Names translate via `weapon-<id> = …` in Fluent.
+
+Файл `data/weapons.toml`: оружие с режимами атаки, уроном, досягаемостью и модификатором
+парирования; `equipment` связывает его с предметом снаряжения. Тексты — своими словами.
+
 ## Translations (Fluent) / Переводы
 
 Format: [Fluent](https://projectfluent.org) `.ftl`, parsed with the `fluent-syntax` crate.
