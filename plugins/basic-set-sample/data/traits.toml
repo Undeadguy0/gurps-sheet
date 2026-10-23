@@ -1,0 +1,54 @@
+# Sample data only: names, point costs and page references.
+# No rules text is reproduced here; see the GURPS Basic Set for descriptions.
+
+[[traits]]
+id = "lifting-st"
+name = "Lifting ST"
+category = "advantage"
+cost_per_level = 3
+page = "B65"
+features = [{ type = "lifting_st_bonus", amount = 1, per_level = true }]
+
+[[traits]]
+id = "increased-st-example"
+name = "Increased ST (example)"
+category = "advantage"
+cost_per_level = 10
+page = "example"
+features = [{ type = "attribute_bonus", target = "ST", amount = 1, per_level = true }]
+
+[[traits]]
+id = "combat-reflexes"
+name = "Combat Reflexes"
+category = "advantage"
+cost = 15
+page = "B43"
+
+[[traits]]
+id = "charisma"
+name = "Charisma"
+category = "advantage"
+cost_per_level = 5
+max_levels = 5
+page = "B41"
+
+[[traits]]
+id = "acute-vision"
+name = "Acute Vision"
+category = "advantage"
+cost_per_level = 2
+page = "B35"
+
+[[traits]]
+id = "overconfidence"
+name = "Overconfidence"
+category = "disadvantage"
+cost = -5
+page = "B148"
+
+[[traits]]
+id = "quirk-example"
+name = "Quirk (example)"
+category = "quirk"
+cost = -1
+page = "B162"
