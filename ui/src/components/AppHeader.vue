@@ -12,7 +12,7 @@ const emit = defineEmits<{
 const name = ref(props.view.sheet.name);
 watch(() => props.view.sheet.name, (n) => (name.value = n));
 const print = () => window.print();
-const path = ref(props.view.path ?? 'examples/hero.json');
+const path = ref(props.view.path ?? 'character.gurps.json');
 watch(() => props.view.path, (p) => { if (p) path.value = p; });
 </script>
 

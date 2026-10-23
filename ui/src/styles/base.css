@@ -175,3 +175,8 @@ kbd { font-family: var(--font-num); padding: 0 var(--xs); border: 1px solid var(
   .data-table__row:hover { background: none; }
   .field--title { border: 0; }
 }
+
+/* Panels never overlap: tables scroll inside their panel; with the side panel open the grid stacks. */
+.sheet-grid > .panel { min-width: 0; overflow-x: auto; }
+.has-side-panel .sheet-grid__left, .has-side-panel .sheet-grid__right { grid-column: 1 / -1; }
+@media (max-width: 1599px) { .sheet-grid__left { grid-column: span 6; } .sheet-grid__right { grid-column: span 6; } }
