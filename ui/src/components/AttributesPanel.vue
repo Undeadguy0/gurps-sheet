@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { STEPS, SOURCES, plural, pts } from '../plural';
 import { computed, h, ref } from 'vue';
 import { createColumnHelper, FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table';
 import type { RollResult, Sheet, StatRow } from '../types';
@@ -54,7 +55,7 @@ const heading = (g: Row['group']) => ({ primary: 'Атрибуты', secondary: 
   <section class="panel attributes-panel" aria-labelledby="attr-title">
     <header class="panel__header">
       <h2 id="attr-title" class="panel__title">Атрибуты</h2>
-      <span class="panel__meta num">{{ sheet.points.attributes + sheet.points.secondary }} оч.</span>
+      <span class="panel__meta num">{{ pts(sheet.points.attributes + sheet.points.secondary) }}</span>
     </header>
 
     <table class="data-table attributes-table">
@@ -78,7 +79,7 @@ const heading = (g: Row['group']) => ({ primary: 'Атрибуты', secondary: 
               <template v-if="cell.column.id === 'level'">
                 <span v-if="row.original.buyable" class="stepper">
                   <button class="btn btn--step" type="button" :aria-label="`−${stepLabel(row.original)} ${row.original.label}`" @click="step(row.original, -1)">−</button>
-                  <span class="stepper__value num" :title="`${row.original.level} шаг(ов) × ${fmt(row.original.step)}`">{{ signed(row.original.level * row.original.step) }}</span>
+                  <span class="stepper__value num" :title="`${plural(Math.abs(row.original.level), STEPS)} × ${fmt(row.original.step)}`">{{ signed(row.original.level * row.original.step) }}</span>
                   <button class="btn btn--step" type="button" :aria-label="`+${stepLabel(row.original)} ${row.original.label}`" @click="step(row.original, 1)">+</button>
                 </span>
                 <span v-else class="muted">—</span>
@@ -100,7 +101,7 @@ const heading = (g: Row['group']) => ({ primary: 'Атрибуты', secondary: 
               </template>
               <template v-else-if="cell.column.id === 'sources'">
                 <button class="btn btn--link" type="button" :aria-expanded="expanded.has(row.id)" @click="toggle(row.id)">
-                  {{ row.original.value.contributions.length ? `${row.original.value.contributions.length} ист.` : 'база' }}
+                  {{ row.original.value.contributions.length ? plural(row.original.value.contributions.length, SOURCES) : 'база' }}
                   {{ expanded.has(row.id) ? '▴' : '▾' }}
                 </button>
               </template>

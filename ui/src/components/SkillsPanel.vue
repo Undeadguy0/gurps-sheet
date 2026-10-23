@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { pts } from '../plural';
 import { computed, ref } from 'vue';
 import { createColumnHelper, FlexRender, getCoreRowModel, getSortedRowModel, useVueTable, type SortingState } from '@tanstack/vue-table';
 import type { SkillView, TechniqueView } from '../types';
@@ -66,7 +67,7 @@ function saveSpec(v: SkillView) {
   <section class="panel skills-panel" aria-labelledby="skills-title">
     <header class="panel__header">
       <h2 id="skills-title" class="panel__title">Навыки</h2>
-      <span class="panel__meta num">{{ points }} оч.</span>
+      <span class="panel__meta num">{{ pts(points) }}</span>
       <span class="panel__spacer"></span>
       <input v-model="filter" class="field field--filter" placeholder="Фильтр" aria-label="Фильтр навыков" />
       <button class="btn" type="button" title="Библиотека навыков" @click="emit('add')">+ Добавить</button>

@@ -152,8 +152,8 @@ pub fn compute_skills(ch: &Character, attr: &dyn Fn(Stat) -> f64) -> Vec<SkillRo
             let mut explain = vec![format!("{akey} {base}")];
             let purchased = relative_level(d, s.points).map(|rel| {
                 explain.push(format!(
-                    "{} pts, {akey}/{} -> {akey}{} = {}",
-                    s.points,
+                    "{}, {akey}/{} -> {akey}{} = {}",
+                    crate::pts(s.points),
                     d.key(),
                     signed(rel),
                     base + rel
@@ -249,7 +249,7 @@ pub fn compute_techniques(ch: &Character, skills: &[SkillRow]) -> Vec<TechniqueR
                         signed(t.def.modifier)
                     ));
                     if up > 0 {
-                        explain.push(format!("{} pts ({}) -> +{up}", t.points, d.key()));
+                        explain.push(format!("{} ({}) -> +{up}", crate::pts(t.points), d.key()));
                     }
                     let lv = (def + up).min(cap);
                     if def + up > cap {

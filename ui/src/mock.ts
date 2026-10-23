@@ -6,7 +6,7 @@ import type {
   SkillDef, SkillLibrary, SkillView, TechniqueDef, TechniqueView,
 } from './types';
 import { SKILL_CATALOG_RU, SKILL_DEFS, TALENT_DEF, TECHNIQUE_DEFS } from './mockSkills';
-import { computeSkills, computeTechniques, signedInt } from './skills';
+import { computeSkills, computeTechniques, signedInt, enPts } from './skills';
 
 interface MockSkill { def: SkillDef; points: number; specialization?: string | null; explanation?: string }
 interface MockTech { def: TechniqueDef; points: number; explanation?: string }
@@ -141,7 +141,7 @@ export class MockBackend {
     const v: Value = { base, base_reason: reason, contributions: [] };
     const lv = this.levels[key] ?? 0;
     const step = key === 'BasicSpeed' ? 0.25 : 1;
-    if (lv) v.contributions.push({ source: { kind: 'purchased' }, amount: lv * step, reason: `purchased (${lv * COST[key]} pts)` });
+    if (lv) v.contributions.push({ source: { kind: 'purchased' }, amount: lv * step, reason: `purchased (${enPts(lv * COST[key])})` });
     for (const t of this.traits) for (const f of t.def.features)
       if (f.type === 'attribute_bonus' && f.target === key) {
         const n = this.name_(t);
@@ -182,7 +182,7 @@ export class MockBackend {
       sheet: { name: this.name, attributes, secondary, basic_lift: this.row('BasicLift', blv),
         damage: { thrust: '—', swing: '—', based_on_st: tot.ST }, points: p },
       traits, skills, techniques,
-      issues: [...(p.unspent < 0 ? [{ severity: 'warning' as const, message: `over budget by ${-p.unspent} points` }] : []),
+      issues: [...(p.unspent < 0 ? [{ severity: 'warning' as const, message: `over budget by ${enPts(-p.unspent)}` }] : []),
         ...this.skills.filter((s) => s.def.specialization_required && !s.specialization?.trim())
           .map((s) => ({ severity: 'warning' as const, message: `skill '${s.def.name}' needs a specialization` }))],
       path: null, budget: 150,

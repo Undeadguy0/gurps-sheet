@@ -116,7 +116,10 @@ fn apply_common(v: &mut Value, stat: Stat, ch: &Character, bonuses: &BTreeMap<St
     v.add(
         SourceKind::Purchased,
         amount,
-        format!("purchased ({} pts)", points::stat_points(stat, purchased)),
+        format!(
+            "purchased ({})",
+            crate::pts(points::stat_points(stat, purchased))
+        ),
     );
     if let Some(list) = bonuses.get(&stat) {
         for (name, a) in list {

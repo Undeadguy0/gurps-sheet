@@ -15,3 +15,22 @@ pub mod value;
 
 pub use sheet::{compute_sheet, Sheet, StatRow};
 pub use value::{Contribution, SourceKind, Value};
+
+/// English point count with correct number: "1 pt", "2 pts", "-1 pt".
+pub fn pts(n: i32) -> String {
+    if n.abs() == 1 {
+        format!("{n} pt")
+    } else {
+        format!("{n} pts")
+    }
+}
+
+#[cfg(test)]
+mod pts_tests {
+    #[test]
+    fn english_points() {
+        assert_eq!(super::pts(1), "1 pt");
+        assert_eq!(super::pts(2), "2 pts");
+        assert_eq!(super::pts(0), "0 pts");
+    }
+}

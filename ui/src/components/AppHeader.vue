@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { remaining } from '../plural';
 import { ref, watch } from 'vue';
 import type { LocaleInfo, SheetView } from '../types';
 import { THEMES, theme, scheme } from '../theme';
@@ -35,8 +36,8 @@ watch(() => props.view.path, (p) => { if (p) path.value = p; });
 
     <div class="points-summary" role="status" aria-label="Очки персонажа">
       <strong class="points-summary__main num">
-        Очки: {{ view.budget }} / {{ view.sheet.points.total }} /
-        <span :class="{ 'is-danger': view.sheet.points.unspent < 0 }">{{ view.sheet.points.unspent }} своб.</span>
+        Бюджет {{ view.budget }} · потрачено {{ view.sheet.points.total }} ·
+        <span :class="{ 'is-danger': view.sheet.points.unspent < 0 }">{{ remaining(view.sheet.points.unspent) }}</span>
       </strong>
       <dl class="points-summary__parts">
         <div><dt>Атр</dt><dd class="num">{{ view.sheet.points.attributes + view.sheet.points.secondary }}</dd></div>

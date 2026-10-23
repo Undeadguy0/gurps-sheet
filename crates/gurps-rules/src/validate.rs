@@ -22,7 +22,7 @@ pub fn validate(ch: &Character) -> Vec<Issue> {
     if b.unspent < 0 {
         out.push(Issue {
             severity: Severity::Warning,
-            message: format!("over budget by {} points", -b.unspent),
+            message: format!("over budget by {}", crate::pts(-b.unspent)),
         });
     }
     for t in &ch.traits {
@@ -62,8 +62,8 @@ pub fn validate(ch: &Character) -> Vec<Issue> {
             warn(
                 &mut out,
                 format!(
-                    "skill '{name}': {} pts is not on the cost table (1, 2, 4, 8, 12...); extra points are wasted",
-                    s.points
+                    "skill '{name}': {} is not on the cost table (1, 2, 4, 8, 12...); extra points are wasted",
+                    crate::pts(s.points)
                 ),
             );
         }

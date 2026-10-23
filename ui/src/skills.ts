@@ -52,7 +52,7 @@ export function computeSkills(skills: SkillIn[], attr: (k: string) => number, ta
     const explain = [`${k} ${base}`];
     const rel = relativeLevel(d, s.points);
     const purchased = rel === null ? null : base + rel;
-    if (rel !== null) explain.push(`${s.points} pts, ${k}/${d} -> ${k}${signedInt(rel)} = ${base + rel}`);
+    if (rel !== null) explain.push(`${enPts(s.points)}, ${k}/${d} -> ${k}${signedInt(rel)} = ${base + rel}`);
     let best: [number, string] | null = null;
     for (const df of s.def.defaults ?? []) {
       const c: [number, string] | null = 'attribute' in df ? [a(df.attribute) + df.modifier, `${df.attribute}${signedInt(df.modifier)}`]
@@ -79,9 +79,11 @@ export function computeTechniques(techs: TechIn[], skills: SkillIn[], rows: Skil
     if (pi === null) return { name, level: null, max_level: null, parent: null, explain: [`needs skill ${pname}`] };
     const pl = rows[pi].level!; const def = pl + t.def.modifier; const cap = pl + t.def.max; const up = techniqueLevels(t.def.difficulty, t.points);
     const explain = [`default ${pname}${signedInt(t.def.modifier)} = ${def}`];
-    if (up > 0) explain.push(`${t.points} pts (${t.def.difficulty}) -> +${up}`);
+    if (up > 0) explain.push(`${enPts(t.points)} (${t.def.difficulty}) -> +${up}`);
     if (def + up > cap) explain.push(`capped at ${pname}${signedInt(t.def.max)} = ${cap}`);
     const level = Math.min(def + up, cap); explain.push(`= ${level}`);
     return { name, level, max_level: cap, parent: pl, explain };
   });
 }
+
+export const enPts = (n: number) => `${n} ${Math.abs(n) === 1 ? 'pt' : 'pts'}`;

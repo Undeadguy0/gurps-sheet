@@ -51,6 +51,10 @@ trait-combat-reflexes = Боевые рефлексы
   (see `lang-ru`).
 - Lookup: exact locale, then language part (`ru-RU` → `ru`); otherwise the original is shown.
 
+Plurals: the loader reads only plain text patterns (variables and `{ $n -> [one] … }`
+selectors are not evaluated), so data strings must not embed counts. Numbers shown in the UI are
+formatted by `ui/src/plural.ts` (`Intl.PluralRules('ru')`: 1 очко, 2 очка, 5 очков, 21 очко).
+
 Priority of the explanation shown: user text in the character file → Fluent translation
 for the UI language → plugin `description`.
 Приоритет: своё пояснение в файле персонажа → перевод Fluent → `description` плагина.

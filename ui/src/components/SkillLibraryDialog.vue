@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { computed, nextTick, onMounted, ref } from 'vue';
 import type { SkillLibEntry, SkillLibrary, TechniqueLibEntry } from '../types';
 import { matchesLibrary } from '../i18n';
@@ -70,14 +71,14 @@ function switchTab(t: 'skill' | 'technique') { tab.value = t; previewId.value = 
             <h4 class="library-preview__label">На листе</h4>
             <ul class="library-preview__effects">
               <template v-if="isSkill(preview)">
-                <li>Стоимость: 1/2/4/8 оч., дальше +4 за уровень; 1 оч. = {{ preview.attribute }}{{ signedInt({ E: 0, A: -1, H: -2, VH: -3 }[preview.difficulty]) }}</li>
+                <li>Стоимость: 1, 2, 4, 8 очков, дальше +4 за уровень; 1 очко = {{ preview.attribute }}{{ signedInt({ E: 0, A: -1, H: -2, VH: -3 }[preview.difficulty]) }}</li>
                 <li v-if="preview.defaults?.length">По умолчанию: {{ defaultsText(preview) }}</li>
                 <li v-else>Без умолчания: без очков навык недоступен</li>
               </template>
               <template v-else>
                 <li>Умолчание: {{ preview.skill_name }}{{ signedInt(preview.modifier) }}</li>
                 <li>Максимум: {{ preview.skill_name }}{{ preview.max ? signedInt(preview.max) : '' }}</li>
-                <li>{{ preview.difficulty === 'A' ? '1 оч. за уровень' : '2 оч. за первый уровень, затем 1 оч.' }}</li>
+                <li>{{ preview.difficulty === 'A' ? '1 очко за уровень' : '2 очка за первый уровень, затем по 1 очку' }}</li>
               </template>
             </ul>
           </section>
