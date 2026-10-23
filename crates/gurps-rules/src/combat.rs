@@ -20,6 +20,10 @@ pub struct AttackRow {
     pub mode: String,
     /// Skill or technique name used (original names).
     pub skill: String,
+    /// Id of the skill/technique used; `None` when an attribute default (or nothing) was used.
+    pub skill_id: Option<String>,
+    /// `skill_id` is a technique id.
+    pub via_technique: bool,
     pub level: Option<i32>,
     /// Data expression, e.g. "sw+1".
     pub damage_expr: String,
@@ -172,9 +176,9 @@ pub fn compute_weapons(ch: &Character, c: &Ctx) -> Vec<WeaponRow> {
                             .max_by_key(|r| r.level)
                     });
                     let mut explain = Vec::new();
-                    let (level, used) = if let Some(t) = tech {
+                    let (level, used, used_id, via_technique) = if let Some(t) = tech {
                         explain.push(format!("technique {} {}", t.name, t.level.unwrap()));
-                        (t.level, t.name.clone())
+                        (t.level, t.name.clone(), Some(t.id.clone()), true)
                     } else if let Some(s) = skill {
                         let l = s.level.unwrap() + at.skill_modifier;
                         if at.skill_modifier != 0 {
@@ -186,37 +190,49 @@ pub fn compute_weapons(ch: &Character, c: &Ctx) -> Vec<WeaponRow> {
                         } else {
                             explain.push(format!("skill {} {l}", s.name));
                         }
-                        (Some(l), s.name.clone())
+                        (Some(l), s.name.clone(), Some(s.id.clone()), false)
                     } else {
                         let best = at
                             .defaults
                             .iter()
-                            .filter_map(|d| match d {
-                                SkillDefault::Attribute {
-                                    attribute,
-                                    modifier,
-                                } => Some((
-                                    a(*attribute) + modifier,
-                                    format!("{}{}", attribute.key(), sg(*modifier)),
-                                )),
-                                SkillDefault::Skill { skill, modifier } => {
-                                    best_skill(c.skills, skill).map(|r| {
-                                        (
-                                            r.level.unwrap() + modifier,
-                                            format!("{}{}", r.name, sg(*modifier)),
-                                        )
-                                    })
+                            .filter_map(|d| {
+                                match d {
+                                    SkillDefault::Attribute {
+                                        attribute,
+                                        modifier,
+                                    } => Some((
+                                        a(*attribute) + modifier,
+                                        format!("{}{}", attribute.key(), sg(*modifier)),
+                                    )),
+                                    SkillDefault::Skill { skill, modifier } => {
+                                        best_skill(c.skills, skill).map(|r| {
+                                            (
+                                                r.level.unwrap() + modifier,
+                                                format!("{}{}", r.name, sg(*modifier)),
+                                            )
+                                        })
+                                    }
                                 }
+                                .map(|(l, n)| (l, n, d))
                             })
                             .max_by_key(|x| x.0);
                         match best {
-                            Some((l, n)) => {
+                            Some((l, n, d)) => {
                                 explain.push(format!("default {n} = {l}"));
-                                (Some(l), n)
+                                let sid = match d {
+                                    SkillDefault::Skill { skill, .. } => Some(skill.clone()),
+                                    _ => None,
+                                };
+                                (Some(l), n, sid, false)
                             }
                             None => {
                                 explain.push(format!("no skill {skill_id} and no default"));
-                                (None, skill_id.to_string())
+                                (
+                                    None,
+                                    skill_id.to_string(),
+                                    Some(skill_id.to_string()),
+                                    false,
+                                )
                             }
                         }
                     };
@@ -292,6 +308,8 @@ pub fn compute_weapons(ch: &Character, c: &Ctx) -> Vec<WeaponRow> {
                     AttackRow {
                         mode: at.mode.clone(),
                         skill: used,
+                        skill_id: used_id,
+                        via_technique,
                         level,
                         damage_expr: at.damage.clone(),
                         damage: dice.to_string(),

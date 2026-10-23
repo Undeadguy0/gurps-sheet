@@ -2,7 +2,9 @@ mod state;
 
 use gurps_rules::dice::RollResult;
 pub use state::{AppState, SheetView};
-use state::{EquipmentLibEntry, LibraryEntry, LocaleInfo, PluginStatus, SkillLibrary};
+use state::{
+    EquipmentLibEntry, LibraryEntry, LocaleInfo, PluginStatus, SkillLibrary, WeaponLibEntry,
+};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::State;
@@ -189,6 +191,30 @@ fn remove_equipment(state: S, path: Vec<usize>) -> Result<SheetView, String> {
 }
 
 #[tauri::command]
+fn list_weapon_library(state: S) -> Vec<WeaponLibEntry> {
+    lock(&state).weapon_library_view()
+}
+
+#[tauri::command]
+fn add_weapon(state: S, id: String) -> Result<SheetView, String> {
+    lock(&state).add_weapon(&id)
+}
+
+#[tauri::command]
+fn remove_weapon(state: S, index: usize) -> Result<SheetView, String> {
+    lock(&state).remove_weapon(index)
+}
+
+#[tauri::command]
+fn set_weapon_explanation(
+    state: S,
+    index: usize,
+    text: Option<String>,
+) -> Result<SheetView, String> {
+    lock(&state).set_weapon_explanation(index, text)
+}
+
+#[tauri::command]
 fn roll(target: i32, modifier: Option<i32>) -> RollResult {
     AppState::roll(target, modifier.unwrap_or(0))
 }
@@ -275,6 +301,10 @@ pub fn run() {
             set_equipment_carried,
             set_equipment_explanation,
             remove_equipment,
+            list_weapon_library,
+            add_weapon,
+            remove_weapon,
+            set_weapon_explanation,
             plugin_status,
             reload_plugins,
             roll

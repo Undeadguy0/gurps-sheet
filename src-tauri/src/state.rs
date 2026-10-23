@@ -3,7 +3,7 @@
 
 use gurps_core::{
     Character, Equipment, EquipmentDef, LocalizedText, Skill, SkillDef, SkillDefault, Stat,
-    Technique, TechniqueDef, Trait, TraitCategory, TraitDef,
+    Technique, TechniqueDef, Trait, TraitCategory, TraitDef, Weapon, WeaponDef,
 };
 use gurps_rules::dice::{success_roll, RollResult, SplitMix};
 use gurps_rules::validate::{validate, Issue};
@@ -157,6 +157,43 @@ pub struct EquipmentLibEntry {
     pub translated_name: Option<String>,
 }
 
+/// One attack row; `skill` is translated, `original_skill` keeps the plugin name.
+#[derive(Debug, Clone, Serialize)]
+pub struct AttackView {
+    #[serde(flatten)]
+    pub row: gurps_rules::combat::AttackRow,
+    pub original_skill: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WeaponView {
+    pub index: usize,
+    pub id: String,
+    pub name: String,
+    pub original_name: Option<String>,
+    pub equipment: Option<String>,
+    pub available: bool,
+    pub ready: bool,
+    pub attacks: Vec<AttackView>,
+    pub page: Option<String>,
+    pub source: Option<String>,
+    pub explanation: Option<String>,
+    pub default_explanation: Option<String>,
+    pub custom_explanation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WeaponLibEntry {
+    pub plugin: String,
+    #[serde(flatten)]
+    pub def: WeaponDef,
+    pub explanation: Option<String>,
+    pub translated_name: Option<String>,
+    /// Linked equipment name in the UI language.
+    pub equipment_name: Option<String>,
+    pub skill_name: String,
+}
+
 /// Where library data came from (shown in the UI; helps spot stale data).
 #[derive(Debug, Clone, Serialize)]
 pub struct PluginStatus {
@@ -167,6 +204,7 @@ pub struct PluginStatus {
     /// Skills + techniques.
     pub skills: usize,
     pub equipment: usize,
+    pub weapons: usize,
 }
 
 /// Language settings for the UI switcher.
@@ -185,6 +223,7 @@ pub struct SheetView {
     pub skills: Vec<SkillView>,
     pub techniques: Vec<TechniqueView>,
     pub equipment: Vec<EquipmentView>,
+    pub weapons: Vec<WeaponView>,
     pub issues: Vec<Issue>,
     pub path: Option<String>,
     pub budget: i32,
@@ -198,6 +237,7 @@ pub struct AppState {
     pub skill_library: Vec<(String, SkillDef)>,
     pub technique_library: Vec<(String, TechniqueDef)>,
     pub equipment_library: Vec<(String, EquipmentDef)>,
+    pub weapon_library: Vec<(String, WeaponDef)>,
     pub path: Option<PathBuf>,
     pub plugin_errors: Vec<String>,
     /// Directory the library was loaded from.
@@ -222,6 +262,7 @@ impl Default for AppState {
             skill_library: Vec::new(),
             technique_library: Vec::new(),
             equipment_library: Vec::new(),
+            weapon_library: Vec::new(),
             path: None,
             plugin_errors: Vec::new(),
             plugin_dir: None,
@@ -249,6 +290,7 @@ impl AppState {
         self.skill_library.clear();
         self.technique_library.clear();
         self.equipment_library.clear();
+        self.weapon_library.clear();
         self.catalog = Default::default();
         self.plugin_errors.clear();
         self.plugin_ids.clear();
@@ -266,6 +308,7 @@ impl AppState {
                 self.skill_library = gurps_plugins::skill_library(&plugins);
                 self.technique_library = gurps_plugins::technique_library(&plugins);
                 self.equipment_library = gurps_plugins::equipment_library(&plugins);
+                self.weapon_library = gurps_plugins::weapon_library(&plugins);
                 self.library = gurps_plugins::trait_library(&plugins)
                     .into_iter()
                     .map(|(plugin, def)| LibraryEntry {
@@ -288,6 +331,7 @@ impl AppState {
             traits: self.library.len(),
             skills: self.skill_library.len() + self.technique_library.len(),
             equipment: self.equipment_library.len(),
+            weapons: self.weapon_library.len(),
         }
     }
 
@@ -297,6 +341,7 @@ impl AppState {
             skills: self.skill_views(&sheet),
             techniques: self.technique_views(&sheet),
             equipment: self.equipment_views(),
+            weapons: self.weapon_views(&sheet),
             sheet,
             traits: self
                 .character
@@ -338,6 +383,14 @@ impl AppState {
 
     pub fn new_character(&mut self, name: Option<String>) -> SheetView {
         self.character = Character::new(name.unwrap_or_else(|| "New character".into()));
+        // everyone can punch and kick
+        for (plugin, d) in &self.weapon_library {
+            if d.equipment.is_none() {
+                self.character
+                    .weapons
+                    .push(Self::weapon_snapshot(plugin, d));
+            }
+        }
         self.path = None;
         self.view()
     }
@@ -665,6 +718,13 @@ impl AppState {
         def.description = None;
         let mut e = Equipment::new(def, quantity.unwrap_or(1).max(1));
         e.source = Some(plugin.clone());
+        let linked: Vec<Weapon> = self
+            .weapon_library
+            .iter()
+            .filter(|(_, w)| w.equipment.as_deref() == Some(id))
+            .filter(|(_, w)| !self.character.weapons.iter().any(|x| x.def.id == w.id))
+            .map(|(p, w)| Self::weapon_snapshot(p, w))
+            .collect();
         match parent.filter(|p| !p.is_empty()) {
             None => self.character.equipment.push(e),
             Some(p) => {
@@ -676,6 +736,7 @@ impl AppState {
                 c.contents.push(e);
             }
         }
+        self.character.weapons.extend(linked);
         Ok(self.view())
     }
 
@@ -717,6 +778,143 @@ impl AppState {
             .filter(|l| i < l.len())
             .ok_or("no such item")?;
         list.remove(i);
+        self.prune_weapons();
+        Ok(self.view())
+    }
+
+    fn weapon_snapshot(plugin: &str, d: &WeaponDef) -> Weapon {
+        let mut d = d.clone();
+        d.description = None;
+        let mut w = Weapon::new(d);
+        w.source = Some(plugin.to_owned());
+        w
+    }
+
+    /// Drops linked weapons whose equipment is no longer owned (anywhere, carried or not).
+    fn prune_weapons(&mut self) {
+        fn owned(list: &[Equipment], id: &str) -> bool {
+            list.iter()
+                .any(|e| e.def.id == id || owned(&e.contents, id))
+        }
+        let eq = &self.character.equipment;
+        self.character
+            .weapons
+            .retain(|w| w.def.equipment.as_deref().is_none_or(|id| owned(eq, id)));
+    }
+
+    fn weapon_views(&self, sheet: &Sheet) -> Vec<WeaponView> {
+        sheet
+            .weapons
+            .iter()
+            .map(|r| {
+                let w = &self.character.weapons[r.index];
+                let tr = self.translated_kind("weapon", &w.def.id).map(str::to_owned);
+                let own = self
+                    .weapon_library
+                    .iter()
+                    .find(|(_, d)| d.id == w.def.id)
+                    .and_then(|(_, d)| d.description.as_ref())
+                    .or(w.def.description.as_ref());
+                let default_explanation = self.text_for("weapon", &w.def.id, own);
+                WeaponView {
+                    index: r.index,
+                    id: r.id.clone(),
+                    original_name: tr.as_ref().map(|_| r.name.clone()),
+                    name: tr.unwrap_or_else(|| r.name.clone()),
+                    equipment: r.equipment.clone(),
+                    available: r.available,
+                    ready: r.ready,
+                    attacks: r
+                        .attacks
+                        .iter()
+                        .map(|a| {
+                            let t = a.skill_id.as_deref().and_then(|id| {
+                                self.translated_kind(
+                                    if a.via_technique {
+                                        "technique"
+                                    } else {
+                                        "skill"
+                                    },
+                                    id,
+                                )
+                            });
+                            let mut row = a.clone();
+                            let original_skill =
+                                t.map(|t| std::mem::replace(&mut row.skill, t.to_owned()));
+                            AttackView {
+                                row,
+                                original_skill,
+                            }
+                        })
+                        .collect(),
+                    page: w.def.page.clone(),
+                    source: w.source.clone(),
+                    explanation: gurps_core::non_blank(w.explanation.clone())
+                        .or_else(|| default_explanation.clone()),
+                    default_explanation,
+                    custom_explanation: !gurps_core::is_blank(&w.explanation),
+                }
+            })
+            .collect()
+    }
+
+    pub fn weapon_library_view(&self) -> Vec<WeaponLibEntry> {
+        self.weapon_library
+            .iter()
+            .map(|(plugin, def)| WeaponLibEntry {
+                plugin: plugin.clone(),
+                explanation: self.text_for("weapon", &def.id, def.description.as_ref()),
+                translated_name: self.translated_kind("weapon", &def.id).map(str::to_owned),
+                equipment_name: def.equipment.as_ref().map(|e| {
+                    self.translated_kind("equipment", e)
+                        .map(str::to_owned)
+                        .or_else(|| {
+                            self.equipment_library
+                                .iter()
+                                .find(|(_, d)| &d.id == e)
+                                .map(|(_, d)| d.name.clone())
+                        })
+                        .unwrap_or_else(|| e.clone())
+                }),
+                skill_name: self.skill_name(&def.skill),
+                def: def.clone(),
+            })
+            .collect()
+    }
+
+    /// Adds a library weapon (once per id). Linked weapons show only while the item is owned.
+    pub fn add_weapon(&mut self, id: &str) -> Result<SheetView, String> {
+        if self.character.weapons.iter().any(|w| w.def.id == id) {
+            return Err(format!("weapon {id} is already on the sheet"));
+        }
+        let (plugin, def) = self
+            .weapon_library
+            .iter()
+            .find(|(_, d)| d.id == id)
+            .ok_or_else(|| format!("weapon {id} not in library"))?;
+        let w = Self::weapon_snapshot(plugin, def);
+        self.character.weapons.push(w);
+        Ok(self.view())
+    }
+
+    pub fn remove_weapon(&mut self, index: usize) -> Result<SheetView, String> {
+        if index >= self.character.weapons.len() {
+            return Err("no such weapon".into());
+        }
+        self.character.weapons.remove(index);
+        Ok(self.view())
+    }
+
+    pub fn set_weapon_explanation(
+        &mut self,
+        index: usize,
+        text: Option<String>,
+    ) -> Result<SheetView, String> {
+        self.character
+            .weapons
+            .get_mut(index)
+            .ok_or("no such weapon")?
+            .explanation = gurps_core::non_blank(text);
         Ok(self.view())
     }
 
@@ -1154,5 +1352,57 @@ mod tests {
         assert!(s.remove_technique(3).is_err());
         assert!(s.add_skill("nope", None, None).is_err());
         assert!(s.set_skill_points(0, 4).unwrap().sheet.points.skills >= 4);
+    }
+
+    #[test]
+    fn weapons_flow_translated() {
+        let mut s = state();
+        let v = s.new_character(Some("W".into()));
+        let ids: Vec<_> = v.weapons.iter().map(|w| w.id.as_str()).collect();
+        assert_eq!(ids, ["kick", "punch"], "unarmed attacks on a new character");
+        assert_eq!(v.weapons[1].name, "Удар рукой");
+        // no Brawling: Punch from DX 10, Parry floor(10/2)+3 = 8; Kick DX-2, no parry
+        assert_eq!(v.weapons[1].attacks[0].row.level, Some(10));
+        assert_eq!(v.weapons[1].attacks[0].row.parry, Some(8));
+        assert_eq!(v.weapons[0].attacks[0].row.level, Some(8));
+        assert!(!v.weapons[0].attacks[0].row.can_parry);
+        assert_eq!(v.sheet.defenses.parry.as_ref().unwrap().value, 8);
+        let lib = s.weapon_library_view();
+        let k = lib.iter().find(|w| w.def.id == "small-knife").unwrap();
+        assert_eq!(k.equipment_name.as_deref(), Some("Малый нож"));
+        s.add_skill("knife", None, Some(1)).unwrap();
+        let v = s.add_equipment("small-knife", Some(2), None).unwrap();
+        let kn = v.weapons.iter().find(|w| w.id == "small-knife").unwrap();
+        assert!(kn.ready);
+        assert_eq!(kn.attacks[0].row.skill, "Нож");
+        assert_eq!(kn.attacks[0].original_skill.as_deref(), Some("Knife"));
+        assert_eq!(kn.attacks[0].row.parry, Some(7), "Knife 10: 5+3-1");
+        assert_eq!(
+            v.sheet.defenses.parry.as_ref().unwrap().value,
+            7,
+            "armed parry preferred"
+        );
+        assert_eq!(
+            s.add_equipment("small-knife", None, None)
+                .unwrap()
+                .weapons
+                .len(),
+            3,
+            "linked once"
+        );
+        assert!(s.add_weapon("small-knife").is_err());
+        let i = kn.index;
+        let v = s.set_weapon_explanation(i, Some("мой нож".into())).unwrap();
+        assert!(v.weapons[i].custom_explanation);
+        assert!(v.weapons[i]
+            .default_explanation
+            .as_deref()
+            .is_some_and(|t| t.contains("клинок")));
+        s.remove_equipment(&[1]).unwrap();
+        let v = s.remove_equipment(&[0]).unwrap();
+        assert_eq!(v.weapons.len(), 2, "knife row goes with the last knife");
+        let v = s.remove_weapon(0).unwrap();
+        assert_eq!(v.weapons.len(), 1);
+        assert!(s.add_weapon("kick").is_ok());
     }
 }
