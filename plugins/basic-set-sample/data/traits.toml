@@ -252,3 +252,19 @@ The character hates waiting and planning; they prefer to act now and think later
 
 Makes scenes fast and chaotic. Works well alongside a cautious companion who keeps trying to stop them.
 '''
+
+# --- Talents ---
+
+[[traits]]
+id = "outdoorsman"
+name = "Outdoorsman"
+category = "advantage"
+cost_per_level = 10
+max_levels = 4
+page = "B90" # unverified
+features = [{ type = "skill_bonus", skills = ["camouflage", "fishing", "mimicry", "naturalist", "navigation", "survival", "tracking", "weather-sense"], amount = 1, per_level = true }]
+description = '''
+A natural feel for the wilderness. Each level adds +1 to a group of outdoor skills: camouflage, fishing, mimicry, naturalist, navigation, survival, tracking and weather sense. The bonus is applied automatically to those skills on the sheet.
+
+It suits rangers, hunters and anyone raised far from towns. A talent is usually cheaper than raising every one of those skills separately if the character uses several of them.
+'''

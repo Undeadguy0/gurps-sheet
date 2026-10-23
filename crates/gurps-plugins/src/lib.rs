@@ -504,4 +504,54 @@ description = "m"
             );
         }
     }
+
+    #[test]
+    fn sample_skills_and_techniques() {
+        use gurps_core::{Difficulty, Stat};
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+        let plugins = load_all(&root).unwrap();
+        let skills = skill_library(&plugins);
+        let techs = technique_library(&plugins);
+        assert!(skills.len() >= 10 && techs.len() >= 2);
+        let surv = &skills.iter().find(|(_, s)| s.id == "survival").unwrap().1;
+        assert_eq!(
+            (surv.attribute, surv.difficulty),
+            (Stat::Per, Difficulty::Average)
+        );
+        assert!(surv.specialization_required);
+        let kick = &techs.iter().find(|(_, t)| t.id == "kicking").unwrap().1;
+        assert_eq!(
+            (kick.skill.as_str(), kick.modifier, kick.max),
+            ("brawling", -2, 0)
+        );
+        let cat = translations(&plugins);
+        for (_, s) in &skills {
+            assert!(cat.name("ru", "skill", &s.id).is_some(), "ru name {}", s.id);
+            assert!(cat
+                .description("ru", "skill", &s.id)
+                .is_some_and(|d| d.contains("\n\n")));
+            assert!(
+                s.explanation("en").is_some_and(|d| d.contains("\n\n")),
+                "{}",
+                s.id
+            );
+        }
+        for (_, t) in &techs {
+            assert!(cat.name("ru", "technique", &t.id).is_some(), "{}", t.id);
+            assert!(
+                skills.iter().any(|(_, s)| s.id == t.skill),
+                "parent of {}",
+                t.id
+            );
+        }
+        let talent = trait_library(&plugins)
+            .into_iter()
+            .find(|(_, t)| t.id == "outdoorsman")
+            .unwrap()
+            .1;
+        assert_eq!(talent.cost_per_level, 10);
+        assert!(
+            matches!(&talent.features[0], gurps_core::Feature::SkillBonus { skills, .. } if skills.contains(&"tracking".to_string()))
+        );
+    }
 }
