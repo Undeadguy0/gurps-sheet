@@ -63,3 +63,15 @@ describe('seeded rolls', () => {
     expect(() => damageRoll('zz', false, new SplitMix(1))).toThrow();
   });
 });
+
+describe('mock notes', () => {
+  it('one set_notes call is one undo step; whitespace counts as empty', () => {
+    const m = new MockBackend();
+    v(m, 'new_character', {});
+    const s = v(m, 'set_notes', { text: '# Долги\n- гному 5 $' });
+    expect(s.notes).toBe('# Долги\n- гному 5 $');
+    expect(s.history).toMatchObject({ undo_label: 'заметки', undo_depth: 1, dirty: true });
+    expect(v(m, 'undo').notes).toBe('');
+    expect(v(m, 'set_notes', { text: '  \n' }).history?.undo_depth).toBe(0);
+  });
+});

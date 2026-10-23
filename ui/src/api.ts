@@ -65,6 +65,7 @@ export const api = {
   setNegativeRounding: (mode: string) => call<SheetView>('set_negative_rounding', { mode }),
   roll: (target: number, modifier = 0, seed?: number) => call<RollResult>('roll', { target, modifier, seed }),
   rollDamage: (expr: string, crushing = false, seed?: number) => call<DamageRoll>('roll_damage', { expr, crushing, seed }),
+  setNotes: (text: string) => call<SheetView>('set_notes', { text }),
   undo: () => call<SheetView>('undo'),
   redo: () => call<SheetView>('redo'),
   /** null = reset to max. */

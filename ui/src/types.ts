@@ -189,7 +189,7 @@ export interface SkillView extends ExplainedView {
 }
 export interface TechniqueView extends ExplainedView { skill: string; modifier: number; max: number; max_level?: number | null }
 
-export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; weapons?: WeaponView[]; spells?: SpellView[]; rules?: RulesOptions; session?: SessionView; history?: HistoryView; issues: Issue[]; path?: string | null; budget: number }
+export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; weapons?: WeaponView[]; spells?: SpellView[]; rules?: RulesOptions; notes?: string; session?: SessionView; history?: HistoryView; issues: Issue[]; path?: string | null; budget: number }
 
 export type Outcome = 'critical_success' | 'success' | 'failure' | 'critical_failure';
 export interface RollResult {

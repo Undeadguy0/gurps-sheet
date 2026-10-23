@@ -18,6 +18,7 @@ import DefensesPanel from './components/DefensesPanel.vue';
 import WeaponLibraryDialog from './components/WeaponLibraryDialog.vue';
 import SpellsPanel from './components/SpellsPanel.vue';
 import SpellLibraryDialog from './components/SpellLibraryDialog.vue';
+import NotesPanel from './components/NotesPanel.vue';
 import TablePanel from './components/TablePanel.vue';
 import ModifierLibraryDialog from './components/ModifierLibraryDialog.vue';
 import { ROLLABLE } from './labels';
@@ -31,7 +32,7 @@ const sections: Section[] = [
   { id: 'magic', label: 'Магия', icon: '✧', ready: true },
   { id: 'equipment', label: 'Снаряж.', icon: '⚒', ready: true },
   { id: 'combat', label: 'Оружие', icon: '⚔', ready: true },
-  { id: 'notes', label: 'Заметки', icon: '✎', ready: false },
+  { id: 'notes', label: 'Заметки', icon: '✎', ready: true },
   { id: 'table', label: 'За столом', icon: '⚄', ready: true },
 ];
 
@@ -99,6 +100,7 @@ async function load(path: string) {
 
 const rename = (n: string) => run(api.setName(n));
 const newChar = () => run(api.newCharacter(), false);
+const setNotes = (t: string) => run(api.setNotes(t));
 const undo = () => { if (view.value?.history?.can_undo) run(api.undo()); };
 const redo = () => { if (view.value?.history?.can_redo) run(api.redo()); };
 const setCurrent = (stat: 'HP' | 'FP', v: number | null) => run(api.setCurrent(stat, v));
@@ -227,8 +229,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
         <DefensesPanel v-if="section === 'sheet' || section === 'combat'" class="sheet-grid__left" :defenses="view.sheet.defenses" />
         <WeaponsPanel v-if="section === 'sheet' || section === 'combat'" class="sheet-grid__full" :weapons="view.weapons ?? []"
           @add="openWeaponLibrary" @remove="removeWeapon" @set-explanation="setWeaponExplanation" />
+        <NotesPanel v-if="section === 'sheet'" class="sheet-grid__full" :notes="view.notes ?? ''" @save="setNotes" />
       </div>
-      <TablePanel v-else-if="section === 'table'" :view="view" @set-current="setCurrent" />
+      <NotesPanel v-else-if="section === 'notes'" :notes="view.notes ?? ''" @save="setNotes" />
+      <template v-else-if="section === 'table'">
+        <TablePanel :view="view" @set-current="setCurrent" />
+        <NotesPanel class="table-notes" compact :notes="view.notes ?? ''" @save="setNotes" />
+      </template>
       <section v-else class="panel empty-state">
         <h2 class="panel__title">{{ sections.find((s) => s.id === section)?.label }}</h2>
         <p class="muted">Раздел появится в следующих версиях.</p>

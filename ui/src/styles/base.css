@@ -298,3 +298,4 @@ kbd { font-family: var(--font-num); padding: 0 var(--xs); border: 1px solid var(
   .print-only { display: block; }
   .trait-mods__head .btn { display: none; }
 }
+.table-notes { margin-top: var(--md); }

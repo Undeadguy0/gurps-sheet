@@ -111,7 +111,7 @@ export function damageRoll(expr: string, crushing: boolean, rng: SplitMix): Dama
 
 /** Russian action labels for undoable commands (same as src-tauri/src/lib.rs). */
 const ACTION: Record<string, string> = {
-  set_negative_rounding: 'правило округления', set_name: 'переименование',
+  set_negative_rounding: 'правило округления', set_name: 'переименование', set_notes: 'заметки',
   add_trait: 'добавление черты', set_trait_levels: 'уровень черты', remove_trait: 'удаление черты', set_trait_explanation: 'пояснение черты',
   add_skill: 'добавление навыка', set_skill_points: 'очки навыка', set_skill_specialization: 'специализация навыка',
   set_skill_explanation: 'пояснение навыка', remove_skill: 'удаление навыка',
@@ -124,10 +124,11 @@ const ACTION: Record<string, string> = {
 };
 export const HISTORY_LIMIT = 200;
 type Snap = Record<string, unknown>;
-const SNAP_KEYS = ['name', 'levels', 'traits', 'skills', 'techniques', 'spells', 'equipment', 'weapons', 'rounding', 'session'] as const;
+const SNAP_KEYS = ['name', 'notes', 'levels', 'traits', 'skills', 'techniques', 'spells', 'equipment', 'weapons', 'rounding', 'session'] as const;
 
 export class MockBackend {
   session: { hp: number | null; fp: number | null } = { hp: null, fp: null };
+  notes = '';
   rng = new SplitMix(Date.now());
   private undoStack: [string, Snap][] = [];
   private redoStack: [string, Snap][] = [];
@@ -405,7 +406,7 @@ export class MockBackend {
           .map((s) => ({ severity: 'warning' as const, message: `skill '${s.def.name}' needs a specialization` })),
         ...(encumbrance.carried_weight > bl(liftSt) * 10 + 1e-9
           ? [{ severity: 'warning' as const, message: `carried ${encumbrance.carried_weight} lb is more than 10×BL (${bl(liftSt) * 10} lb): the character cannot move` }] : [])],
-      path: null, budget: 150, rules: { negative_rounding: this.rounding },
+      path: null, budget: 150, rules: { negative_rounding: this.rounding }, notes: this.notes,
       session: { hp: this.session.hp ?? Math.floor(tot.HP), hp_max: Math.floor(tot.HP), fp: this.session.fp ?? Math.floor(tot.FP), fp_max: Math.floor(tot.FP) },
     };
   }
@@ -415,12 +416,13 @@ export class MockBackend {
 
   private exec(cmd: string, a: Record<string, unknown>): unknown {
     switch (cmd) {
-      case 'new_character': this.session = { hp: null, fp: null }; this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.spells = []; this.equipment = []; this.weapons = unarmed(); this.name = (a.name as string) ?? 'New character'; return this.view();
+      case 'new_character': this.session = { hp: null, fp: null }; this.notes = ''; this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.spells = []; this.equipment = []; this.weapons = unarmed(); this.name = (a.name as string) ?? 'New character'; return this.view();
       case 'get_sheet': return this.view();
       case 'set_negative_rounding': {
         if (a.mode !== 'toward_positive' && a.mode !== 'by_magnitude') throw new Error(`unknown rounding mode ${a.mode}`);
         this.rounding = a.mode; return this.view();
       }
+      case 'set_notes': { const t = a.text as string; this.notes = t.trim() ? t : ''; return this.view(); }
       case 'set_name': this.name = a.name as string; return this.view();
       case 'set_attribute': this.levels[a.key as string] = a.level as number; return this.view();
       case 'add_trait': {
