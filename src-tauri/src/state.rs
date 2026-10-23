@@ -378,6 +378,10 @@ pub struct AppState {
     pub spell_library: Vec<(String, SpellDef)>,
     pub modifier_library: Vec<(String, ModifierDef)>,
     pub path: Option<PathBuf>,
+    /// Where relative file names are resolved (the user's documents folder in the app).
+    /// Never the process CWD: under `tauri dev` that is src-tauri/, and writing there
+    /// makes the dev watcher rebuild and restart the app.
+    pub save_dir: Option<PathBuf>,
     pub plugin_errors: Vec<String>,
     /// Directory the library was loaded from.
     pub plugin_dir: Option<PathBuf>,
@@ -412,6 +416,7 @@ impl Default for AppState {
             spell_library: Vec::new(),
             modifier_library: Vec::new(),
             path: None,
+            save_dir: None,
             plugin_errors: Vec::new(),
             plugin_dir: None,
             plugin_ids: Vec::new(),
@@ -693,7 +698,11 @@ impl AppState {
     }
 
     pub fn add_ledger_entry(&mut self, e: LedgerInput) -> Result<SheetView, String> {
-        self.character.migrate();
+        // Migrate only a legacy (non-zero) budget; an emptied ledger stays empty
+        // instead of growing a 0-point starting entry.
+        if self.character.ledger.is_empty() && self.character.points_budget != 0 {
+            self.character.migrate();
+        }
         let id = self
             .character
             .ledger
@@ -712,7 +721,7 @@ impl AppState {
         }
         .normalized()?;
         self.character.ledger.push(entry);
-        self.character.migrate();
+        self.character.points_budget = self.character.available_points();
         Ok(self.view())
     }
 
@@ -990,9 +999,20 @@ impl AppState {
         Ok(self.view())
     }
 
+    /// Relative names go to `save_dir`; absolute paths are kept.
+    pub fn resolve_path(&self, path: &str) -> PathBuf {
+        let p = PathBuf::from(path.trim());
+        match &self.save_dir {
+            Some(d) if p.is_relative() => d.join(p),
+            _ => p,
+        }
+    }
+
     pub fn load(&mut self, path: &str) -> Result<SheetView, String> {
-        self.character = gurps_io::load(path).map_err(|e| e.to_string())?;
-        self.path = Some(path.into());
+        let path = self.resolve_path(path);
+        let ch = gurps_io::load(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        self.character = ch;
+        self.path = Some(path);
         self.reset_history();
         let v = self.view();
         self.saved = self.character.clone();
@@ -1001,10 +1021,14 @@ impl AppState {
 
     pub fn save(&mut self, path: Option<String>) -> Result<String, String> {
         let p = path
-            .map(PathBuf::from)
+            .filter(|p| !p.trim().is_empty())
+            .map(|p| self.resolve_path(&p))
             .or_else(|| self.path.clone())
             .ok_or("no file path given")?;
-        gurps_io::save(&p, &self.character).map_err(|e| e.to_string())?;
+        if let Some(dir) = p.parent().filter(|d| !d.as_os_str().is_empty()) {
+            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        }
+        gurps_io::save(&p, &self.character).map_err(|e| format!("{}: {e}", p.display()))?;
         self.path = Some(p.clone());
         self.saved = self.character.clone();
         Ok(p.display().to_string())
@@ -2145,6 +2169,59 @@ mod tests {
                 .pool
                 .disadvantage_limit_custom
         );
+    }
+
+    #[test]
+    fn replace_starting_entry_then_save_and_reload() {
+        use gurps_core::LedgerKind::*;
+        let mut s = state();
+        s.new_character(Some("Bug".into()));
+        s.record("x", |s| s.remove_ledger_entry(1)).unwrap();
+        let v = s
+            .record("x", |s| s.add_ledger_entry(li(Starting, 200, "")))
+            .unwrap();
+        let _ = v;
+        let p = s.view().pool;
+        assert_eq!(
+            (p.entries.len(), p.starting, p.available),
+            (1, 200, 200),
+            "{:?}",
+            p.entries
+        );
+        let path = std::env::temp_dir().join(format!("gurps-bug-{}.json", std::process::id()));
+        s.save(Some(path.display().to_string())).unwrap();
+        assert!(!s.history_view().dirty);
+        let mut t = state();
+        let v = t.load(&path.display().to_string()).unwrap();
+        assert_eq!(
+            (v.pool.entries.len(), v.pool.starting, v.budget),
+            (1, 200, 200)
+        );
+        assert!(!v.history.dirty);
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn relative_save_goes_to_save_dir_not_cwd() {
+        let dir = std::env::temp_dir().join(format!("gurps-savedir-{}", std::process::id()));
+        let mut s = state();
+        s.save_dir = Some(dir.join("GURPS Sheet"));
+        s.new_character(Some("Rel".into()));
+        let out = s.save(Some("character.gurps.json".into())).unwrap();
+        assert!(
+            dir.join("GURPS Sheet/character.gurps.json").is_file(),
+            "{out}"
+        );
+        assert!(
+            !std::path::Path::new("character.gurps.json").exists(),
+            "nothing in the CWD"
+        );
+        assert_eq!(s.load("character.gurps.json").unwrap().sheet.name, "Rel");
+        // errors are returned, not panics
+        assert!(s
+            .save(Some(dir.join("f\0").join("x").display().to_string() + "\0"))
+            .is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

@@ -23,8 +23,40 @@ fn edit(
     f: impl FnOnce(&mut AppState) -> Result<SheetView, String>,
 ) -> Result<SheetView, String> {
     let mut st = lock(state);
-    st.record(label, f)?;
-    Ok(st.view())
+    let before = st.character.clone();
+    let label = label.into();
+    let out = guard(|| {
+        st.record(label, f)?;
+        Ok(st.view())
+    });
+    if out.is_err() && st.character != before {
+        // A panic mid-edit must not leave a half-applied character behind.
+        st.character = before;
+    }
+    out
+}
+
+/// Turns a panic into an `Err` for the UI instead of killing the app.
+fn guard<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|p| {
+        let msg = p
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_else(|| "unknown panic".into());
+        Err(format!("внутренняя ошибка: {msg}"))
+    })
+}
+
+/// Default folder for relative file names: Documents/GURPS Sheet.
+fn default_save_dir(app: &tauri::App) -> Option<PathBuf> {
+    use tauri::Manager;
+    let base = app
+        .path()
+        .document_dir()
+        .or_else(|_| app.path().home_dir())
+        .ok()?;
+    Some(base.join("GURPS Sheet"))
 }
 
 #[tauri::command]
@@ -34,12 +66,14 @@ fn new_character(state: S, name: Option<String>) -> SheetView {
 
 #[tauri::command]
 fn load(state: S, path: String) -> Result<SheetView, String> {
-    lock(&state).load(&path)
+    let mut st = lock(&state);
+    guard(|| st.load(&path))
 }
 
 #[tauri::command]
 fn save(state: S, path: Option<String>) -> Result<String, String> {
-    lock(&state).save(path)
+    let mut st = lock(&state);
+    guard(|| st.save(path))
 }
 
 #[tauri::command]
@@ -495,6 +529,16 @@ fn reload_plugins(state: S) -> PluginStatus {
 pub fn run() {
     tauri::Builder::default()
         .manage(Mutex::new(AppState::with_plugins(plugin_dir())))
+        .setup(|app| {
+            use tauri::Manager;
+            let dir = default_save_dir(app);
+            eprintln!("gurps-sheet: relative file names resolve to {dir:?}");
+            app.state::<Mutex<AppState>>()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .save_dir = dir;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             new_character,
             load,

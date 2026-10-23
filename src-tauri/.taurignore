@@ -1,0 +1,4 @@
+# Character files and atomic-save temps must not trigger a dev rebuild/restart.
+*.gurps.json
+*.gurps.json.tmp
+*.tmp

@@ -46,6 +46,17 @@ describe('point pool ledger (mirror of gurps_core::ledger)', () => {
   });
 });
 
+describe('regression: replace the starting entry', () => {
+  it('delete starting 150, add starting 200 -> one entry, budget 200', () => {
+    const m = new MockBackend();
+    v(m, 'new_character', {});
+    v(m, 'remove_ledger_entry', { id: 1 });
+    const s = v(m, 'add_ledger_entry', { entry: { kind: 'starting', amount: 200 } });
+    expect(s.pool!.entries).toHaveLength(1);
+    expect([s.pool!.starting, s.budget]).toEqual([200, 200]);
+  });
+});
+
 describe('custom definitions', () => {
   it('saves, lists in libraries with plugin custom, edits and removes (undoable)', () => {
     const m = new MockBackend();
