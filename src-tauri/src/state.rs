@@ -2,8 +2,8 @@
 //! logic can be unit-tested without a webview.
 
 use gurps_core::{
-    Character, LocalizedText, Skill, SkillDef, SkillDefault, Stat, Technique, TechniqueDef, Trait,
-    TraitCategory, TraitDef,
+    Character, Equipment, EquipmentDef, LocalizedText, Skill, SkillDef, SkillDefault, Stat,
+    Technique, TechniqueDef, Trait, TraitCategory, TraitDef,
 };
 use gurps_rules::dice::{success_roll, RollResult, SplitMix};
 use gurps_rules::validate::{validate, Issue};
@@ -121,6 +121,42 @@ pub struct SkillLibrary {
     pub techniques: Vec<TechniqueLibEntry>,
 }
 
+/// One equipment row, flattened from the container tree (`path` addresses it).
+#[derive(Debug, Clone, Serialize)]
+pub struct EquipmentView {
+    pub path: Vec<usize>,
+    /// Nesting depth (0 = top level).
+    pub depth: usize,
+    pub id: String,
+    pub name: String,
+    pub original_name: Option<String>,
+    pub quantity: u32,
+    pub weight: f64,
+    pub cost: f64,
+    /// quantity × weight + contents.
+    pub total_weight: f64,
+    pub total_cost: f64,
+    pub carried: bool,
+    /// False when an enclosing container is not carried.
+    pub effectively_carried: bool,
+    pub container: bool,
+    pub stats: Option<String>,
+    pub page: Option<String>,
+    pub source: Option<String>,
+    pub explanation: Option<String>,
+    pub default_explanation: Option<String>,
+    pub custom_explanation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EquipmentLibEntry {
+    pub plugin: String,
+    #[serde(flatten)]
+    pub def: EquipmentDef,
+    pub explanation: Option<String>,
+    pub translated_name: Option<String>,
+}
+
 /// Where library data came from (shown in the UI; helps spot stale data).
 #[derive(Debug, Clone, Serialize)]
 pub struct PluginStatus {
@@ -130,6 +166,7 @@ pub struct PluginStatus {
     pub traits: usize,
     /// Skills + techniques.
     pub skills: usize,
+    pub equipment: usize,
 }
 
 /// Language settings for the UI switcher.
@@ -147,6 +184,7 @@ pub struct SheetView {
     pub traits: Vec<TraitView>,
     pub skills: Vec<SkillView>,
     pub techniques: Vec<TechniqueView>,
+    pub equipment: Vec<EquipmentView>,
     pub issues: Vec<Issue>,
     pub path: Option<String>,
     pub budget: i32,
@@ -159,6 +197,7 @@ pub struct AppState {
     /// (plugin id, definition)
     pub skill_library: Vec<(String, SkillDef)>,
     pub technique_library: Vec<(String, TechniqueDef)>,
+    pub equipment_library: Vec<(String, EquipmentDef)>,
     pub path: Option<PathBuf>,
     pub plugin_errors: Vec<String>,
     /// Directory the library was loaded from.
@@ -182,6 +221,7 @@ impl Default for AppState {
             library: Vec::new(),
             skill_library: Vec::new(),
             technique_library: Vec::new(),
+            equipment_library: Vec::new(),
             path: None,
             plugin_errors: Vec::new(),
             plugin_dir: None,
@@ -208,6 +248,7 @@ impl AppState {
         self.library.clear();
         self.skill_library.clear();
         self.technique_library.clear();
+        self.equipment_library.clear();
         self.catalog = Default::default();
         self.plugin_errors.clear();
         self.plugin_ids.clear();
@@ -224,6 +265,7 @@ impl AppState {
                 self.catalog = gurps_plugins::translations(&plugins);
                 self.skill_library = gurps_plugins::skill_library(&plugins);
                 self.technique_library = gurps_plugins::technique_library(&plugins);
+                self.equipment_library = gurps_plugins::equipment_library(&plugins);
                 self.library = gurps_plugins::trait_library(&plugins)
                     .into_iter()
                     .map(|(plugin, def)| LibraryEntry {
@@ -245,6 +287,7 @@ impl AppState {
             errors: self.plugin_errors.clone(),
             traits: self.library.len(),
             skills: self.skill_library.len() + self.technique_library.len(),
+            equipment: self.equipment_library.len(),
         }
     }
 
@@ -253,6 +296,7 @@ impl AppState {
         SheetView {
             skills: self.skill_views(&sheet),
             techniques: self.technique_views(&sheet),
+            equipment: self.equipment_views(),
             sheet,
             traits: self
                 .character
@@ -537,6 +581,143 @@ impl AppState {
                 }
             })
             .collect()
+    }
+
+    fn equipment_views(&self) -> Vec<EquipmentView> {
+        let mut out = Vec::new();
+        self.walk_equipment(&self.character.equipment, &mut Vec::new(), true, &mut out);
+        out
+    }
+
+    fn walk_equipment(
+        &self,
+        list: &[Equipment],
+        path: &mut Vec<usize>,
+        parent_carried: bool,
+        out: &mut Vec<EquipmentView>,
+    ) {
+        for (i, e) in list.iter().enumerate() {
+            path.push(i);
+            let tr = self
+                .translated_kind("equipment", &e.def.id)
+                .map(str::to_owned);
+            let own = self
+                .equipment_library
+                .iter()
+                .find(|(_, d)| !e.def.id.is_empty() && d.id == e.def.id)
+                .and_then(|(_, d)| d.description.as_ref())
+                .or(e.def.description.as_ref());
+            let carried = parent_carried && e.carried;
+            out.push(EquipmentView {
+                path: path.clone(),
+                depth: path.len() - 1,
+                id: e.def.id.clone(),
+                original_name: tr.as_ref().map(|_| e.def.name.clone()),
+                name: tr.unwrap_or_else(|| e.def.name.clone()),
+                quantity: e.quantity,
+                weight: e.def.weight,
+                cost: e.def.cost,
+                total_weight: e.total_weight(),
+                total_cost: e.total_cost(),
+                carried: e.carried,
+                effectively_carried: carried,
+                container: e.def.container,
+                stats: e.def.stats.clone(),
+                page: e.def.page.clone(),
+                source: e.source.clone(),
+                explanation: gurps_core::non_blank(e.explanation.clone())
+                    .or_else(|| self.text_for("equipment", &e.def.id, own)),
+                default_explanation: self.text_for("equipment", &e.def.id, own),
+                custom_explanation: !gurps_core::is_blank(&e.explanation),
+            });
+            self.walk_equipment(&e.contents, path, carried, out);
+            path.pop();
+        }
+    }
+
+    pub fn equipment_library_view(&self) -> Vec<EquipmentLibEntry> {
+        self.equipment_library
+            .iter()
+            .map(|(plugin, def)| EquipmentLibEntry {
+                plugin: plugin.clone(),
+                explanation: self.text_for("equipment", &def.id, def.description.as_ref()),
+                translated_name: self
+                    .translated_kind("equipment", &def.id)
+                    .map(str::to_owned),
+                def: def.clone(),
+            })
+            .collect()
+    }
+
+    /// Adds a library item at the top level or into the container at `parent`.
+    pub fn add_equipment(
+        &mut self,
+        id: &str,
+        quantity: Option<u32>,
+        parent: Option<Vec<usize>>,
+    ) -> Result<SheetView, String> {
+        let (plugin, def) = self
+            .equipment_library
+            .iter()
+            .find(|(_, d)| d.id == id)
+            .ok_or_else(|| format!("equipment {id} not in library"))?;
+        let mut def = def.clone();
+        def.description = None;
+        let mut e = Equipment::new(def, quantity.unwrap_or(1).max(1));
+        e.source = Some(plugin.clone());
+        match parent.filter(|p| !p.is_empty()) {
+            None => self.character.equipment.push(e),
+            Some(p) => {
+                let c = Equipment::at_path_mut(&mut self.character.equipment, &p)
+                    .ok_or("no such container")?;
+                if !c.def.container {
+                    return Err(format!("{} is not a container", c.def.name));
+                }
+                c.contents.push(e);
+            }
+        }
+        Ok(self.view())
+    }
+
+    fn equipment_mut(&mut self, path: &[usize]) -> Result<&mut Equipment, String> {
+        Equipment::at_path_mut(&mut self.character.equipment, path)
+            .ok_or_else(|| "no such item".into())
+    }
+
+    pub fn set_equipment_quantity(
+        &mut self,
+        path: &[usize],
+        quantity: u32,
+    ) -> Result<SheetView, String> {
+        self.equipment_mut(path)?.quantity = quantity;
+        Ok(self.view())
+    }
+
+    pub fn set_equipment_carried(
+        &mut self,
+        path: &[usize],
+        carried: bool,
+    ) -> Result<SheetView, String> {
+        self.equipment_mut(path)?.carried = carried;
+        Ok(self.view())
+    }
+
+    pub fn set_equipment_explanation(
+        &mut self,
+        path: &[usize],
+        text: Option<String>,
+    ) -> Result<SheetView, String> {
+        self.equipment_mut(path)?.explanation = gurps_core::non_blank(text);
+        Ok(self.view())
+    }
+
+    pub fn remove_equipment(&mut self, path: &[usize]) -> Result<SheetView, String> {
+        let i = *path.last().ok_or("empty path")?;
+        let list = Equipment::parent_list_mut(&mut self.character.equipment, path)
+            .filter(|l| i < l.len())
+            .ok_or("no such item")?;
+        list.remove(i);
+        Ok(self.view())
     }
 
     pub fn skill_library_view(&self) -> SkillLibrary {
@@ -869,6 +1050,50 @@ mod tests {
         assert_eq!(s.plugin_status().traits, st.traits);
         let bad = AppState::with_plugins(None);
         assert!(!bad.plugin_status().errors.is_empty());
+    }
+
+    #[test]
+    fn equipment_flow_translated() {
+        let mut s = state();
+        let lib = s.equipment_library_view();
+        assert!(lib.len() >= 10);
+        let k = lib.iter().find(|e| e.def.id == "small-knife").unwrap();
+        assert_eq!(k.translated_name.as_deref(), Some("Малый нож"));
+        s.set_attribute("ST", 0).unwrap(); // BL 20
+        s.add_equipment("backpack-frame", None, None).unwrap();
+        s.add_equipment("small-knife", Some(2), Some(vec![0]))
+            .unwrap();
+        assert!(
+            s.add_equipment("torch", None, Some(vec![0, 0])).is_err(),
+            "knife is no container"
+        );
+        let v = s.add_equipment("medium-shield", None, None).unwrap();
+        assert_eq!(v.equipment.len(), 3);
+        assert_eq!(v.equipment[1].name, "Малый нож");
+        assert_eq!(
+            (v.equipment[1].depth, v.equipment[1].path.clone()),
+            (1, vec![0, 0])
+        );
+        assert_eq!(v.equipment[0].total_weight, 11.0);
+        assert_eq!(v.sheet.encumbrance.carried_weight, 26.0);
+        assert_eq!(v.sheet.encumbrance.level, 1);
+        let v = s.set_equipment_carried(&[0], false).unwrap();
+        assert!(!v.equipment[1].effectively_carried && v.equipment[1].carried);
+        assert_eq!(v.sheet.encumbrance.level, 0);
+        let v = s.set_equipment_quantity(&[0, 0], 5).unwrap();
+        assert_eq!(v.equipment[1].total_weight, 2.5);
+        let v = s
+            .set_equipment_explanation(&[1], Some("мой щит".into()))
+            .unwrap();
+        assert!(v.equipment[2].custom_explanation);
+        assert_eq!(v.equipment[2].explanation.as_deref(), Some("мой щит"));
+        assert!(v.equipment[2]
+            .default_explanation
+            .as_deref()
+            .is_some_and(|t| t.contains("щит")));
+        let v = s.remove_equipment(&[0, 0]).unwrap();
+        assert_eq!(v.equipment.len(), 2);
+        assert!(s.remove_equipment(&[5]).is_err());
     }
 
     #[test]

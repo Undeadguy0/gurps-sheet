@@ -2,7 +2,7 @@ mod state;
 
 use gurps_rules::dice::RollResult;
 pub use state::{AppState, SheetView};
-use state::{LibraryEntry, LocaleInfo, PluginStatus, SkillLibrary};
+use state::{EquipmentLibEntry, LibraryEntry, LocaleInfo, PluginStatus, SkillLibrary};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::State;
@@ -150,6 +150,45 @@ fn remove_technique(state: S, index: usize) -> Result<SheetView, String> {
 }
 
 #[tauri::command]
+fn list_equipment_library(state: S) -> Vec<EquipmentLibEntry> {
+    lock(&state).equipment_library_view()
+}
+
+#[tauri::command]
+fn add_equipment(
+    state: S,
+    id: String,
+    quantity: Option<u32>,
+    parent: Option<Vec<usize>>,
+) -> Result<SheetView, String> {
+    lock(&state).add_equipment(&id, quantity, parent)
+}
+
+#[tauri::command]
+fn set_equipment_quantity(state: S, path: Vec<usize>, quantity: u32) -> Result<SheetView, String> {
+    lock(&state).set_equipment_quantity(&path, quantity)
+}
+
+#[tauri::command]
+fn set_equipment_carried(state: S, path: Vec<usize>, carried: bool) -> Result<SheetView, String> {
+    lock(&state).set_equipment_carried(&path, carried)
+}
+
+#[tauri::command]
+fn set_equipment_explanation(
+    state: S,
+    path: Vec<usize>,
+    text: Option<String>,
+) -> Result<SheetView, String> {
+    lock(&state).set_equipment_explanation(&path, text)
+}
+
+#[tauri::command]
+fn remove_equipment(state: S, path: Vec<usize>) -> Result<SheetView, String> {
+    lock(&state).remove_equipment(&path)
+}
+
+#[tauri::command]
 fn roll(target: i32, modifier: Option<i32>) -> RollResult {
     AppState::roll(target, modifier.unwrap_or(0))
 }
@@ -230,6 +269,12 @@ pub fn run() {
             set_technique_points,
             set_technique_explanation,
             remove_technique,
+            list_equipment_library,
+            add_equipment,
+            set_equipment_quantity,
+            set_equipment_carried,
+            set_equipment_explanation,
+            remove_equipment,
             plugin_status,
             reload_plugins,
             roll
