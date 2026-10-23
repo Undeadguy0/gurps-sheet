@@ -1,5 +1,6 @@
 # Sample data only: names, point costs and page references.
 # No rules text is reproduced here; see the GURPS Basic Set for descriptions.
+# Page references are from memory and UNVERIFIED.
 
 [[traits]]
 id = "lifting-st"
@@ -52,3 +53,100 @@ name = "Quirk (example)"
 category = "quirk"
 cost = -1
 page = "B162"
+
+# --- Added for golden test characters (examples/test-chars). ---
+# NOTE: page references below are from memory and UNVERIFIED against the book.
+
+[[traits]]
+id = "high-pain-threshold"
+name = "High Pain Threshold"
+category = "advantage"
+cost = 10
+page = "B59" # unverified
+
+[[traits]]
+id = "striking-st"
+name = "Striking ST"
+category = "advantage"
+cost_per_level = 5
+page = "B88" # unverified
+features = [{ type = "striking_st_bonus", amount = 1, per_level = true }]
+
+[[traits]]
+id = "magery"
+name = "Magery"
+category = "advantage"
+cost = 5
+cost_per_level = 10
+min_levels = 0
+page = "B66" # unverified
+
+[[traits]]
+id = "eidetic-memory"
+name = "Eidetic Memory"
+category = "advantage"
+cost = 5
+page = "B51" # unverified
+
+[[traits]]
+id = "danger-sense"
+name = "Danger Sense"
+category = "advantage"
+cost = 15
+page = "B47" # unverified
+
+[[traits]]
+id = "bad-temper-12"
+name = "Bad Temper (12)"
+category = "disadvantage"
+cost = -10
+page = "B124" # unverified
+
+[[traits]]
+id = "honesty-12"
+name = "Honesty (12)"
+category = "disadvantage"
+cost = -10
+page = "B138" # unverified
+
+[[traits]]
+id = "overconfidence-12"
+name = "Overconfidence (12)"
+category = "disadvantage"
+cost = -5
+page = "B148" # unverified
+
+[[traits]]
+id = "pacifism-self-defense"
+name = "Pacifism: Self-Defense Only"
+category = "disadvantage"
+cost = -15
+page = "B148" # unverified
+
+[[traits]]
+id = "curious-12"
+name = "Curious (12)"
+category = "disadvantage"
+cost = -5
+page = "B129" # unverified
+
+[[traits]]
+id = "skinny"
+name = "Skinny"
+category = "disadvantage"
+cost = -5
+page = "B18" # unverified
+
+[[traits]]
+id = "greed-12"
+name = "Greed (12)"
+category = "disadvantage"
+cost = -15
+page = "B137" # unverified
+
+[[traits]]
+id = "impulsiveness-12"
+name = "Impulsiveness (12)"
+category = "disadvantage"
+cost = -10
+page = "B139" # unverified
