@@ -6,6 +6,7 @@
 pub mod damage;
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt;
 
 /// A value that can be targeted by features and shown on the sheet.
@@ -177,6 +178,86 @@ pub enum Feature {
     },
 }
 
+/// Multi-line Markdown text from plugin data: either a plain string or a
+/// table keyed by locale (`ru`, `en`, ...).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum LocalizedText {
+    Plain(String),
+    Localized(BTreeMap<String, String>),
+}
+
+impl LocalizedText {
+    /// Text for `locale` with fallbacks: exact locale, its language part
+    /// (`ru-RU` -> `ru`), then `en`, then `ru`, then any non-empty entry.
+    /// Blank strings count as missing.
+    pub fn get(&self, locale: &str) -> Option<&str> {
+        fn ok(s: &String) -> Option<&str> {
+            if s.trim().is_empty() {
+                None
+            } else {
+                Some(s.as_str())
+            }
+        }
+        match self {
+            LocalizedText::Plain(s) => ok(s),
+            LocalizedText::Localized(m) => {
+                let lang = locale.split(['-', '_']).next().unwrap_or(locale);
+                [locale, lang, "en", "ru"]
+                    .iter()
+                    .find_map(|k| m.get(*k).and_then(ok))
+                    .or_else(|| m.values().find_map(ok))
+            }
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.get("en").is_none()
+    }
+}
+
+impl From<&str> for LocalizedText {
+    fn from(s: &str) -> Self {
+        LocalizedText::Plain(s.to_string())
+    }
+}
+
+/// True for `None` or whitespace-only text (used to skip empty fields in JSON).
+pub fn is_blank(s: &Option<String>) -> bool {
+    s.as_deref().is_none_or(|t| t.trim().is_empty())
+}
+
+/// Normalises user input: whitespace-only text becomes `None`.
+pub fn non_blank(s: Option<String>) -> Option<String> {
+    s.filter(|t| !t.trim().is_empty())
+}
+
+/// Shared shape for library entries that so far only carry identity, a page
+/// reference and an explanation (skills, spells, equipment, weapons, modifiers).
+/// Unknown keys are ignored so richer data can be added later.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LibraryItemDef {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<String>,
+    /// Markdown explanation (plain string or `{ ru, en }` table).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<LocalizedText>,
+}
+
+impl LibraryItemDef {
+    pub fn explanation(&self, locale: &str) -> Option<&str> {
+        self.description.as_ref().and_then(|d| d.get(locale))
+    }
+}
+
+pub type SkillDef = LibraryItemDef;
+pub type SpellDef = LibraryItemDef;
+pub type EquipmentDef = LibraryItemDef;
+pub type WeaponDef = LibraryItemDef;
+pub type ModifierDef = LibraryItemDef;
+
 /// Trait definition (from a plugin library).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TraitDef {
@@ -200,9 +281,17 @@ pub struct TraitDef {
     pub page: Option<String>,
     #[serde(default)]
     pub features: Vec<Feature>,
+    /// Plugin explanation in Markdown (plain string or `{ ru, en }` table).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<LocalizedText>,
 }
 
 impl TraitDef {
+    /// Plugin explanation for `locale` (with locale fallback).
+    pub fn explanation(&self, locale: &str) -> Option<&str> {
+        self.description.as_ref().and_then(|d| d.get(locale))
+    }
+
     pub fn is_leveled(&self) -> bool {
         self.cost_per_level != 0
     }
@@ -224,6 +313,9 @@ pub struct Trait {
     /// Plugin the trait came from (informational).
     #[serde(default)]
     pub source: Option<String>,
+    /// User's own explanation (Markdown); overrides the plugin text when non-blank.
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub explanation: Option<String>,
 }
 
 impl Trait {
@@ -232,7 +324,21 @@ impl Trait {
             def,
             levels,
             source: None,
+            explanation: None,
         }
+    }
+
+    /// Effective explanation: user override, else plugin text for `locale`.
+    pub fn explanation(&self, locale: &str) -> Option<&str> {
+        self.explanation
+            .as_deref()
+            .filter(|t| !t.trim().is_empty())
+            .or_else(|| self.def.explanation(locale))
+    }
+
+    /// True when the user text is in effect.
+    pub fn has_custom_explanation(&self) -> bool {
+        !is_blank(&self.explanation)
     }
 
     pub fn cost(&self) -> i32 {
@@ -257,6 +363,9 @@ pub struct Equipment {
     pub quantity: u32,
     pub weight: f64,
     pub cost: f64,
+    /// User's explanation (Markdown); skipped in JSON when empty.
+    #[serde(skip_serializing_if = "is_blank")]
+    pub explanation: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -320,6 +429,7 @@ mod tests {
             min_levels: None,
             page: Some("B65".into()),
             features: vec![],
+            description: None,
         };
         let t = Trait::new(def, 4);
         assert_eq!(t.cost(), 12);
@@ -332,5 +442,54 @@ mod tests {
         assert!(a.set_purchased(Stat::ST, 2));
         assert_eq!(a.purchased(Stat::ST), 2);
         assert!(!a.set_purchased(Stat::BasicLift, 1));
+    }
+
+    fn def_with(desc: Option<LocalizedText>) -> TraitDef {
+        TraitDef {
+            id: "x".into(),
+            name: "X".into(),
+            category: TraitCategory::Advantage,
+            cost: 5,
+            cost_per_level: 0,
+            max_levels: None,
+            min_levels: None,
+            page: None,
+            features: vec![],
+            description: desc,
+        }
+    }
+
+    #[test]
+    fn localized_fallback() {
+        let mut m = BTreeMap::new();
+        m.insert("ru".to_string(), "по-русски".to_string());
+        m.insert("en".to_string(), "in English".to_string());
+        let t = LocalizedText::Localized(m.clone());
+        assert_eq!(t.get("ru"), Some("по-русски"));
+        assert_eq!(t.get("ru-RU"), Some("по-русски"));
+        assert_eq!(t.get("de"), Some("in English"));
+        m.remove("en");
+        let t = LocalizedText::Localized(m);
+        assert_eq!(t.get("en"), Some("по-русски"));
+        let mut only_de = BTreeMap::new();
+        only_de.insert("de".to_string(), "Deutsch".to_string());
+        only_de.insert("en".to_string(), "  ".to_string());
+        assert_eq!(LocalizedText::Localized(only_de).get("ru"), Some("Deutsch"));
+        assert_eq!(LocalizedText::from("plain").get("ru"), Some("plain"));
+        assert!(LocalizedText::from("   ").is_empty());
+    }
+
+    #[test]
+    fn override_precedence() {
+        let mut t = Trait::new(def_with(Some("plugin".into())), 0);
+        assert_eq!(t.explanation("ru"), Some("plugin"));
+        assert!(!t.has_custom_explanation());
+        t.explanation = Some("  ".into());
+        assert_eq!(t.explanation("ru"), Some("plugin"), "blank override ignored");
+        t.explanation = Some("mine".into());
+        assert_eq!(t.explanation("ru"), Some("mine"));
+        assert!(t.has_custom_explanation());
+        let t = Trait::new(def_with(None), 0);
+        assert_eq!(t.explanation("ru"), None);
     }
 }

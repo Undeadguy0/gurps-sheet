@@ -76,6 +76,7 @@ mod tests {
             min_levels: Some(0),
             page: None,
             features: vec![],
+            description: None,
         };
         let mut ch = Character::default();
         ch.traits.push(Trait::new(def.clone(), 0));

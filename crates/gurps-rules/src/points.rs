@@ -96,6 +96,7 @@ mod tests {
                 min_levels: None,
                 page: None,
                 features: vec![],
+                description: None,
             },
             0,
         )

@@ -89,6 +89,7 @@ mod tests {
                     amount: 1.0,
                     per_level: true,
                 }],
+                description: None,
             },
             1,
         ));
@@ -97,6 +98,7 @@ mod tests {
             quantity: 1,
             weight: 1.5,
             cost: 5.0,
+            explanation: None,
         });
         ch
     }
@@ -145,5 +147,32 @@ mod tests {
         // fixture is canonical: re-serialising yields identical content
         let again = from_str(&to_string(&ch).unwrap()).unwrap();
         assert_eq!(again, ch);
+    }
+
+    #[test]
+    fn explanation_roundtrip_and_skip_when_empty() {
+        let mut ch = sample();
+        let s = to_string(&ch).unwrap();
+        assert!(!s.contains("explanation"), "empty field is skipped");
+        assert!(!s.contains("description"), "missing plugin text is skipped");
+        ch.traits[0].def.description = Some("plugin **text**".into());
+        ch.traits[0].explanation = Some("# Mine\nline 2\n".into());
+        ch.equipment[0].explanation = Some("rope notes".into());
+        let s = to_string(&ch).unwrap();
+        let back = from_str(&s).unwrap();
+        assert_eq!(back, ch);
+        assert_eq!(back.traits[0].explanation("ru"), Some("# Mine\nline 2\n"));
+        ch.traits[0].explanation = Some("   ".into());
+        ch.equipment[0].explanation = None;
+        assert!(!to_string(&ch).unwrap().contains("\"explanation\""));
+    }
+
+    #[test]
+    fn old_files_without_explanation_load() {
+        for f in ["hero", "test-chars/warrior", "test-chars/mage", "test-chars/rogue"] {
+            let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../examples/{f}.json"));
+            let ch = load(&p).unwrap();
+            assert!(ch.traits.iter().all(|t| t.explanation.is_none()));
+        }
     }
 }

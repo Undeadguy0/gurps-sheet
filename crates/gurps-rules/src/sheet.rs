@@ -255,6 +255,7 @@ mod tests {
                     amount: 1.0,
                     per_level: true,
                 }],
+                description: None,
             },
             1,
         )
@@ -377,6 +378,7 @@ mod tests {
                     amount: 1.0,
                     per_level: true,
                 }],
+                description: None,
             },
             2,
         ));
