@@ -23,6 +23,8 @@ export const api = {
   setName: (name: string) => call<SheetView>('set_name', { name }),
   addTrait: (id: string, levels?: number) => call<SheetView>('add_trait', { id, levels }),
   setTraitLevels: (index: number, levels: number) => call<SheetView>('set_trait_levels', { index, levels }),
+  /** `null` or blank text resets to the plugin default. */
+  setTraitExplanation: (index: number, text: string | null) => call<SheetView>('set_trait_explanation', { index, text }),
   removeTrait: (index: number) => call<SheetView>('remove_trait', { index }),
   getSheet: () => call<SheetView>('get_sheet'),
   listLibrary: () => call<LibraryEntry[]>('list_library'),

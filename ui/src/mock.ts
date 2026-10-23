@@ -2,10 +2,10 @@
 // so designers can work on the UI without the Rust app. The source of truth for all
 // rules is the Rust crate `gurps-rules`; this is a simplified mirror of it.
 import type {
-  LibraryEntry, RollResult, SheetView, StatRow, TraitDef, TraitView, Value, Outcome,
+  LibraryEntry, LocalizedText, RollResult, SheetView, StatRow, TraitDef, TraitView, Value, Outcome,
 } from './types';
 
-interface MockTrait { def: TraitDef; levels: number; source: string }
+interface MockTrait { def: TraitDef; levels: number; source: string; explanation?: string }
 
 const COST: Record<string, number> = {
   ST: 10, DX: 20, IQ: 20, HT: 10, HP: 2, Will: 5, Per: 5, FP: 3, BasicSpeed: 5, BasicMove: 5,
@@ -14,12 +14,27 @@ const LABEL: Record<string, string> = { BasicSpeed: 'Basic Speed', BasicMove: 'B
 const PRIMARY = ['ST', 'DX', 'IQ', 'HT'];
 const SECONDARY = ['HP', 'Will', 'Per', 'FP', 'BasicSpeed', 'BasicMove'];
 
-const LIBRARY: LibraryEntry[] = [
-  { plugin: 'basic-set-sample', id: 'increased-st-example', name: 'Increased ST (example)', category: 'advantage', cost: 0, cost_per_level: 10, page: 'example', features: [{ type: 'attribute_bonus', target: 'ST', amount: 1, per_level: true }] },
-  { plugin: 'basic-set-sample', id: 'lifting-st', name: 'Lifting ST', category: 'advantage', cost: 0, cost_per_level: 3, page: 'B65', features: [{ type: 'lifting_st_bonus', amount: 1, per_level: true }] },
-  { plugin: 'basic-set-sample', id: 'combat-reflexes', name: 'Combat Reflexes', category: 'advantage', cost: 15, cost_per_level: 0, page: 'B43', features: [] },
-  { plugin: 'basic-set-sample', id: 'overconfidence', name: 'Overconfidence', category: 'disadvantage', cost: -5, cost_per_level: 0, page: 'B148', features: [] },
+/** Same fallback order as gurps_core::LocalizedText::get. */
+export function localize(t: LocalizedText | null | undefined, locale = 'ru'): string | null {
+  if (t == null) return null;
+  const ok = (s?: string) => (s && s.trim() ? s : null);
+  if (typeof t === 'string') return ok(t);
+  const lang = locale.split(/[-_]/)[0];
+  return ok(t[locale]) ?? ok(t[lang]) ?? ok(t.en) ?? ok(t.ru) ?? Object.values(t).map(ok).find((x) => x) ?? null;
+}
+
+// Own-words sample texts (mirrors plugins/basic-set-sample; not book text).
+const RAW_LIBRARY: Omit<LibraryEntry, 'explanation'>[] = [
+  { plugin: 'basic-set-sample', id: 'increased-st-example', name: 'Increased ST (example)', category: 'advantage', cost: 0, cost_per_level: 10, page: 'example', features: [{ type: 'attribute_bonus', target: 'ST', amount: 1, per_level: true }],
+    description: { ru: 'Пример черты: каждый уровень даёт **+1 ST** (и всё, что от ST зависит).', en: 'Example trait: each level gives **+1 ST** (and everything derived from ST).' } },
+  { plugin: 'basic-set-sample', id: 'lifting-st', name: 'Lifting ST', category: 'advantage', cost: 0, cost_per_level: 3, page: 'B65', features: [{ type: 'lifting_st_bonus', amount: 1, per_level: true }],
+    description: { ru: 'Добавочная сила **только для подъёма и переноски** грузов.\nВлияет на базовый груз, но не на урон и не на HP.', en: 'Extra strength **only for lifting and carrying**.\nRaises Basic Lift, but not damage or HP.' } },
+  { plugin: 'basic-set-sample', id: 'combat-reflexes', name: 'Combat Reflexes', category: 'advantage', cost: 15, cost_per_level: 0, page: 'B43', features: [],
+    description: { ru: 'Быстрая реакция в бою:\n- реже теряется от неожиданности;\n- небольшие бонусы к защите и готовности.', en: 'Fast reactions in a fight:\n- rarely caught off guard;\n- small bonuses to defence and readiness.' } },
+  { plugin: 'basic-set-sample', id: 'overconfidence', name: 'Overconfidence', category: 'disadvantage', cost: -5, cost_per_level: 0, page: 'B148', features: [],
+    description: 'Character believes they can handle anything and *underestimates risk*.\nПерсонаж уверен, что справится с чем угодно, и *недооценивает риск*.' },
 ];
+const LIBRARY: LibraryEntry[] = RAW_LIBRARY.map((e) => ({ ...e, explanation: localize(e.description) }));
 
 const fmt = (v: number) => (Number.isInteger(v) ? String(v) : String(+v.toFixed(2)));
 const bl = (st: number) => { const v = (st * st) / 5; return v >= 10 ? Math.round(v) : Math.round(v * 10) / 10; };
@@ -83,7 +98,9 @@ export class MockBackend {
     p.total = p.attributes + p.secondary + p.advantages + p.perks + p.disadvantages + p.quirks;
     p.unspent = p.budget - p.total;
     const traits: TraitView[] = this.traits.map((t, index) => ({ index, id: t.def.id, name: this.name_(t), category: t.def.category,
-      levels: t.levels, leveled: !!t.def.cost_per_level, min_level: t.def.min_levels ?? (t.def.cost_per_level ? 1 : 0), cost: this.cost(t), page: t.def.page, source: t.source }));
+      levels: t.levels, leveled: !!t.def.cost_per_level, min_level: t.def.min_levels ?? (t.def.cost_per_level ? 1 : 0), cost: this.cost(t), page: t.def.page, source: t.source,
+      explanation: t.explanation?.trim() ? t.explanation : localize(t.def.description),
+      default_explanation: localize(t.def.description), custom_explanation: !!t.explanation?.trim() }));
     return {
       sheet: { name: this.name, attributes, secondary, basic_lift: this.row('BasicLift', blv),
         damage: { thrust: '—', swing: '—', based_on_st: tot.ST }, points: p },
@@ -103,6 +120,10 @@ export class MockBackend {
         this.traits.push({ def, levels: (a.levels as number) ?? (def.cost_per_level ? 1 : 0), source: def.plugin }); return this.view();
       }
       case 'set_trait_levels': this.traits[a.index as number].levels = a.levels as number; return this.view();
+      case 'set_trait_explanation': {
+        const t = this.traits[a.index as number]; if (!t) throw new Error('no such trait');
+        const text = a.text as string | null; t.explanation = text && text.trim() ? text : undefined; return this.view();
+      }
       case 'remove_trait': this.traits.splice(a.index as number, 1); return this.view();
       case 'list_library': return LIBRARY;
       case 'roll': {

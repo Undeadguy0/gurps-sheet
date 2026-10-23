@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MockBackend, outcome } from '../src/mock';
+import { MockBackend, localize, outcome } from '../src/mock';
 import type { SheetView } from '../src/types';
 
 describe('browser preview backend', () => {
@@ -21,5 +21,27 @@ describe('browser preview backend', () => {
     expect(outcome(17, 15)).toBe('critical_failure');
     expect(outcome(17, 16)).toBe('failure');
     expect(outcome(15, 5)).toBe('critical_failure');
+  });
+  it('explanation: plugin default, user override, reset', () => {
+    const m = new MockBackend();
+    let v = m.invoke('add_trait', { id: 'combat-reflexes' }) as SheetView;
+    const def = v.traits[0].explanation;
+    expect(def).toContain('Быстрая реакция');
+    expect(v.traits[0].custom_explanation).toBe(false);
+    v = m.invoke('set_trait_explanation', { index: 0, text: 'Моё **пояснение**' }) as SheetView;
+    expect(v.traits[0].explanation).toBe('Моё **пояснение**');
+    expect(v.traits[0].default_explanation).toBe(def);
+    expect(v.traits[0].custom_explanation).toBe(true);
+    v = m.invoke('set_trait_explanation', { index: 0, text: null }) as SheetView;
+    expect(v.traits[0].explanation).toBe(def);
+    expect(v.traits[0].custom_explanation).toBe(false);
+  });
+  it('localize falls back between locales', () => {
+    expect(localize({ ru: 'р', en: 'e' }, 'en')).toBe('e');
+    expect(localize({ ru: 'р' }, 'en')).toBe('р');
+    expect(localize({ de: 'd', en: ' ' }, 'ru')).toBe('d');
+    expect(localize('plain')).toBe('plain');
+    expect(localize('  ')).toBeNull();
+    expect(localize(undefined)).toBeNull();
   });
 });
