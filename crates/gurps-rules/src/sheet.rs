@@ -22,7 +22,11 @@ pub struct StatRow {
 pub struct DamageRow {
     pub thrust: String,
     pub swing: String,
+    /// ST used for the damage table (ST + Striking ST).
     pub based_on_st: i32,
+    /// How `based_on_st` was obtained.
+    pub st_value: Value,
+    pub explain: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -53,9 +57,16 @@ impl Sheet {
 type Named = Vec<(String, f64)>;
 
 /// Bonus contributions from traits, grouped by target.
-fn trait_bonuses(ch: &Character) -> (BTreeMap<Stat, Named>, Named) {
+struct Bonuses {
+    by_stat: BTreeMap<Stat, Named>,
+    lifting: Named,
+    striking: Named,
+}
+
+fn trait_bonuses(ch: &Character) -> Bonuses {
     let mut by_stat: BTreeMap<Stat, Named> = BTreeMap::new();
     let mut lifting = Vec::new();
+    let mut striking = Vec::new();
     for t in &ch.traits {
         let lv = t.levels.max(1) as f64;
         for f in &t.def.features {
@@ -75,10 +86,18 @@ fn trait_bonuses(ch: &Character) -> (BTreeMap<Stat, Named>, Named) {
                     let a = if *per_level { amount * lv } else { *amount };
                     lifting.push((t.display_name(), a));
                 }
+                Feature::StrikingStBonus { amount, per_level } => {
+                    let a = if *per_level { amount * lv } else { *amount };
+                    striking.push((t.display_name(), a));
+                }
             }
         }
     }
-    (by_stat, lifting)
+    Bonuses {
+        by_stat,
+        lifting,
+        striking,
+    }
 }
 
 fn apply_common(v: &mut Value, stat: Stat, ch: &Character, bonuses: &BTreeMap<Stat, Named>) {
@@ -125,7 +144,11 @@ pub fn basic_lift(st: f64) -> f64 {
 }
 
 pub fn compute_sheet(ch: &Character) -> Sheet {
-    let (bonuses, lifting) = trait_bonuses(ch);
+    let Bonuses {
+        by_stat: bonuses,
+        lifting,
+        striking,
+    } = trait_bonuses(ch);
 
     let mut prim = BTreeMap::new();
     let mut attributes = Vec::new();
@@ -185,7 +208,16 @@ pub fn compute_sheet(ch: &Character) -> Sheet {
     }
     let basic_lift_row = row(Stat::BasicLift, ch, blv);
 
-    let (thr, sw) = basic_damage(st as i32);
+    let mut dmg_st = Value::new(st, format!("= ST {}", fmt_num(st)));
+    for (name, a) in &striking {
+        dmg_st.add(
+            SourceKind::Trait(name.clone()),
+            *a,
+            format!("from trait {name}"),
+        );
+    }
+    let based_on_st = dmg_st.total().floor() as i32;
+    let (thr, sw) = basic_damage(based_on_st);
     Sheet {
         name: ch.name.clone(),
         attributes,
@@ -194,7 +226,9 @@ pub fn compute_sheet(ch: &Character) -> Sheet {
         damage: DamageRow {
             thrust: thr.to_string(),
             swing: sw.to_string(),
-            based_on_st: st as i32,
+            based_on_st,
+            explain: dmg_st.explain(),
+            st_value: dmg_st,
         },
         points: points::breakdown(ch),
     }
@@ -214,6 +248,7 @@ mod tests {
                 cost: 0,
                 cost_per_level: 10,
                 max_levels: None,
+                min_levels: None,
                 page: None,
                 features: vec![Feature::AttributeBonus {
                     target: Stat::ST,
@@ -336,6 +371,7 @@ mod tests {
                 cost: 0,
                 cost_per_level: 3,
                 max_levels: None,
+                min_levels: None,
                 page: Some("B65".into()),
                 features: vec![Feature::LiftingStBonus {
                     amount: 1.0,
@@ -351,6 +387,28 @@ mod tests {
         assert_eq!(s.basic_lift.value.base, 20.0);
         assert_eq!(s.basic_lift.value.contributions[0].amount, 9.0);
         assert_eq!(s.points.advantages, 6);
+    }
+
+    #[test]
+    fn striking_st_only_affects_damage() {
+        let mut ch = Character::default();
+        let mut t = st_trait();
+        t.def.features = vec![Feature::StrikingStBonus {
+            amount: 1.0,
+            per_level: true,
+        }];
+        t.levels = 3;
+        ch.traits.push(t);
+        let s = compute_sheet(&ch);
+        assert_eq!(s.total(Stat::ST), 10.0);
+        assert_eq!(s.total(Stat::HP), 10.0);
+        assert_eq!(s.total(Stat::BasicLift), 20.0);
+        assert_eq!(s.damage.based_on_st, 13);
+        assert_eq!(
+            (s.damage.thrust.as_str(), s.damage.swing.as_str()),
+            ("1d", "2d-1")
+        );
+        assert_eq!(s.damage.st_value.contributions.len(), 1);
     }
 
     #[test]
