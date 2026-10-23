@@ -37,6 +37,40 @@ export interface Sheet {
   damage: { thrust: string; swing: string; based_on_st: number; st_value?: Value; explain?: string[] };
   points: PointsBreakdown;
   encumbrance?: Encumbrance;
+  weapons?: WeaponRow[];
+  defenses?: Defenses;
+}
+
+export interface AttackDef {
+  mode: string; damage: string; damage_type: string; reach?: string; parry?: number | null;
+  skill?: string | null; skill_modifier?: number; technique?: string | null; defaults?: SkillDefault[];
+  skill_damage_bonus?: { min_relative: number; per_die: number } | null;
+}
+export interface WeaponDef {
+  id: string; name: string; equipment?: string | null; skill: string; attacks: AttackDef[];
+  page?: string | null; description?: LocalizedText | null;
+}
+export interface AttackRow {
+  mode: string; skill: string; skill_id?: string | null; via_technique: boolean; level?: number | null;
+  damage_expr: string; damage: string; damage_type: string; reach: string;
+  parry?: number | null; can_parry: boolean; parry_modifier: number; explain: string[];
+}
+export interface WeaponRow {
+  index: number; id: string; name: string; equipment?: string | null; available: boolean; ready: boolean; attacks: AttackRow[];
+}
+export interface Defense { value: number; from: string; explain: string[] }
+export interface ArmorRow { item: string; dr: string; value: number }
+export interface Defenses {
+  dodge: Defense; parry?: Defense | null; block?: Defense | null; db: number; db_from?: string | null; bonus: number; armor: ArmorRow[];
+}
+export interface AttackView extends AttackRow { original_skill?: string | null }
+export interface WeaponView {
+  index: number; id: string; name: string; original_name?: string | null; equipment?: string | null;
+  available: boolean; ready: boolean; attacks: AttackView[]; page?: string | null; source?: string | null;
+  explanation?: string | null; default_explanation?: string | null; custom_explanation: boolean;
+}
+export interface WeaponLibEntry extends WeaponDef {
+  plugin: string; explanation?: string | null; translated_name?: string | null; equipment_name?: string | null; skill_name: string;
 }
 
 export interface EncumbranceLevel { level: number; name: string; max_weight: number; move_value: number; dodge: number }
@@ -68,7 +102,8 @@ export type Feature =
   | { type: 'attribute_bonus'; target: string; amount: number; per_level?: boolean }
   | { type: 'lifting_st_bonus'; amount: number; per_level?: boolean }
   | { type: 'striking_st_bonus'; amount: number; per_level?: boolean }
-  | { type: 'skill_bonus'; skills: string[]; amount: number; per_level?: boolean };
+  | { type: 'skill_bonus'; skills: string[]; amount: number; per_level?: boolean }
+  | { type: 'defense_bonus'; amount: number; defenses?: string[]; per_level?: boolean };
 
 export interface TraitDef {
   id: string; name: string; category: TraitCategory; cost: number; cost_per_level: number;
@@ -129,7 +164,7 @@ export interface SkillView extends ExplainedView {
 }
 export interface TechniqueView extends ExplainedView { skill: string; modifier: number; max: number; max_level?: number | null }
 
-export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; issues: Issue[]; path?: string | null; budget: number }
+export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; weapons?: WeaponView[]; issues: Issue[]; path?: string | null; budget: number }
 
 export type Outcome = 'critical_success' | 'success' | 'failure' | 'critical_failure';
 export interface RollResult {
@@ -138,4 +173,4 @@ export interface RollResult {
 }
 
 /** Where the library came from (plugin_status command). */
-export interface PluginStatus { dir?: string | null; plugins: string[]; errors: string[]; traits: number; skills?: number; equipment?: number }
+export interface PluginStatus { dir?: string | null; plugins: string[]; errors: string[]; traits: number; skills?: number; equipment?: number; weapons?: number }

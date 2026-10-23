@@ -48,7 +48,7 @@ page = "B287" # unverified
 description = '''
 A light round or square shield strapped to the forearm. It gives a modest bonus to defences and leaves the hand fairly free.
 
-The defence bonus is noted in the stats column; it will be applied to Parry, Block and Dodge with the defences stage.
+Its DB (from the stats column) is shown next to the defences while it is carried; it applies only against attacks from the front.
 '''
 
 [[equipment]]

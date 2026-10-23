@@ -4,7 +4,10 @@
 import type {
   LibraryEntry, LocaleInfo, LocalizedText, RollResult, SheetView, StatRow, TraitDef, TraitView, Value, Outcome,
   SkillDef, SkillLibrary, SkillView, TechniqueDef, TechniqueView, EquipmentItem, EquipmentLibEntry, EquipmentView,
+  WeaponDef, WeaponLibEntry, WeaponView,
 } from './types';
+import { WEAPON_CATALOG_RU, WEAPON_DEFS } from './mockWeapons';
+import { basicDamage, computeDefenses, computeWeapons, diceStr, type CombatCtx, type Owned } from './combat';
 import { EQUIPMENT_CATALOG_RU, EQUIPMENT_DEFS } from './mockEquipment';
 import { carriedWeight, computeEncumbrance, totalCost, totalWeight } from './encumbrance';
 import { SKILL_CATALOG_RU, SKILL_DEFS, TALENT_DEF, TECHNIQUE_DEFS } from './mockSkills';
@@ -37,8 +40,8 @@ const RAW_LIBRARY: Omit<LibraryEntry, 'explanation'>[] = [
     description: "A sample trait used to test the sheet: each level simply adds +1 to ST, and everything calculated from ST follows automatically (Hit Points, Basic Lift, thrust and swing damage).\n\nUse it to see how the sheet explains where a number comes from: the ST row will list the trait as a separate contribution next to the purchased levels." },
   { plugin: 'basic-set-sample', id: 'lifting-st', name: 'Lifting ST', category: 'advantage', cost: 0, cost_per_level: 3, page: 'B65', features: [{ type: 'lifting_st_bonus', amount: 1, per_level: true }],
     description: "Extra muscle that only counts when you lift, carry, push or drag something. Each level raises the ST used to work out Basic Lift, so the character can haul heavier loads before being slowed down. It does not make blows hit harder and does not add Hit Points.\n\nIn play it suits porters, labourers, climbers who carry gear and anyone who needs to move a lot of weight cheaply. Combine it with ordinary ST if you also want stronger attacks." },
-  { plugin: 'basic-set-sample', id: 'combat-reflexes', name: 'Combat Reflexes', category: 'advantage', cost: 15, cost_per_level: 0, page: 'B43', features: [],
-    description: "The character reacts to danger almost instantly. Surprise rarely freezes them, they recover from being stunned faster than most, and they are a little better at dodging, blocking and parrying. Fear and shock also have a weaker grip on them.\n\nIn play this is the classic trait of veterans, bodyguards and duellists: they act first in an ambush and keep their head when things go wrong. The defence and fear bonuses are not calculated by the sheet yet; apply them at the table." },
+  { plugin: 'basic-set-sample', id: 'combat-reflexes', name: 'Combat Reflexes', category: 'advantage', cost: 15, cost_per_level: 0, page: 'B43', features: [{ type: 'defense_bonus', amount: 1 }],
+    description: "The character reacts to danger almost instantly. Surprise rarely freezes them, they recover from being stunned faster than most, and they are a little better at dodging, blocking and parrying. Fear and shock also have a weaker grip on them.\n\nIn play this is the classic trait of veterans, bodyguards and duellists: they act first in an ambush and keep their head when things go wrong. The sheet adds +1 to Dodge, Parry and Block; the other effects (surprise, fear, stun recovery) are still applied at the table." },
   { plugin: 'basic-set-sample', id: 'overconfidence', name: 'Overconfidence', category: 'disadvantage', cost: -5, cost_per_level: 0, page: 'B148', features: [],
     description: "The character believes they can handle anything and consistently underestimates risk. When a sensible person would back off, plan or ask for help, they tend to charge ahead instead, unless they manage to resist the urge.\n\nIt makes for bold, memorable characters (young heroes, braggarts, star pilots), but the player should actually play the recklessness. Others may find them inspiring or insufferable." },
 ];
@@ -50,7 +53,7 @@ export const CATALOG: Record<string, Record<string, { name?: string; description
   ru: {
     'trait-increased-st-example': { name: 'Повышенная ST (пример)', description: "Пробная черта для проверки листа: каждый уровень просто добавляет +1 к ST, а всё, что считается от ST, меняется само (HP, базовый груз, урон толчком и замахом).\n\nУдобна, чтобы посмотреть, как лист объясняет происхождение чисел: в строке ST черта будет отдельным слагаемым рядом с купленными уровнями." },
     'trait-lifting-st': { name: 'Подъёмная сила', description: "Дополнительная мускульная сила, которая работает только при подъёме, переноске, толкании или волочении. Каждый уровень повышает ST, от которой считается базовый груз, поэтому персонаж может тащить больше, не замедляясь. На силу ударов и на HP она не влияет.\n\nПодходит носильщикам, грузчикам, альпинистам со снаряжением и всем, кому нужно дёшево таскать тяжести. Если нужны и сильные удары — сочетайте с обычной ST." },
-    'trait-combat-reflexes': { name: 'Боевые рефлексы', description: "Персонаж реагирует на опасность почти мгновенно. Внезапность редко сбивает его с толку, из оглушения он выходит быстрее других и чуть лучше уклоняется, блокирует и парирует. Страх и шок тоже действуют на него слабее.\n\nЭто типичная черта ветеранов, телохранителей и дуэлянтов: в засаде они действуют первыми и не теряют голову, когда всё идёт плохо. Бонусы к защите и против страха лист пока не считает — учитывайте их за столом." },
+    'trait-combat-reflexes': { name: 'Боевые рефлексы', description: "Персонаж реагирует на опасность почти мгновенно. Внезапность редко сбивает его с толку, из оглушения он выходит быстрее других и чуть лучше уклоняется, блокирует и парирует. Страх и шок тоже действуют на него слабее.\n\nЭто типичная черта ветеранов, телохранителей и дуэлянтов: в засаде они действуют первыми и не теряют голову, когда всё идёт плохо. Лист добавляет +1 к уклонению, парированию и блоку; остальное (внезапность, страх, оглушение) учитывайте за столом." },
     'trait-overconfidence': { name: 'Самоуверенность', description: "Персонаж уверен, что справится с чем угодно, и постоянно недооценивает риск. Там, где разумный человек отступил бы, подготовился или позвал на помощь, он склонен лезть вперёд, если не сумеет сдержаться.\n\nДаёт смелых и запоминающихся персонажей (юные герои, хвастуны, лихие пилоты), но безрассудство нужно действительно отыгрывать. Окружающих это может как вдохновлять, так и раздражать." },
   },
 };
@@ -68,6 +71,10 @@ export function outcome(roll: number, skill: number): Outcome {
 
 Object.assign(CATALOG.ru, SKILL_CATALOG_RU);
 for (const [id, v] of Object.entries(EQUIPMENT_CATALOG_RU)) CATALOG.ru[`equipment-${id}`] = v;
+for (const [id, v] of Object.entries(WEAPON_CATALOG_RU)) CATALOG.ru[`weapon-${id}`] = v;
+
+interface MockWeapon { def: WeaponDef; explanation?: string }
+const unarmed = (): MockWeapon[] => WEAPON_DEFS.filter((w) => !w.equipment).map((def) => ({ def }));
 
 export class MockBackend {
   name = 'Пример (браузер)';
@@ -89,6 +96,46 @@ export class MockBackend {
     return this.tr(id, 'skill')?.name ?? SKILL_DEFS.find((d) => d.id === id)?.name ?? id;
   }
   equipment: EquipmentItem[] = [];
+  weapons: MockWeapon[] = unarmed();
+  weaponLibrary(): WeaponLibEntry[] {
+    return WEAPON_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('weapon', d.id, d.description),
+      translated_name: this.tr(d.id, 'weapon')?.name ?? null, skill_name: this.skillName(d.skill),
+      equipment_name: d.equipment ? this.tr(d.equipment, 'equipment')?.name ?? EQUIPMENT_DEFS.find((e) => e.id === d.equipment)?.name ?? d.equipment : null }));
+  }
+  private combat(tot: Record<string, number>, skills: SkillView[], techniques: TechniqueView[], enc: { base_dodge: number; dodge_penalty: number; name: string }) {
+    let strikeSt = tot.ST;
+    const bonus: [number, number, number] = [0, 0, 0]; const bonusFrom: string[] = [];
+    for (const t of this.traits) for (const f of t.def.features) {
+      const amt = f.per_level ? f.amount * Math.max(1, t.levels) : f.amount;
+      if (f.type === 'striking_st_bonus') strikeSt += amt;
+      if (f.type === 'defense_bonus') {
+        ['dodge', 'parry', 'block'].forEach((k, i) => { if (!f.defenses?.length || f.defenses.includes(k)) bonus[i] += Math.trunc(amt); });
+        bonusFrom.push(this.name_(t));
+      }
+    }
+    const [thrust, swing] = basicDamage(strikeSt);
+    const owned: Owned[] = [];
+    const walk = (l: EquipmentItem[], c: boolean) => l.forEach((e) => { const cc = c && e.carried !== false; owned.push({ id: e.id, name: e.name, carried: cc, stats: e.stats }); walk(e.contents ?? [], cc); });
+    walk(this.equipment, true);
+    const ctx: CombatCtx = {
+      skills: skills.map((r) => ({ id: r.id, name: r.original_name ?? r.name, attribute: r.attribute, level: r.level ?? null })),
+      techniques: techniques.map((r) => ({ id: r.id, name: r.original_name ?? r.name, level: r.level ?? null })),
+      attr: (k) => tot[k] ?? 10, thrust, swing, owned, bonus, bonusFrom,
+    };
+    const rows = computeWeapons(this.weapons.map((w) => w.def), ctx);
+    const views: WeaponView[] = rows.map((r) => {
+      const w = this.weapons[r.index]; const n = this.tr(r.id, 'weapon')?.name; const dflt = this.text('weapon', r.id, w.def.description);
+      return { index: r.index, id: r.id, name: n ?? r.name, original_name: n ? r.name : null, equipment: r.equipment, available: r.available, ready: r.ready,
+        attacks: r.attacks.map((x) => { const t = x.skill_id ? this.tr(x.skill_id, x.via_technique ? 'technique' : 'skill')?.name : undefined;
+          return { ...x, skill: t ?? x.skill, original_skill: t ? x.skill : null }; }),
+        page: w.def.page, source: 'basic-set-sample', explanation: w.explanation?.trim() ? w.explanation : dflt, default_explanation: dflt, custom_explanation: !!w.explanation?.trim() };
+    });
+    return { rows, views, defenses: computeDefenses(rows, ctx, enc), damage: { thrust: diceStr(thrust), swing: diceStr(swing), based_on_st: strikeSt } };
+  }
+  private pruneWeapons() {
+    const ids = new Set<string>(); const walk = (l: EquipmentItem[]) => l.forEach((e) => { ids.add(e.id); walk(e.contents ?? []); }); walk(this.equipment);
+    this.weapons = this.weapons.filter((w) => !w.def.equipment || ids.has(w.def.equipment));
+  }
   equipmentLibrary(): EquipmentLibEntry[] {
     return EQUIPMENT_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('equipment', d.id, d.description), translated_name: this.tr(d.id, 'equipment')?.name ?? null }));
   }
@@ -205,11 +252,12 @@ export class MockBackend {
       levels: t.levels, leveled: !!t.def.cost_per_level, min_level: t.def.min_levels ?? (t.def.cost_per_level ? 1 : 0), cost: this.cost(t), page: t.def.page, source: t.source,
       explanation: t.explanation?.trim() ? t.explanation : this.plugText(t.def),
       default_explanation: this.plugText(t.def), custom_explanation: !!t.explanation?.trim() }));
+    const encumbrance = computeEncumbrance(this.equipment, bl(liftSt), tot.BasicMove, tot.BasicSpeed);
+    const cb = this.combat(tot, skills, techniques, encumbrance);
     return {
       sheet: { name: this.name, attributes, secondary, basic_lift: this.row('BasicLift', blv),
-        damage: { thrust: '—', swing: '—', based_on_st: tot.ST }, points: p,
-        encumbrance: computeEncumbrance(this.equipment, bl(liftSt), tot.BasicMove, tot.BasicSpeed) },
-      traits, skills, techniques, equipment: this.equipmentViews(),
+        damage: cb.damage, points: p, encumbrance, weapons: cb.rows, defenses: cb.defenses },
+      traits, skills, techniques, equipment: this.equipmentViews(), weapons: cb.views,
       issues: [...(p.unspent < 0 ? [{ severity: 'warning' as const, message: `over budget by ${enPts(-p.unspent)}` }] : []),
         ...this.skills.filter((s) => s.def.specialization_required && !s.specialization?.trim())
           .map((s) => ({ severity: 'warning' as const, message: `skill '${s.def.name}' needs a specialization` })),
@@ -224,7 +272,7 @@ export class MockBackend {
 
   invoke(cmd: string, a: Record<string, unknown>): unknown {
     switch (cmd) {
-      case 'new_character': this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.equipment = []; this.name = (a.name as string) ?? 'New character'; return this.view();
+      case 'new_character': this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.equipment = []; this.weapons = unarmed(); this.name = (a.name as string) ?? 'New character'; return this.view();
       case 'get_sheet': return this.view();
       case 'set_name': this.name = a.name as string; return this.view();
       case 'set_attribute': this.levels[a.key as string] = a.level as number; return this.view();
@@ -264,6 +312,7 @@ export class MockBackend {
         const parent = a.parent as number[] | null | undefined;
         if (parent?.length) { const c = this.item({ path: parent }); if (!c.container) throw new Error(`${c.name} is not a container`); (c.contents ??= []).push(e); }
         else this.equipment.push(e);
+        for (const w of WEAPON_DEFS) if (w.equipment === def.id && !this.weapons.some((x) => x.def.id === w.id)) this.weapons.push({ def: w });
         return this.view();
       }
       case 'set_equipment_quantity': this.item(a).quantity = Math.max(0, a.quantity as number); return this.view();
@@ -272,9 +321,20 @@ export class MockBackend {
       case 'remove_equipment': {
         const path = a.path as number[]; this.item(a);
         const list = path.length > 1 ? this.item({ path: path.slice(0, -1) }).contents! : this.equipment;
-        list.splice(path[path.length - 1], 1); return this.view();
+        list.splice(path[path.length - 1], 1); this.pruneWeapons(); return this.view();
       }
-      case 'plugin_status': case 'reload_plugins': return { dir: null, plugins: ['basic-set-sample (встроенная копия)', 'lang-ru (встроенная копия)'], errors: [], traits: LIBRARY.length, skills: SKILL_DEFS.length + TECHNIQUE_DEFS.length, equipment: EQUIPMENT_DEFS.length };
+      case 'list_weapon_library': return this.weaponLibrary();
+      case 'add_weapon': {
+        const def = WEAPON_DEFS.find((d) => d.id === a.id); if (!def) throw new Error('unknown weapon');
+        if (this.weapons.some((w) => w.def.id === def.id)) throw new Error(`weapon ${def.id} is already on the sheet`);
+        this.weapons.push({ def }); return this.view();
+      }
+      case 'remove_weapon': if (!this.weapons[a.index as number]) throw new Error('no such weapon'); this.weapons.splice(a.index as number, 1); return this.view();
+      case 'set_weapon_explanation': {
+        const w = this.weapons[a.index as number]; if (!w) throw new Error('no such weapon');
+        const t = a.text as string | null; w.explanation = t?.trim() ? t : undefined; return this.view();
+      }
+      case 'plugin_status': case 'reload_plugins': return { dir: null, plugins: ['basic-set-sample (встроенная копия)', 'lang-ru (встроенная копия)'], errors: [], traits: LIBRARY.length, skills: SKILL_DEFS.length + TECHNIQUE_DEFS.length, equipment: EQUIPMENT_DEFS.length, weapons: WEAPON_DEFS.length };
       case 'get_locales': return this.locales();
       case 'set_locale': if ((a.locale as string)?.trim()) this.locale = a.locale as string; this.originalOnly = !!a.originalOnly; return this.view();
       case 'roll': {

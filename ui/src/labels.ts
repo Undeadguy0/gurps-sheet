@@ -25,5 +25,10 @@ export function featureText(f: Feature): string {
     case 'lifting_st_bonus': return `ST для подъёма и переноски (базовый груз): ${amt}${per}`;
     case 'striking_st_bonus': return `ST для урона (толчок/замах): ${amt}${per}`;
     case 'skill_bonus': return `Навыки (${f.skills.join(', ')}): ${amt}${per}`;
+    case 'defense_bonus': {
+      const ru: Record<string, string> = { dodge: 'уклонение', parry: 'парирование', block: 'блок' };
+      const which = f.defenses?.length ? f.defenses.map((d) => ru[d] ?? d).join(', ') : 'уклонение, парирование и блок';
+      return `Активные защиты (${which}): ${amt}${per}`;
+    }
   }
 }

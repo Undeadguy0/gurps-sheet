@@ -34,7 +34,7 @@ export const SKILL_DEFS: SkillDef[] = [
         "modifier": -4
       }
     ],
-    "description": "Using a shield to block blows and missiles, and to keep it between yourself and the enemy while you fight with the other hand. Higher skill means more reliable blocks.\n\nAny fighter who carries a shield should have at least a point or two here. The shield's own defensive bonus is a property of the equipment and will be handled together with gear in a later version of the sheet.\n"
+    "description": "Using a shield to block blows and missiles, and to keep it between yourself and the enemy while you fight with the other hand. Higher skill means more reliable blocks.\n\nAny fighter who carries a shield should have at least a point or two here. The shield's own Defence Bonus comes from the equipment: the sheet shows Block from this skill and the DB of a carried shield.\n"
   },
   {
     "id": "brawling",
@@ -43,7 +43,7 @@ export const SKILL_DEFS: SkillDef[] = [
     "difficulty": "E",
     "page": "B182",
     "defaults": [],
-    "description": "Rough, untrained-looking but effective unarmed fighting: punches, elbows, headbutts and dirty tricks learned in taverns, alleys and barracks. It improves hitting with bare hands and parrying without a weapon.\n\nIt is cheap and useful for almost anyone who might end up in a scuffle. Very skilled brawlers also hit harder; that damage bonus is not calculated by the sheet yet.\n"
+    "description": "Rough, untrained-looking but effective unarmed fighting: punches, elbows, headbutts and dirty tricks learned in taverns, alleys and barracks. It improves hitting with bare hands and parrying without a weapon.\n\nIt is cheap and useful for almost anyone who might end up in a scuffle. Very skilled brawlers also hit harder: at DX+2 or better the sheet adds +1 damage per die to punches and kicks.\n"
   },
   {
     "id": "knife",
@@ -191,7 +191,7 @@ export const TECHNIQUE_DEFS: TechniqueDef[] = [
     "modifier": -2,
     "max": 0,
     "page": "B231",
-    "description": "A trained kick: a strong blow with the foot that hits harder than a punch but is riskier, since a miss can leave you off balance. It starts from your unarmed skill at a penalty and can be bought up to that skill's level.\n\nBrawlers and martial artists like it as a heavy hitting option. The sheet tracks its level here; the extra damage will appear with weapons in a later version.\n"
+    "description": "A trained kick: a strong blow with the foot that hits harder than a punch but is riskier, since a miss can leave you off balance. It starts from your unarmed skill at a penalty and can be bought up to that skill's level.\n\nBrawlers and martial artists like it as a heavy hitting option. The Kick attack in the weapons table uses this level when the technique is bought.\n"
   },
   {
     "id": "off-hand-weapon-training",
@@ -240,11 +240,11 @@ export const SKILL_CATALOG_RU: Record<string, { name: string; description: strin
   },
   "skill-shield": {
     "name": "Щит",
-    "description": "Умение подставлять щит под удары и снаряды и держать его между собой и противником, пока другая рука сражается. Чем выше навык, тем надёжнее блок.\n\nЛюбому бойцу со щитом стоит вложить сюда хотя бы пару очков. Собственный защитный бонус щита — свойство снаряжения; он будет учитываться вместе с экипировкой в следующей версии листа."
+    "description": "Умение подставлять щит под удары и снаряды и держать его между собой и противником, пока другая рука сражается. Чем выше навык, тем надёжнее блок.\n\nЛюбому бойцу со щитом стоит вложить сюда хотя бы пару очков. Защитный бонус (DB) щита — свойство снаряжения: лист показывает блок по этому навыку и DB носимого щита."
   },
   "skill-brawling": {
     "name": "Драка",
-    "description": "Грубый, на вид неучёный, но действенный рукопашный бой: удары кулаком, локтем, головой и грязные приёмы из таверн, переулков и казарм. Повышает шанс попасть голыми руками и парировать без оружия.\n\nДёшев и полезен почти всем, кто может ввязаться в потасовку. Очень умелые драчуны бьют ещё и сильнее; этот бонус к урону лист пока не считает."
+    "description": "Грубый, на вид неучёный, но действенный рукопашный бой: удары кулаком, локтем, головой и грязные приёмы из таверн, переулков и казарм. Повышает шанс попасть голыми руками и парировать без оружия.\n\nДёшев и полезен почти всем, кто может ввязаться в потасовку. Очень умелые драчуны бьют ещё и сильнее; при навыке не ниже ЛВ+2 лист добавляет +1 к урону за кубик ударам рукой и ногой."
   },
   "skill-knife": {
     "name": "Нож",
@@ -280,7 +280,7 @@ export const SKILL_CATALOG_RU: Record<string, { name: string; description: strin
   },
   "technique-kicking": {
     "name": "Пинок",
-    "description": "Отработанный удар ногой: сильнее удара кулаком, но рискованнее — промах может лишить равновесия. Начинается от навыка рукопашного боя со штрафом и может быть доведён до уровня этого навыка.\n\nДрачуны и мастера единоборств ценят его как тяжёлый удар. Уровень лист считает здесь; дополнительный урон появится вместе с оружием в следующей версии."
+    "description": "Отработанный удар ногой: сильнее удара кулаком, но рискованнее — промах может лишить равновесия. Начинается от навыка рукопашного боя со штрафом и может быть доведён до уровня этого навыка.\n\nДрачуны и мастера единоборств ценят его как тяжёлый удар. Атака «Удар ногой» в таблице оружия использует этот уровень, если приём куплен."
   },
   "technique-off-hand-weapon-training": {
     "name": "Владение оружием в другой руке",
