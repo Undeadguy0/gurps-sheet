@@ -747,7 +747,7 @@ impl AppState {
             // Removing everything means "no points", not "back to the legacy budget".
             self.character.points_budget = 0;
         }
-        self.character.migrate();
+        self.character.points_budget = self.character.available_points();
         Ok(self.view())
     }
 
