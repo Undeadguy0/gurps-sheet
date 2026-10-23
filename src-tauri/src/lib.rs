@@ -57,6 +57,11 @@ fn set_attribute(state: S, key: String, level: i32) -> Result<SheetView, String>
 }
 
 #[tauri::command]
+fn set_notes(state: S, text: String) -> Result<SheetView, String> {
+    edit(&state, "заметки", |s| Ok(s.set_notes(text)))
+}
+
+#[tauri::command]
 fn set_name(state: S, name: String) -> Result<SheetView, String> {
     edit(&state, "переименование", |s| {
         Ok(s.set_name(name))
@@ -443,6 +448,7 @@ pub fn run() {
             set_attribute,
             set_negative_rounding,
             set_name,
+            set_notes,
             add_trait,
             set_trait_levels,
             remove_trait,

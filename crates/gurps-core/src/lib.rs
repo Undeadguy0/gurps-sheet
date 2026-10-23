@@ -430,6 +430,8 @@ pub struct Character {
     /// Weapons (library snapshots); linked ones show only while their equipment is owned.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub weapons: Vec<Weapon>,
+    /// Free-form Markdown notes (player's own text); omitted from JSON when empty.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub notes: String,
     /// Optional rules switches (house rules), stored with the character.
     #[serde(skip_serializing_if = "RulesOptions::is_default")]

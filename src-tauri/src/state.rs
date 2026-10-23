@@ -295,6 +295,8 @@ pub struct SheetView {
     pub path: Option<String>,
     pub budget: i32,
     pub rules: gurps_core::RulesOptions,
+    /// Character notes (Markdown source).
+    pub notes: String,
     pub session: SessionView,
     pub history: HistoryView,
 }
@@ -457,6 +459,7 @@ impl AppState {
             techniques: self.technique_views(&sheet),
             spells: self.spell_views(&sheet),
             rules: self.character.rules.clone(),
+            notes: self.character.notes.clone(),
             session: self.session_view(&sheet),
             history: self.history_view(),
             equipment: self.equipment_views(),
@@ -693,6 +696,16 @@ impl AppState {
             _ => return Err(format!("unknown rounding mode {mode}")),
         };
         Ok(self.view())
+    }
+
+    /// Replaces the notes; trailing whitespace-only text counts as empty.
+    pub fn set_notes(&mut self, text: String) -> SheetView {
+        self.character.notes = if text.trim().is_empty() {
+            String::new()
+        } else {
+            text
+        };
+        self.view()
     }
 
     pub fn set_name(&mut self, name: String) -> SheetView {
@@ -1705,6 +1718,33 @@ mod tests {
         assert!(!s.history_view().can_undo && !s.history_view().can_redo);
         s.new_character(None);
         assert_eq!(s.history_view().undo_depth, 0);
+    }
+
+    #[test]
+    fn notes_are_one_undo_step_and_skipped_when_empty() {
+        let mut s = state();
+        s.new_character(None);
+        assert!(!serde_json::to_string(&s.character)
+            .unwrap()
+            .contains("notes"));
+        let v = s
+            .record("заметки", |s| {
+                Ok(s.set_notes("# Долги\n- гному 5 $".into()))
+            })
+            .unwrap();
+        assert_eq!(v.notes, "# Долги\n- гному 5 $");
+        let h = s.history_view();
+        assert_eq!(h.undo_label.as_deref(), Some("заметки"));
+        assert!(h.dirty);
+        let json = serde_json::to_string(&s.character).unwrap();
+        assert!(json.contains("\"notes\""));
+        // old files without the field still load
+        let back: gurps_core::Character =
+            serde_json::from_str(&json.replace(",\"notes\":\"# Долги\\n- гному 5 $\"", ""))
+                .unwrap();
+        assert_eq!(back.notes, "");
+        assert_eq!(s.undo().unwrap().notes, "");
+        assert_eq!(s.set_notes("  \n".into()).notes, "");
     }
 
     #[test]
