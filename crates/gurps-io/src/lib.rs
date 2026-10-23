@@ -169,7 +169,12 @@ mod tests {
 
     #[test]
     fn old_files_without_explanation_load() {
-        for f in ["hero", "test-chars/warrior", "test-chars/mage", "test-chars/rogue"] {
+        for f in [
+            "hero",
+            "test-chars/warrior",
+            "test-chars/mage",
+            "test-chars/rogue",
+        ] {
             let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../examples/{f}.json"));
             let ch = load(&p).unwrap();
             assert!(ch.traits.iter().all(|t| t.explanation.is_none()));

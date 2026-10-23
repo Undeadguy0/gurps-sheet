@@ -20,6 +20,12 @@ pub struct TraitView {
     pub cost: i32,
     pub page: Option<String>,
     pub source: Option<String>,
+    /// Effective explanation (user text, else plugin text), Markdown.
+    pub explanation: Option<String>,
+    /// Plugin text for the current locale (for "reset to default").
+    pub default_explanation: Option<String>,
+    /// True when the user override is in effect.
+    pub custom_explanation: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -27,6 +33,8 @@ pub struct LibraryEntry {
     pub plugin: String,
     #[serde(flatten)]
     pub def: TraitDef,
+    /// Plugin explanation resolved for the UI locale.
+    pub explanation: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -38,12 +46,28 @@ pub struct SheetView {
     pub budget: i32,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct AppState {
     pub character: Character,
     pub library: Vec<LibraryEntry>,
     pub path: Option<PathBuf>,
     pub plugin_errors: Vec<String>,
+    /// UI locale used to resolve localized plugin text (default "ru").
+    pub locale: String,
+}
+
+pub const DEFAULT_LOCALE: &str = "ru";
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            character: Character::default(),
+            library: Vec::new(),
+            path: None,
+            plugin_errors: Vec::new(),
+            locale: DEFAULT_LOCALE.into(),
+        }
+    }
 }
 
 impl AppState {
@@ -54,7 +78,11 @@ impl AppState {
                 Ok(plugins) => {
                     s.library = gurps_plugins::trait_library(&plugins)
                         .into_iter()
-                        .map(|(plugin, def)| LibraryEntry { plugin, def })
+                        .map(|(plugin, def)| LibraryEntry {
+                            plugin,
+                            explanation: def.explanation(DEFAULT_LOCALE).map(str::to_owned),
+                            def,
+                        })
                         .collect();
                 }
                 Err(e) => s.plugin_errors.push(e.to_string()),
@@ -82,6 +110,10 @@ impl AppState {
                     cost: t.cost(),
                     page: t.def.page.clone(),
                     source: t.source.clone(),
+                    explanation: gurps_core::non_blank(t.explanation.clone())
+                        .or_else(|| self.plugin_explanation(t)),
+                    default_explanation: self.plugin_explanation(t),
+                    custom_explanation: t.has_custom_explanation(),
                 })
                 .collect(),
             issues: validate(&self.character),
@@ -132,7 +164,10 @@ impl AppState {
             .find(|e| e.def.id == id)
             .ok_or_else(|| format!("trait {id} not in library"))?;
         let lv = levels.unwrap_or(if entry.def.is_leveled() { 1 } else { 0 });
-        let mut t = Trait::new(entry.def.clone(), lv);
+        // Plugin text stays in the library; the file stores only the user's override.
+        let mut def = entry.def.clone();
+        def.description = None;
+        let mut t = Trait::new(def, lv);
         t.source = Some(entry.plugin.clone());
         self.character.traits.push(t);
         Ok(self.view())
@@ -153,6 +188,31 @@ impl AppState {
             return Err("no such trait".into());
         }
         self.character.traits.remove(index);
+        Ok(self.view())
+    }
+
+    /// Plugin text for a taken trait: current library entry if present, else the snapshot.
+    fn plugin_explanation(&self, t: &Trait) -> Option<String> {
+        self.library
+            .iter()
+            .find(|e| e.def.id == t.def.id)
+            .and_then(|e| e.def.explanation(&self.locale))
+            .or_else(|| t.def.explanation(&self.locale))
+            .map(str::to_owned)
+    }
+
+    /// Sets (or with `None`/blank text, resets to plugin default) a trait's explanation.
+    pub fn set_trait_explanation(
+        &mut self,
+        index: usize,
+        text: Option<String>,
+    ) -> Result<SheetView, String> {
+        let t = self
+            .character
+            .traits
+            .get_mut(index)
+            .ok_or("no such trait")?;
+        t.explanation = gurps_core::non_blank(text);
         Ok(self.view())
     }
 
@@ -200,5 +260,39 @@ mod tests {
         let v = s2.load(&p.display().to_string()).unwrap();
         assert_eq!(v.sheet.points.attributes, 20);
         std::fs::remove_file(p).unwrap();
+    }
+
+    #[test]
+    fn explanation_override_and_reset() {
+        let mut s = state();
+        let v = s.add_trait("combat-reflexes", None).unwrap();
+        let plugin = v.traits[0].explanation.clone().expect("plugin text");
+        assert_eq!(v.traits[0].default_explanation.as_ref(), Some(&plugin));
+        assert!(!v.traits[0].custom_explanation);
+        assert!(s.library.iter().any(|e| e.explanation.is_some()));
+
+        let v = s
+            .set_trait_explanation(0, Some("**Моё** пояснение".into()))
+            .unwrap();
+        assert_eq!(
+            v.traits[0].explanation.as_deref(),
+            Some("**Моё** пояснение")
+        );
+        assert!(v.traits[0].custom_explanation);
+
+        let p = std::env::temp_dir().join(format!("app-expl-{}.json", std::process::id()));
+        s.save(Some(p.display().to_string())).unwrap();
+        let mut s2 = state();
+        let v = s2.load(&p.display().to_string()).unwrap();
+        assert_eq!(
+            v.traits[0].explanation.as_deref(),
+            Some("**Моё** пояснение")
+        );
+        std::fs::remove_file(p).unwrap();
+
+        let v = s2.set_trait_explanation(0, Some("  ".into())).unwrap();
+        assert_eq!(v.traits[0].explanation, Some(plugin));
+        assert!(!v.traits[0].custom_explanation);
+        assert!(s2.set_trait_explanation(9, None).is_err());
     }
 }

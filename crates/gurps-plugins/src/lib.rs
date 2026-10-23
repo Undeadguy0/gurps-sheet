@@ -417,7 +417,11 @@ description = "m"
     fn sample_plugin_has_explanations() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
         let lib = trait_library(&load_all(&root).unwrap());
-        let cr = &lib.iter().find(|(_, t)| t.id == "combat-reflexes").unwrap().1;
+        let cr = &lib
+            .iter()
+            .find(|(_, t)| t.id == "combat-reflexes")
+            .unwrap()
+            .1;
         assert!(cr.explanation("ru").is_some() && cr.explanation("en").is_some());
         assert_ne!(cr.explanation("ru"), cr.explanation("en"));
     }

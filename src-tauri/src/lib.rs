@@ -54,6 +54,15 @@ fn remove_trait(state: S, index: usize) -> Result<SheetView, String> {
 }
 
 #[tauri::command]
+fn set_trait_explanation(
+    state: S,
+    index: usize,
+    text: Option<String>,
+) -> Result<SheetView, String> {
+    lock(&state).set_trait_explanation(index, text)
+}
+
+#[tauri::command]
 fn get_sheet(state: S) -> SheetView {
     lock(&state).view()
 }
@@ -91,6 +100,7 @@ pub fn run() {
             add_trait,
             set_trait_levels,
             remove_trait,
+            set_trait_explanation,
             get_sheet,
             list_library,
             roll

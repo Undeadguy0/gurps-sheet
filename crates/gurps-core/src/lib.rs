@@ -192,11 +192,11 @@ impl LocalizedText {
     /// (`ru-RU` -> `ru`), then `en`, then `ru`, then any non-empty entry.
     /// Blank strings count as missing.
     pub fn get(&self, locale: &str) -> Option<&str> {
-        fn ok(s: &String) -> Option<&str> {
+        fn ok(s: &str) -> Option<&str> {
             if s.trim().is_empty() {
                 None
             } else {
-                Some(s.as_str())
+                Some(s)
             }
         }
         match self {
@@ -205,8 +205,8 @@ impl LocalizedText {
                 let lang = locale.split(['-', '_']).next().unwrap_or(locale);
                 [locale, lang, "en", "ru"]
                     .iter()
-                    .find_map(|k| m.get(*k).and_then(ok))
-                    .or_else(|| m.values().find_map(ok))
+                    .find_map(|k| m.get(*k).and_then(|s| ok(s)))
+                    .or_else(|| m.values().find_map(|s| ok(s)))
             }
         }
     }
@@ -485,7 +485,11 @@ mod tests {
         assert_eq!(t.explanation("ru"), Some("plugin"));
         assert!(!t.has_custom_explanation());
         t.explanation = Some("  ".into());
-        assert_eq!(t.explanation("ru"), Some("plugin"), "blank override ignored");
+        assert_eq!(
+            t.explanation("ru"),
+            Some("plugin"),
+            "blank override ignored"
+        );
         t.explanation = Some("mine".into());
         assert_eq!(t.explanation("ru"), Some("mine"));
         assert!(t.has_custom_explanation());
