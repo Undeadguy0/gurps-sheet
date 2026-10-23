@@ -54,7 +54,7 @@ pub fn breakdown(ch: &Character) -> PointsBreakdown {
             TraitCategory::Disadvantage => &mut b.disadvantages,
             TraitCategory::Quirk => &mut b.quirks,
         };
-        *slot += t.cost();
+        *slot += t.cost_with(ch.rules.negative_rounding);
     }
     b.skills = crate::skills::skill_points(ch);
     b.spells = crate::spells::spell_points(ch);

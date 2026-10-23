@@ -11,7 +11,9 @@ pub mod spell;
 pub mod weapon;
 
 pub use equipment::{Equipment, EquipmentDef};
-pub use modifier::{modified_cost, ModifierDef, TraitModifier};
+pub use modifier::{
+    modified_cost, modified_cost_with, ModifierDef, NegativeRounding, TraitModifier,
+};
 pub use skill::{Difficulty, Skill, SkillDef, SkillDefault, Technique, TechniqueDef};
 pub use spell::{Spell, SpellDef};
 pub use weapon::{AttackDef, DamageExpr, SkillDamageBonus, Weapon, WeaponDef};
@@ -387,10 +389,15 @@ impl Trait {
 
     /// Final cost: base cost with modifiers applied (see [`modified_cost`]).
     pub fn cost(&self) -> i32 {
+        self.cost_with(NegativeRounding::default())
+    }
+
+    /// Final cost with the character's rounding rule for negative costs.
+    pub fn cost_with(&self, r: NegativeRounding) -> i32 {
         if self.modifiers.is_empty() {
             self.base_cost()
         } else {
-            modified_cost(self.base_cost(), self.modifier_percent())
+            modified_cost_with(self.base_cost(), self.modifier_percent(), r)
         }
     }
 
@@ -424,6 +431,23 @@ pub struct Character {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub weapons: Vec<Weapon>,
     pub notes: String,
+    /// Optional rules switches (house rules), stored with the character.
+    #[serde(skip_serializing_if = "RulesOptions::is_default")]
+    pub rules: RulesOptions,
+}
+
+/// Per-character rules options.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RulesOptions {
+    /// Rounding of fractional negative trait costs after modifiers.
+    pub negative_rounding: NegativeRounding,
+}
+
+impl RulesOptions {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 impl Default for Character {
@@ -440,6 +464,7 @@ impl Default for Character {
             equipment: Vec::new(),
             weapons: Vec::new(),
             notes: String::new(),
+            rules: RulesOptions::default(),
         }
     }
 }

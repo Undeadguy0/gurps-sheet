@@ -294,6 +294,7 @@ pub struct SheetView {
     pub issues: Vec<Issue>,
     pub path: Option<String>,
     pub budget: i32,
+    pub rules: gurps_core::RulesOptions,
 }
 
 #[derive(Debug)]
@@ -418,6 +419,7 @@ impl AppState {
             skills: self.skill_views(&sheet),
             techniques: self.technique_views(&sheet),
             spells: self.spell_views(&sheet),
+            rules: self.character.rules.clone(),
             equipment: self.equipment_views(),
             weapons: self.weapon_views(&sheet),
             sheet,
@@ -444,11 +446,14 @@ impl AppState {
                     levels: t.levels,
                     leveled: t.def.is_leveled(),
                     min_level: t.def.min_level(),
-                    cost: t.cost(),
+                    cost: t.cost_with(self.character.rules.negative_rounding),
                     base_cost: t.base_cost(),
                     modifier_percent: t.modifier_percent(),
                     modifiers: self.modifier_views(t),
-                    cost_explain: gurps_rules::modifiers::trait_cost_explain(t),
+                    cost_explain: gurps_rules::modifiers::trait_cost_explain_with(
+                        t,
+                        self.character.rules.negative_rounding,
+                    ),
                     page: t.def.page.clone(),
                     source: t.source.clone(),
                     explanation: gurps_core::non_blank(t.explanation.clone())
@@ -498,6 +503,16 @@ impl AppState {
         if !self.character.attributes.set_purchased(stat, level) {
             return Err(format!("{key} cannot be bought directly"));
         }
+        Ok(self.view())
+    }
+
+    /// Rules option: rounding of fractional negative trait costs.
+    pub fn set_negative_rounding(&mut self, mode: &str) -> Result<SheetView, String> {
+        self.character.rules.negative_rounding = match mode {
+            "toward_positive" => gurps_core::NegativeRounding::TowardPositive,
+            "by_magnitude" => gurps_core::NegativeRounding::ByMagnitude,
+            _ => return Err(format!("unknown rounding mode {mode}")),
+        };
         Ok(self.view())
     }
 
@@ -1419,6 +1434,29 @@ mod tests {
         assert!(s.remove_trait(5).is_err());
         assert!(s.set_attribute("BasicLift", 1).is_err());
         assert!(s.add_trait("nope", None).is_err());
+    }
+
+    #[test]
+    fn negative_rounding_option() {
+        let mut s = state();
+        s.new_character(None);
+        s.add_trait("overconfidence", None).unwrap();
+        let v = s.add_trait_modifier(0, "emergencies-only").unwrap();
+        // -5 × 70% = -3.5
+        assert_eq!(v.traits[0].cost, -3);
+        assert_eq!(v.sheet.points.disadvantages, -3);
+        let v = s.set_negative_rounding("by_magnitude").unwrap();
+        assert_eq!(v.traits[0].cost, -4);
+        assert_eq!(v.sheet.points.disadvantages, -4);
+        assert!(v.traits[0].cost_explain[3].ends_with("-> -4 (rounded away from zero)"));
+        let json = serde_json::to_string(&s.character).unwrap();
+        assert!(json.contains("\"negative_rounding\":\"by_magnitude\""));
+        assert!(s.set_negative_rounding("x").is_err());
+        let v = s.set_negative_rounding("toward_positive").unwrap();
+        assert_eq!(v.traits[0].cost, -3);
+        assert!(!serde_json::to_string(&s.character)
+            .unwrap()
+            .contains("rules"));
     }
 
     #[test]

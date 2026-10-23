@@ -13,6 +13,21 @@ describe('trait modifiers', () => {
     expect(modifiedCost(25, 45)).toBe(37); // 36.25 -> 37
     expect(modifiedCost(-15, -50)).toBe(-7); // -7.5 -> -7 (towards +inf; flagged)
   });
+  it('negative rounding option: toward +inf (default, GM-confirmed) or by magnitude', () => {
+    expect(modifiedCost(-10, -25)).toBe(-7);
+    expect(modifiedCost(-10, -25, 'by_magnitude')).toBe(-8);
+    expect(modifiedCost(-10, -20, 'by_magnitude')).toBe(-8);
+    expect(modifiedCost(5, -30, 'by_magnitude')).toBe(4);
+    expect(traitCostExplain(-5, [{ name: 'X', cost_percent: -30 }], 'by_magnitude')[3]).toBe('-5 × 70% = -3.5 -> -4 (rounded away from zero)');
+    expect(engineRu('-5 × 70% = -3.5 -> -4 (rounded away from zero)', (x) => x)).toBe('-5 × 70% = -3.5 → -4 (с округлением по модулю)');
+    const m = new MockBackend();
+    m.invoke('add_trait', { id: 'overconfidence' });
+    let v = m.invoke('add_trait_modifier', { traitIndex: 0, id: 'emergencies-only' }) as SheetView;
+    expect(v.traits[0].cost).toBe(-3);
+    v = m.invoke('set_negative_rounding', { mode: 'by_magnitude' }) as SheetView;
+    expect([v.traits[0].cost, v.sheet.points.disadvantages, v.rules?.negative_rounding]).toEqual([-4, -4, 'by_magnitude']);
+    expect(() => m.invoke('set_negative_rounding', { mode: 'x' })).toThrow();
+  });
   it('cost explanation lines and their translation', () => {
     const l = traitCostExplain(5, [{ name: 'Emergencies Only', cost_percent: -30 }]);
     expect(l).toEqual(['base cost 5', '-30% Emergencies Only', 'total -30%', '5 × 70% = 3.5 -> 4 (rounded up)']);

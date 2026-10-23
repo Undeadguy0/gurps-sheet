@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { remaining } from '../plural';
 import { ref, watch } from 'vue';
-import type { LocaleInfo, SheetView } from '../types';
+import type { LocaleInfo, SheetView, NegativeRounding } from '../types';
 import { THEMES, theme, scheme } from '../theme';
 import { inTauri } from '../api';
 
 const props = defineProps<{ view: SheetView; dirty: boolean; status: string; locales?: LocaleInfo | null }>();
 const emit = defineEmits<{
-  rename: [string]; setLocale: [string, boolean]; save: [string | undefined]; load: [string]; 'new': []; help: [];
+  rename: [string]; setLocale: [string, boolean]; save: [string | undefined]; load: [string]; 'new': []; help: []; setRounding: [NegativeRounding];
 }>();
 
 const name = ref(props.view.sheet.name);
@@ -65,6 +65,13 @@ watch(() => props.view.path, (p) => { if (p) path.value = p; });
         @change="onLang(($event.target as HTMLSelectElement).value)">
         <option v-for="l in locales.available" :key="l" :value="l">{{ LANG_LABEL[l] ?? l }}</option>
         <option :value="ORIGINAL">Только оригинал</option>
+      </select>
+      <label class="visually-hidden" for="rounding-select">Округление отрицательной стоимости</label>
+      <select id="rounding-select" class="field field--select" :value="view.rules?.negative_rounding ?? 'toward_positive'"
+        title="Правило персонажа: как округлять дробную отрицательную стоимость черты после модификаторов"
+        @change="emit('setRounding', ($event.target as HTMLSelectElement).value as NegativeRounding)">
+        <option value="toward_positive">Отриц. стоимость: вверх (−7,5 → −7)</option>
+        <option value="by_magnitude">Отриц. стоимость: по модулю (−7,5 → −8)</option>
       </select>
       <label class="visually-hidden" for="theme-select">Тема</label>
       <select id="theme-select" v-model="theme" class="field field--select">

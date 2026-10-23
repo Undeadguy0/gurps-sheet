@@ -4,7 +4,7 @@
 import type {
   LibraryEntry, LocaleInfo, LocalizedText, RollResult, SheetView, StatRow, TraitDef, TraitView, Value, Outcome,
   SkillDef, SkillLibrary, SkillView, TechniqueDef, TechniqueView, EquipmentItem, EquipmentLibEntry, EquipmentView,
-  WeaponDef, WeaponLibEntry, WeaponView, ModifierDef, ModifierLibEntry, ModifierView, SpellDef, SpellLibEntry, SpellView,
+  WeaponDef, WeaponLibEntry, WeaponView, ModifierDef, ModifierLibEntry, NegativeRounding, ModifierView, SpellDef, SpellLibEntry, SpellView,
 } from './types';
 import { WEAPON_CATALOG_RU, WEAPON_DEFS } from './mockWeapons';
 import { basicDamage, computeDefenses, computeWeapons, diceStr, type CombatCtx, type Owned } from './combat';
@@ -213,7 +213,8 @@ export class MockBackend {
   private name_(t: MockTrait) { return t.def.cost_per_level ? `${t.def.name} ${t.levels}` : t.def.name; }
   private baseCost(t: MockTrait) { return t.def.cost + t.def.cost_per_level * t.levels; }
   private modPct(t: MockTrait) { return t.modifiers.reduce((a, m) => a + m.def.cost_percent, 0); }
-  private cost(t: MockTrait) { return modifiedCost(this.baseCost(t), this.modPct(t)); }
+  rounding: NegativeRounding = 'toward_positive';
+  private cost(t: MockTrait) { return t.modifiers.length ? modifiedCost(this.baseCost(t), this.modPct(t), this.rounding) : this.baseCost(t); }
   spellLibrary(): SpellLibEntry[] {
     return SPELL_DEFS.map((d) => ({ ...d, plugin: 'basic-set-sample', explanation: this.text('spell', d.id, d.description), translated_name: this.tr(d.id, 'spell')?.name ?? null }));
   }
@@ -295,7 +296,7 @@ export class MockBackend {
       explanation: t.explanation?.trim() ? t.explanation : this.plugText(t.def),
       default_explanation: this.plugText(t.def), custom_explanation: !!t.explanation?.trim(),
       base_cost: this.baseCost(t), modifier_percent: this.modPct(t), modifiers: this.modViews(t),
-      cost_explain: traitCostExplain(this.baseCost(t), t.modifiers.map((m) => m.def)) }));
+      cost_explain: traitCostExplain(this.baseCost(t), t.modifiers.map((m) => m.def), this.rounding) }));
     const encumbrance = computeEncumbrance(this.equipment, bl(liftSt), tot.BasicMove, tot.BasicSpeed);
     const cb = this.combat(tot, skills, techniques, encumbrance);
     return {
@@ -307,7 +308,7 @@ export class MockBackend {
           .map((s) => ({ severity: 'warning' as const, message: `skill '${s.def.name}' needs a specialization` })),
         ...(encumbrance.carried_weight > bl(liftSt) * 10 + 1e-9
           ? [{ severity: 'warning' as const, message: `carried ${encumbrance.carried_weight} lb is more than 10×BL (${bl(liftSt) * 10} lb): the character cannot move` }] : [])],
-      path: null, budget: 150,
+      path: null, budget: 150, rules: { negative_rounding: this.rounding },
     };
   }
 
@@ -318,6 +319,10 @@ export class MockBackend {
     switch (cmd) {
       case 'new_character': this.levels = {}; this.traits = []; this.skills = []; this.techniques = []; this.spells = []; this.equipment = []; this.weapons = unarmed(); this.name = (a.name as string) ?? 'New character'; return this.view();
       case 'get_sheet': return this.view();
+      case 'set_negative_rounding': {
+        if (a.mode !== 'toward_positive' && a.mode !== 'by_magnitude') throw new Error(`unknown rounding mode ${a.mode}`);
+        this.rounding = a.mode; return this.view();
+      }
       case 'set_name': this.name = a.name as string; return this.view();
       case 'set_attribute': this.levels[a.key as string] = a.level as number; return this.view();
       case 'add_trait': {

@@ -156,6 +156,10 @@ export interface SpellView {
   page?: string | null; source?: string | null; explanation?: string | null; default_explanation?: string | null; custom_explanation: boolean;
 }
 
+export type NegativeRounding = 'toward_positive' | 'by_magnitude';
+/** Per-character rules options. */
+export interface RulesOptions { negative_rounding: NegativeRounding }
+
 export interface Issue { severity: 'error' | 'warning'; message: string }
 
 export type Difficulty = 'E' | 'A' | 'H' | 'VH';
@@ -185,7 +189,7 @@ export interface SkillView extends ExplainedView {
 }
 export interface TechniqueView extends ExplainedView { skill: string; modifier: number; max: number; max_level?: number | null }
 
-export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; weapons?: WeaponView[]; spells?: SpellView[]; issues: Issue[]; path?: string | null; budget: number }
+export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; weapons?: WeaponView[]; spells?: SpellView[]; rules?: RulesOptions; issues: Issue[]; path?: string | null; budget: number }
 
 export type Outcome = 'critical_success' | 'success' | 'failure' | 'critical_failure';
 export interface RollResult {

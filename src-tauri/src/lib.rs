@@ -32,6 +32,11 @@ fn save(state: S, path: Option<String>) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn set_negative_rounding(state: S, mode: String) -> Result<SheetView, String> {
+    lock(&state).set_negative_rounding(&mode)
+}
+
+#[tauri::command]
 fn set_attribute(state: S, key: String, level: i32) -> Result<SheetView, String> {
     lock(&state).set_attribute(&key, level)
 }
@@ -331,6 +336,7 @@ pub fn run() {
             load,
             save,
             set_attribute,
+            set_negative_rounding,
             set_name,
             add_trait,
             set_trait_levels,

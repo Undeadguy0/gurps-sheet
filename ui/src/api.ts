@@ -62,5 +62,6 @@ export const api = {
   removeTraitModifier: (traitIndex: number, index: number) => call<SheetView>('remove_trait_modifier', { traitIndex, index }),
   setModifierExplanation: (traitIndex: number, index: number, text: string | null) =>
     call<SheetView>('set_modifier_explanation', { traitIndex, index, text }),
+  setNegativeRounding: (mode: string) => call<SheetView>('set_negative_rounding', { mode }),
   roll: (target: number, modifier = 0) => call<RollResult>('roll', { target, modifier }),
 };

@@ -141,6 +141,7 @@ async function openWeaponLibrary() { weaponLibrary.value = await api.listWeaponL
 async function addWeapon(id: string) { await run(api.addWeapon(id)); weaponLibraryOpen.value = false; }
 const removeWeapon = (i: number) => run(api.removeWeapon(i));
 const setWeaponExplanation = (i: number, t: string | null) => run(api.setWeaponExplanation(i, t));
+const setRounding = (m: string) => run(api.setNegativeRounding(m));
 async function openSpellLibrary() { spellLibrary.value = await api.listSpellLibrary(); spellLibraryOpen.value = true; }
 async function addSpell(id: string) { await run(api.addSpell(id, 1)); spellLibraryOpen.value = false; }
 const setSpellPoints = (i: number, p: number) => run(api.setSpellPoints(i, p));
@@ -187,7 +188,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
   <div v-if="view" class="app-shell" :class="{ 'has-side-panel': explainRow }">
     <AppHeader :view="view" :dirty="dirty" :status="status" :locales="locales" @set-locale="setLocale"
       @rename="rename" @save="save" @load="load"
-      @new="newChar" @help="helpOpen = !helpOpen" />
+      @new="newChar" @set-rounding="setRounding" @help="helpOpen = !helpOpen" />
     <NavRail :sections="sections" :active="section" @select="(s) => (section = s)" />
 
     <main class="app-main" :data-section="section">
