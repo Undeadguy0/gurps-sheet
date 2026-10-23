@@ -25,7 +25,7 @@ defaults = [{ attribute = "DX", modifier = -4 }]
 description = '''
 Using a shield to block blows and missiles, and to keep it between yourself and the enemy while you fight with the other hand. Higher skill means more reliable blocks.
 
-Any fighter who carries a shield should have at least a point or two here. The shield's own defensive bonus is a property of the equipment and will be handled together with gear in a later version of the sheet.
+Any fighter who carries a shield should have at least a point or two here. The shield's own Defence Bonus comes from the equipment: the sheet shows Block from this skill and the DB of a carried shield.
 '''
 
 [[skills]]
@@ -38,7 +38,7 @@ defaults = []
 description = '''
 Rough, untrained-looking but effective unarmed fighting: punches, elbows, headbutts and dirty tricks learned in taverns, alleys and barracks. It improves hitting with bare hands and parrying without a weapon.
 
-It is cheap and useful for almost anyone who might end up in a scuffle. Very skilled brawlers also hit harder; that damage bonus is not calculated by the sheet yet.
+It is cheap and useful for almost anyone who might end up in a scuffle. Very skilled brawlers also hit harder: at DX+2 or better the sheet adds +1 damage per die to punches and kicks.
 '''
 
 [[skills]]
@@ -158,7 +158,7 @@ page = "B231" # unverified
 description = '''
 A trained kick: a strong blow with the foot that hits harder than a punch but is riskier, since a miss can leave you off balance. It starts from your unarmed skill at a penalty and can be bought up to that skill's level.
 
-Brawlers and martial artists like it as a heavy hitting option. The sheet tracks its level here; the extra damage will appear with weapons in a later version.
+Brawlers and martial artists like it as a heavy hitting option. The Kick attack in the weapons table uses this level when the technique is bought.
 '''
 
 [[techniques]]

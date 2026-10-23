@@ -36,10 +36,11 @@ name = "Combat Reflexes"
 category = "advantage"
 cost = 15
 page = "B43"
+features = [{ type = "defense_bonus", amount = 1 }]
 description = '''
 The character reacts to danger almost instantly. Surprise rarely freezes them, they recover from being stunned faster than most, and they are a little better at dodging, blocking and parrying. Fear and shock also have a weaker grip on them.
 
-In play this is the classic trait of veterans, bodyguards and duellists: they act first in an ambush and keep their head when things go wrong. The defence and fear bonuses are not calculated by the sheet yet; apply them at the table.
+In play this is the classic trait of veterans, bodyguards and duellists: they act first in an ambush and keep their head when things go wrong. The sheet adds +1 to Dodge, Parry and Block; the other effects (surprise, fear, stun recovery) are still applied at the table.
 '''
 
 [[traits]]

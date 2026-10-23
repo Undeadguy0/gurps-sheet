@@ -26,7 +26,12 @@
         "cost_per_level": 0,
         "max_levels": null,
         "page": "B43",
-        "features": [],
+        "features": [
+          {
+            "type": "defense_bonus",
+            "amount": 1.0
+          }
+        ],
         "levels": 0,
         "source": "basic-set-sample"
       },

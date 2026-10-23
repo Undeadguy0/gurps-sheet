@@ -11,7 +11,7 @@ page = "B271" # unverified
 description = '''
 A one-handed sword of about arm's length, balanced for both cutting and thrusting. A common sidearm for soldiers and the main weapon of many knights.
 
-Use it with the Broadsword skill. Its attacks and damage will be listed under weapons in a later version of the sheet; here it only counts towards weight and cost.
+Use it with the Broadsword skill. Owning it adds its attacks to the weapons table.
 '''
 
 [[equipment]]
@@ -35,7 +35,7 @@ page = "B272" # unverified
 description = '''
 A long knife or short fighting blade, heavier than a utility knife and better suited to combat. Hunters and soldiers often wear one on the belt.
 
-Used with the Knife skill. It counts towards weight and cost now; attack details come with weapons.
+Used with the Knife skill. Owning it adds its attacks to the weapons table.
 '''
 
 [[equipment]]
@@ -61,7 +61,7 @@ page = "B287" # unverified
 description = '''
 The typical warrior's shield, large enough to cover much of the body. It gives a solid bonus to all active defences against attacks from the front.
 
-It is fairly heavy, which matters for encumbrance. The bonus will be used in defence calculations in a later version.
+It is fairly heavy, which matters for encumbrance. Its DB is shown with the defences while it is carried.
 '''
 
 [[equipment]]
