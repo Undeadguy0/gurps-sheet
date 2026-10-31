@@ -204,3 +204,33 @@ pub fn validate(ch: &Character, c: &Calc) -> Vec<Issue> {
     }
     out
 }
+
+/// Синхронный расчётчик для приложения: свой runtime и одно подключение к БД.
+pub struct Engine {
+    rt: tokio::runtime::Runtime,
+    db: gurps_db::Db,
+}
+
+impl std::fmt::Debug for Engine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Engine")
+    }
+}
+
+impl Engine {
+    pub fn connect(cfg: &gurps_db::DbConfig) -> Result<Self, String> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| format!("tokio: {e}"))?;
+        let db = rt
+            .block_on(gurps_db::Db::connect(cfg))
+            .map_err(|e| e.to_string())?;
+        Ok(Self { rt, db })
+    }
+
+    /// Расчёт листа (нельзя звать изнутри другого tokio runtime).
+    pub fn compute(&self, ch: &Character) -> Result<Calc, String> {
+        self.rt.block_on(compute(&self.db, ch))
+    }
+}

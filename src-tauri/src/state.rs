@@ -302,6 +302,12 @@ pub struct SheetView {
     pub custom: gurps_core::CustomContent,
     pub session: SessionView,
     pub history: HistoryView,
+    /// Расчёт gurps-calc по БД (этап 4; пока рядом со старым `sheet`).
+    pub calc: Option<serde_json::Value>,
+    /// Почему расчёт по БД не выполнен (нет БД, своё содержимое без пака...).
+    pub calc_error: Option<String>,
+    /// Проверки по лимитам `ref_rule` (с перекрытиями персонажа).
+    pub calc_issues: Vec<gurps_library::calc::Issue>,
 }
 
 /// Point pool summary + ledger (character cost is live, never stored).
@@ -400,6 +406,8 @@ pub struct AppState {
     /// Character as last saved/loaded/created (for the dirty flag).
     pub saved: Character,
     pub rng: SplitMix,
+    /// Расчётчик gurps-calc (только при каталоге из БД).
+    pub engine: Option<std::sync::Arc<gurps_library::calc::Engine>>,
 }
 
 pub const DEFAULT_LOCALE: &str = "ru";
@@ -427,6 +435,7 @@ impl Default for AppState {
             redo_stack: Vec::new(),
             saved: Character::default(),
             rng: SplitMix::from_time(),
+            engine: None,
         }
     }
 }
@@ -458,6 +467,19 @@ impl AppState {
         let Some(src) = self.source.clone() else {
             self.plugin_errors.push("no catalog source configured".into());
             return;
+        };
+        self.engine = match &src {
+            gurps_library::LibrarySource::Db(cfg) => {
+                match gurps_library::calc::Engine::connect(cfg) {
+                    Ok(e) => Some(std::sync::Arc::new(e)),
+                    Err(e) => {
+                        self.plugin_errors.push(format!("расчёт: {e}"));
+                        None
+                    }
+                }
+            }
+            #[allow(unreachable_patterns)]
+            _ => None,
         };
         match gurps_library::Library::load(&src) {
             Ok(lib) => {
@@ -504,7 +526,20 @@ impl AppState {
 
     pub fn view(&self) -> SheetView {
         let sheet = gurps_rules::compute_sheet(&self.character);
+        let (calc, calc_error, calc_issues) = match &self.engine {
+            None => (None, Some("нет подключения к БД".to_string()), Vec::new()),
+            Some(e) => match e.compute(&self.character) {
+                Ok(c) => {
+                    let iss = gurps_library::calc::validate(&self.character, &c);
+                    (serde_json::to_value(&c.computed).ok(), None, iss)
+                }
+                Err(e) => (None, Some(e), Vec::new()),
+            },
+        };
         SheetView {
+            calc,
+            calc_error,
+            calc_issues,
             skills: self.skill_views(&sheet),
             techniques: self.technique_views(&sheet),
             spells: self.spell_views(&sheet),

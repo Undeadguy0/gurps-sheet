@@ -12,6 +12,7 @@ use gurps_core::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+pub use gurps_db::gurps_calc;
 pub use gurps_db::DbConfig;
 
 pub mod calc;
