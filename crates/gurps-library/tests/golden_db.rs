@@ -54,11 +54,23 @@ impl Env {
         let out = gurps_calc::compute(&inp);
         // Тот же персонаж документом (pack, sid) даёт тот же расчёт.
         let doc = gurps_db::calc_input::doc_of(&self.db, id).await.unwrap();
-        let din = gurps_db::calc_input::load_doc(&self.db, &doc).await.unwrap();
+        let din = gurps_db::calc_input::load_doc(&self.db, &doc)
+            .await
+            .unwrap();
         assert_eq!(
             serde_json::to_value(gurps_calc::compute(&din)).unwrap(),
             serde_json::to_value(&out).unwrap(),
             "{id}: документ != БД"
+        );
+        // Лист приложения (gurps_core::Character) -> документ -> тот же расчёт.
+        let packs = packs_of(&doc);
+        let mut ch = gurps_io::from_str(&serde_json::to_string(sheet).unwrap()).unwrap();
+        set_sources(&mut ch, &packs);
+        let app = gurps_library::calc::compute(&self.db, &ch).await.unwrap();
+        assert_eq!(
+            serde_json::to_value(&app.computed).unwrap(),
+            serde_json::to_value(&out).unwrap(),
+            "{id}: лист приложения != БД"
         );
         assert!(
             out.missing_constants.0.is_empty(),
@@ -72,6 +84,60 @@ impl Env {
     }
 }
 
+/// sid -> pack из документа БД (по разделам).
+fn packs_of(doc: &Value) -> std::collections::HashMap<(String, String), String> {
+    let mut m = std::collections::HashMap::new();
+    for k in ["traits", "skills", "techniques", "spells", "items"] {
+        for e in doc[k].as_array().into_iter().flatten() {
+            let sid = e["sid"].as_str().unwrap().to_string();
+            m.insert(
+                (k.to_string(), sid),
+                e["pack"].as_str().unwrap().to_string(),
+            );
+            for md in e["modifiers"].as_array().into_iter().flatten() {
+                m.insert(
+                    ("modifiers".into(), md["sid"].as_str().unwrap().into()),
+                    md["pack"].as_str().unwrap().into(),
+                );
+            }
+        }
+    }
+    m
+}
+
+fn set_sources(
+    ch: &mut gurps_core::Character,
+    p: &std::collections::HashMap<(String, String), String>,
+) {
+    use gurps_library::calc::sid;
+    let g = |k: &str, id: &str| {
+        p.get(&(k.to_string(), sid(id)))
+            .cloned()
+            .unwrap_or_else(|| panic!("{k} {id}"))
+    };
+    for t in &mut ch.traits {
+        t.source = Some(g("traits", &t.def.id));
+        for m in &mut t.modifiers {
+            m.source = Some(g("modifiers", &m.def.id));
+        }
+    }
+    for s in &mut ch.skills {
+        s.source = Some(g("skills", &s.def.id));
+    }
+    for s in &mut ch.techniques {
+        s.source = Some(g("techniques", &s.def.id));
+    }
+    for s in &mut ch.spells {
+        s.source = Some(g("spells", &s.def.id));
+    }
+    fn eq(l: &mut [gurps_core::Equipment], g: &dyn Fn(&str, &str) -> String) {
+        for e in l {
+            e.source = Some(g("items", &e.def.id));
+            eq(&mut e.contents, g);
+        }
+    }
+    eq(&mut ch.equipment, &g);
+}
 fn dice(d: &impl serde::Serialize) -> String {
     let v = serde_json::to_value(d).unwrap();
     let (n, m) = (v["dice"].as_i64().unwrap(), v["mod"].as_i64().unwrap());

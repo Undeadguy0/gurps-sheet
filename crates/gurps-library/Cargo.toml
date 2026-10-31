@@ -21,4 +21,5 @@ tokio = { version = "1", features = ["rt"] }
 
 [dev-dependencies]
 gurps-db = { workspace = true, features = ["testkit"] }
+gurps-io.workspace = true
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 
 pub use gurps_db::DbConfig;
 
+pub mod calc;
 pub mod db_adapter;
 #[cfg(feature = "legacy-plugins")]
 mod legacy;
