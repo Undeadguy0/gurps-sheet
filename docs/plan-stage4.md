@@ -10,15 +10,24 @@
   `Computed.encumbrance/defenses`; загрузчик gurps-db: `refs.encumbrance`, `carried_weight`
   (сумма qty × item.weight по owns_item). Новый сид `ref_rule:move_attribute = 'Move'`.
 
+- c2082d8: опции правил в БД: `ref_rule` trait_cost_negative_rounding (сид toward_positive, -7.5 -> -7),
+  disadvantage_limit_percent (50), quirk_limit (5); персонаж перекрывает правила через `Input.rule_overrides`.
+- 4ea2fd4: Block: `ref_rule` block_base/block_skill_divisor/block_rounding (только структура, сиды — от Мастера),
+  `item.shield.block_skill {skill, spec}`; Block без нагрузки, DB щита к Dodge/Parry/Block.
+
+## Сделано (gurps-sheet)
+
+- 40d1664: броски — крейт приложения `gurps-dice`.
+
 ## Осталось
 
-1. gurps-calc: Block (нужны `ref_rule` block_base/block_skill_divisor и способ указать навыки блока —
+1. (Block/DB сделаны.) gurps-calc: Block (нужны `ref_rule` block_base/block_skill_divisor и способ указать навыки блока —
    сид/схема), DB щита, DR брони (`parse_db/parse_dr` из gurps-core), explain-строки
    (Value.explain: атрибуты, BL, урон, нагрузка, атаки, стоимость черт с модификаторами).
-2. Опции правил листа (`RulesOptions`, `NegativeRounding`) — в `ref_rule` или настройки персонажа.
+2. (Структура в БД сделана; осталось: RulesOptions персонажа -> rule_overrides.) Опции правил листа (`RulesOptions`, `NegativeRounding`) — в `ref_rule` или настройки персонажа.
 3. Броски (`gurps_rules::dice`: success roll, damage_roll) — не правила-таблицы; решить: перенести
    в gurps-calc (критические пороги в `ref_rule`) или оставить в приложении.
-4. `validate` (лимиты уровней черт и т.п.) -> `gurps-calc::prereq`/новый модуль.
+4. (Решение: остаётся в приложении; перенести из gurps-rules в крейт/модуль приложения при переделке модели.) `validate` (лимиты уровней черт и т.п.) -> `gurps-calc::prereq`/новый модуль.
 5. Модель персонажа: `gurps-core::Character` -> входная модель с `(pack, sid)` и ref-кодами;
    сборка `gurps_calc::model::Input` из персонажа + каталога (через gurps-library/gurps-db),
    без enum `Stat/Difficulty/TraitCategory`.
