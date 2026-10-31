@@ -524,3 +524,58 @@ async fn spells_and_modifiers() {
     let s = env.calc("mage_mix", &ch).await;
     assert_eq!(s.points.advantages, 29 - 25 + 37);
 }
+
+/// Своё содержимое листа (все записи без пака каталога) идёт в документ встроенными
+/// определениями — расчёт атрибутов, очков, навыков и нагрузки совпадает с каталожным.
+/// (Оружие/щиты, пререквизиты и школы заклинаний у встроенных пока не переносятся.)
+#[tokio::test(flavor = "multi_thread")]
+async fn inline_custom_definitions() {
+    let Some(e) = env().await else { return };
+    for name in [
+        "warrior",
+        "rogue",
+        "mage",
+        "warrior-skills",
+        "rogue-skills",
+        "warrior-equipment",
+        "rogue-equipment",
+    ] {
+        let sheet = fixture(name);
+        let id = format!("inl_{}", name.replace('-', "_"));
+        let db_out = e.calc(&id, &sheet).await;
+        let mut ch = gurps_io::from_str(&serde_json::to_string(&sheet).unwrap()).unwrap();
+        let local = |s: &mut Option<String>| *s = Some(gurps_library::calc::LOCAL_SOURCE.into());
+        for t in &mut ch.traits {
+            local(&mut t.source);
+            t.modifiers.iter_mut().for_each(|m| local(&mut m.source));
+        }
+        ch.skills.iter_mut().for_each(|s| local(&mut s.source));
+        ch.techniques.iter_mut().for_each(|s| local(&mut s.source));
+        fn eq(l: &mut [gurps_core::Equipment]) {
+            for x in l {
+                x.source = Some(gurps_library::calc::LOCAL_SOURCE.into());
+                eq(&mut x.contents);
+            }
+        }
+        eq(&mut ch.equipment);
+        let doc = gurps_library::calc::document(&ch).unwrap();
+        assert!(
+            doc["traits"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|t| t.get("inline").is_some()),
+            "{name}"
+        );
+        let app = gurps_library::calc::compute(&e.db, &ch)
+            .await
+            .unwrap()
+            .computed;
+        let pick = |c: &Computed| {
+            let v = serde_json::to_value(c).unwrap();
+            json!({ "attributes": v["attributes"], "points": v["points"], "skills": v["skills"],
+                "techniques": v["techniques"], "encumbrance": v["encumbrance"] })
+        };
+        assert_eq!(pick(&app), pick(&db_out), "{name}: встроенные != каталог");
+    }
+}

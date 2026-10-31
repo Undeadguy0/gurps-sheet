@@ -16,24 +16,163 @@ pub fn sid(id: &str) -> String {
     id.trim().to_lowercase().replace(['-', ' '], "_")
 }
 
-fn entry(what: &str, id: &str, pack: &Option<String>) -> Result<(String, String), String> {
-    let pack = pack
+/// Пак своего содержимого листа (записи без пака каталога): такие записи идут в документ
+/// встроенными определениями (`inline`), а не ссылками `(pack, sid)`.
+pub const LOCAL_SOURCE: &str = "custom";
+
+/// Ссылка записи листа: каталог БД или встроенное определение.
+fn catalog_pack(source: &Option<String>) -> Option<&str> {
+    source
         .as_deref()
-        .filter(|p| !p.trim().is_empty())
-        .ok_or_else(|| format!("{what} {id}: не указан пак (source)"))?;
-    Ok((pack.to_string(), sid(id)))
+        .map(str::trim)
+        .filter(|p| !p.is_empty() && *p != LOCAL_SOURCE)
 }
 
-fn items(out: &mut Vec<Value>, list: &[Equipment], carried: bool) -> Result<(), String> {
-    for e in list {
-        let (pack, sid) = entry("equipment", &e.def.id, &e.source)?;
-        let on = carried && e.carried;
-        out.push(json!({ "pack": pack, "sid": sid, "qty": e.quantity.max(1), "equipped": on }));
-        items(out, &e.contents, on)?;
+/// Запись документа: `{pack, sid}` или `{inline: def}` плюс поля экземпляра.
+fn entry_of(
+    source: &Option<String>,
+    id: &str,
+    inline: impl FnOnce() -> Value,
+    extra: Value,
+) -> Value {
+    let mut o = match catalog_pack(source) {
+        Some(pack) => json!({ "pack": pack, "sid": sid(id) }),
+        None => json!({ "inline": inline() }),
+    };
+    if let (Some(o), Value::Object(x)) = (o.as_object_mut(), extra) {
+        o.extend(x);
     }
-    Ok(())
+    o
 }
 
+fn code<T: serde::Serialize>(v: &T) -> String {
+    serde_json::to_value(v)
+        .ok()
+        .and_then(|x| x.as_str().map(String::from))
+        .unwrap_or_default()
+}
+
+/// Код атрибута БД (`ref_attribute`).
+fn attr(s: gurps_core::Stat) -> String {
+    use gurps_core::Stat::*;
+    match s {
+        BasicSpeed => "Speed".into(),
+        BasicMove => "Move".into(),
+        other => code(&other),
+    }
+}
+
+/// Эффекты своего содержимого -> форма `features` расчёта (ссылки — ключи).
+fn features(fs: &[gurps_core::Feature]) -> Vec<Value> {
+    use gurps_core::Feature as F;
+    let base = |kind: &str, amount: f64, per_level: bool| json!({ "kind": kind, "amount": amount, "per_level": per_level });
+    let mut out = Vec::new();
+    for f in fs {
+        match f {
+            F::AttributeBonus {
+                target,
+                amount,
+                per_level,
+            } => {
+                let mut o = base("attribute_bonus", *amount, *per_level);
+                o["attribute"] = attr(*target).into();
+                out.push(o);
+            }
+            F::LiftingStBonus { amount, per_level } => {
+                out.push(base("lifting_st_bonus", *amount, *per_level))
+            }
+            F::StrikingStBonus { amount, per_level } => {
+                out.push(base("striking_st_bonus", *amount, *per_level))
+            }
+            F::DefenseBonus {
+                amount,
+                defenses,
+                per_level,
+            } => {
+                let mut o = base("defense_bonus", *amount, *per_level);
+                o["defenses"] = json!(defenses
+                    .iter()
+                    .map(|d| d.to_lowercase())
+                    .collect::<Vec<_>>());
+                out.push(o);
+            }
+            F::SkillBonus {
+                skills,
+                amount,
+                per_level,
+            } => {
+                for s in skills {
+                    let mut o = base("skill_bonus", *amount, *per_level);
+                    o["skill"] = sid(s).into();
+                    out.push(o);
+                }
+            }
+            F::SpellBonus {
+                amount,
+                colleges,
+                per_level,
+            } => {
+                if colleges.is_empty() {
+                    out.push(base("spell_bonus", *amount, *per_level));
+                }
+                for c in colleges {
+                    let mut o = base("spell_bonus", *amount, *per_level);
+                    o["college"] = sid(c).into();
+                    out.push(o);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Встроенные определения (форма входа `gurps-calc`, см. `gurps_db::calc_input::load_doc`).
+pub mod inline {
+    use super::*;
+    use gurps_core::{EquipmentDef, ModifierDef, SkillDef, SpellDef, TechniqueDef, TraitDef};
+
+    pub fn trait_def(d: &TraitDef) -> Value {
+        let ty = match (d.cost, d.cost_per_level) {
+            (_, 0) => "fixed",
+            (0, _) => "per_level",
+            _ => "base_plus_level",
+        };
+        json!({ "sid": sid(&d.id), "cost": { "type": ty, "base": d.cost,
+            "per_level": (d.cost_per_level != 0).then_some(d.cost_per_level) },
+            "features": features(&d.features) })
+    }
+    pub fn modifier(d: &ModifierDef) -> Value {
+        let lim = d.cost_percent < 0;
+        json!({ "type": if lim { "lim" } else { "enh" }, "value_kind": "%", "amount": d.cost_percent.abs() })
+    }
+    pub fn skill(d: &SkillDef) -> Value {
+        json!({ "sid": sid(&d.id), "attribute": attr(d.attribute), "difficulty": code(&d.difficulty) })
+    }
+    pub fn technique(d: &TechniqueDef) -> Value {
+        json!({ "sid": sid(&d.id), "parent_skill": sid(&d.skill), "difficulty": code(&d.difficulty),
+            "default_mod": d.modifier, "max_mod": d.max })
+    }
+    pub fn spell(d: &SpellDef) -> Value {
+        json!({ "sid": sid(&d.id), "difficulty": code(&d.difficulty),
+            "colleges": d.college.iter().map(|c| sid(c)).collect::<Vec<_>>() })
+    }
+    pub fn item(d: &EquipmentDef) -> Value {
+        json!({ "sid": sid(&d.id), "weight": d.weight, "cost": d.cost })
+    }
+}
+
+fn items(out: &mut Vec<Value>, list: &[Equipment], carried: bool) {
+    for e in list {
+        let on = carried && e.carried;
+        out.push(entry_of(
+            &e.source,
+            &e.def.id,
+            || inline::item(&e.def),
+            json!({ "qty": e.quantity.max(1), "equipped": on }),
+        ));
+        items(out, &e.contents, on);
+    }
+}
 /// Опции правил персонажа -> перекрытия `ref_rule`.
 pub fn rule_overrides(ch: &Character) -> Vec<Value> {
     let mut v = Vec::new();
@@ -64,40 +203,67 @@ pub fn document(ch: &Character) -> Result<Value, String> {
     .iter()
     .map(|(c, l)| json!({ "code": c, "levels": l }))
     .collect();
-    let mut traits = Vec::new();
-    for t in &ch.traits {
-        let (pack, sid) = entry("trait", &t.def.id, &t.source)?;
-        let mut mods = Vec::new();
-        for m in &t.modifiers {
-            let (mp, ms) = entry("modifier", &m.def.id, &m.source)?;
-            mods.push(json!({ "pack": mp, "sid": ms }));
-        }
-        let level = (t.def.cost_per_level != 0).then_some(t.levels);
-        traits.push(json!({ "pack": pack, "sid": sid, "level": level, "modifiers": mods }));
-    }
-    let mut skills = Vec::new();
-    for s in &ch.skills {
-        let (pack, sid) = entry("skill", &s.def.id, &s.source)?;
-        let spec = s
-            .specialization
-            .as_deref()
-            .filter(|x| !x.trim().is_empty())
-            .map(self::sid);
-        skills.push(json!({ "pack": pack, "sid": sid, "points": s.points, "spec": spec }));
-    }
-    let mut techniques = Vec::new();
-    for t in &ch.techniques {
-        let (pack, sid) = entry("technique", &t.def.id, &t.source)?;
-        techniques.push(json!({ "pack": pack, "sid": sid, "points": t.points }));
-    }
-    let mut spells = Vec::new();
-    for s in &ch.spells {
-        let (pack, sid) = entry("spell", &s.def.id, &s.source)?;
-        spells.push(json!({ "pack": pack, "sid": sid, "points": s.points }));
-    }
+    let traits: Vec<Value> = ch
+        .traits
+        .iter()
+        .map(|t| {
+            let mods: Vec<Value> = t
+                .modifiers
+                .iter()
+                .map(|m| entry_of(&m.source, &m.def.id, || inline::modifier(&m.def), json!({})))
+                .collect();
+            let level = (t.def.cost_per_level != 0).then_some(t.levels);
+            entry_of(
+                &t.source,
+                &t.def.id,
+                || inline::trait_def(&t.def),
+                json!({ "level": level, "modifiers": mods }),
+            )
+        })
+        .collect();
+    let skills: Vec<Value> = ch
+        .skills
+        .iter()
+        .map(|s| {
+            let spec = s
+                .specialization
+                .as_deref()
+                .filter(|x| !x.trim().is_empty())
+                .map(self::sid);
+            entry_of(
+                &s.source,
+                &s.def.id,
+                || inline::skill(&s.def),
+                json!({ "points": s.points, "spec": spec }),
+            )
+        })
+        .collect();
+    let techniques: Vec<Value> = ch
+        .techniques
+        .iter()
+        .map(|t| {
+            entry_of(
+                &t.source,
+                &t.def.id,
+                || inline::technique(&t.def),
+                json!({ "points": t.points }),
+            )
+        })
+        .collect();
+    let spells: Vec<Value> = ch
+        .spells
+        .iter()
+        .map(|s| {
+            entry_of(
+                &s.source,
+                &s.def.id,
+                || inline::spell(&s.def),
+                json!({ "points": s.points }),
+            )
+        })
+        .collect();
     let mut its = Vec::new();
-    items(&mut its, &ch.equipment, true)?;
-    // Виды point_ledger в схеме: award/spend/refund/adjust; старый лист без журнала — points_budget.
+    items(&mut its, &ch.equipment, true); // Виды point_ledger в схеме: award/spend/refund/adjust; старый лист без журнала — points_budget.
     let mut ledger: Vec<Value> = ch
         .ledger
         .iter()
