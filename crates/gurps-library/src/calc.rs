@@ -137,9 +137,18 @@ pub mod inline {
             (0, _) => "per_level",
             _ => "base_plus_level",
         };
-        json!({ "sid": sid(&d.id), "cost": { "type": ty, "base": d.cost,
+        json!({ "sid": sid(&d.id), "kind": kind(d.category), "cost": { "type": ty, "base": d.cost,
             "per_level": (d.cost_per_level != 0).then_some(d.cost_per_level) },
             "features": features(&d.features) })
+    }
+    fn kind(c: gurps_core::TraitCategory) -> &'static str {
+        use gurps_core::TraitCategory::*;
+        match c {
+            Advantage => "adv",
+            Disadvantage => "disadv",
+            Perk => "perk",
+            Quirk => "quirk",
+        }
     }
     pub fn modifier(d: &ModifierDef) -> Value {
         let lim = d.cost_percent < 0;
