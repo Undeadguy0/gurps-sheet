@@ -19,3 +19,7 @@ gurps-core = { path = "crates/gurps-core" }
 gurps-rules = { path = "crates/gurps-rules" }
 gurps-plugins = { path = "crates/gurps-plugins" }
 gurps-io = { path = "crates/gurps-io" }
+gurps-library = { path = "crates/gurps-library" }
+# Общий слой БД и проекция каталога — из репозитория mcp-сервер (см. docs/plan-stage3.md).
+gurps-db = { path = "../../ПРОЕКТЫ/mcp-сервер/crates/gurps-db" }
+sheet-bridge = { path = "../../ПРОЕКТЫ/mcp-сервер/tools/sheet-bridge" }

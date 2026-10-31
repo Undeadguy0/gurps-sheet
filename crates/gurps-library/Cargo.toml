@@ -1,0 +1,24 @@
+[package]
+name = "gurps-library"
+description = "Catalog for the editor: read-only from the shared GURPS SurrealDB (via gurps-db)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# ВРЕМЕННО (до этапа 4): загрузка старых TOML-плагинов — только для тестов.
+legacy-plugins = ["dep:gurps-plugins"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+gurps-core.workspace = true
+gurps-db.workspace = true
+sheet-bridge.workspace = true
+gurps-plugins = { workspace = true, optional = true }
+tokio = { version = "1", features = ["rt"] }
+
+[dev-dependencies]
+gurps-db = { workspace = true, features = ["testkit"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
