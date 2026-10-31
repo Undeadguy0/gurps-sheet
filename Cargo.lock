@@ -1585,6 +1585,7 @@ name = "gurps-cli"
 version = "0.1.0"
 dependencies = [
  "gurps-core",
+ "gurps-dice",
  "gurps-io",
  "gurps-plugins",
  "gurps-rules",
@@ -1611,6 +1612,13 @@ dependencies = [
  "surrealdb",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "gurps-dice"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -1661,6 +1669,7 @@ name = "gurps-sheet-app"
 version = "0.1.0"
 dependencies = [
  "gurps-core",
+ "gurps-dice",
  "gurps-io",
  "gurps-library",
  "gurps-rules",

@@ -1,0 +1,9 @@
+[package]
+name = "gurps-dice"
+description = "Броски 3d6 и урона для приложения (не правила расчёта: те — в gurps-calc)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true

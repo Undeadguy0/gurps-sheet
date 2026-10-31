@@ -6,7 +6,7 @@
 //!   validate <file.json>
 #![cfg_attr(test, allow(clippy::field_reassign_with_default))]
 
-use gurps_rules::dice::{success_roll, SplitMix};
+use gurps_dice::{success_roll, SplitMix};
 use serde_json::{json, Value};
 use std::process::ExitCode;
 

@@ -14,6 +14,7 @@ serde.workspace = true
 serde_json.workspace = true
 gurps-core.workspace = true
 gurps-rules.workspace = true
+gurps-dice.workspace = true
 gurps-io.workspace = true
 
 [dev-dependencies]

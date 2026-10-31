@@ -6,7 +6,7 @@ use gurps_core::{
     Spell, SpellDef, Stat, Technique, TechniqueDef, Trait, TraitCategory, TraitDef, TraitModifier,
     Weapon, WeaponDef,
 };
-use gurps_rules::dice::{success_roll, RollResult, SplitMix};
+use gurps_dice::{success_roll, RollResult, SplitMix};
 use gurps_rules::validate::{validate, Issue};
 use gurps_rules::Sheet;
 use serde::Serialize;
@@ -1915,10 +1915,10 @@ impl AppState {
         expr: &str,
         crushing: bool,
         seed: Option<u64>,
-    ) -> Result<gurps_rules::dice::DamageRoll, String> {
+    ) -> Result<gurps_dice::DamageRoll, String> {
         let r = match seed {
-            Some(s) => gurps_rules::dice::damage_roll(expr, crushing, &mut SplitMix(s)),
-            None => gurps_rules::dice::damage_roll(expr, crushing, &mut self.rng),
+            Some(s) => gurps_dice::damage_roll(expr, crushing, &mut SplitMix(s)),
+            None => gurps_dice::damage_roll(expr, crushing, &mut self.rng),
         };
         r.ok_or_else(|| format!("cannot parse damage {expr}"))
     }
@@ -2260,7 +2260,7 @@ mod tests {
         assert_eq!(a, s.roll(12, -1, Some(42)));
         assert_eq!(a.effective, 11);
         assert_eq!(a.margin, 11 - a.roll);
-        assert_eq!(a.outcome, gurps_rules::dice::outcome(a.roll, 11));
+        assert_eq!(a.outcome, gurps_dice::outcome(a.roll, 11));
         let d = s.roll_damage("2d-1", false, Some(5)).unwrap();
         assert_eq!(d, s.roll_damage("2d-1", false, Some(5)).unwrap());
         assert_eq!(d.dice.len(), 2);

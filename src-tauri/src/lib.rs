@@ -1,6 +1,6 @@
 mod state;
 
-use gurps_rules::dice::{DamageRoll, RollResult};
+use gurps_dice::{DamageRoll, RollResult};
 pub use state::{AppState, SheetView};
 use state::{
     EquipmentLibEntry, LibraryEntry, LocaleInfo, ModifierLibEntry, PluginStatus, SkillLibrary,

@@ -3,11 +3,9 @@
 //! * [`value`] — explainable values (`base + contributions`).
 //! * [`sheet`] — computes all attributes/secondary characteristics of a character.
 //! * [`points`] — point costs and the total breakdown.
-//! * [`dice`] — 3d6 success rolls with critical rules.
 #![cfg_attr(test, allow(clippy::field_reassign_with_default))]
 
 pub mod combat;
-pub mod dice;
 pub mod encumbrance;
 pub mod modifiers;
 pub mod points;
