@@ -27,12 +27,6 @@ async fn env() -> Option<Env> {
         pass: c.password.clone(),
     };
     let bdb = sheet_bridge::db::Db::connect(&bcfg).await.unwrap();
-    // Тестовый справочник: в сиде колледж называется light_darkness, импорт ищет по имени листа.
-    bdb.one(
-        "UPSERT ref_college:light_and_darkness SET code = 'light_and_darkness', pack = pack:basic;",
-    )
-    .await
-    .unwrap();
     Some(Env { _srv: srv, db, bdb })
 }
 
