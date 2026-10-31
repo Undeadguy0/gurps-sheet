@@ -17,8 +17,7 @@ pub use gurps_db::DbConfig;
 
 pub mod calc;
 pub mod db_adapter;
-#[cfg(feature = "legacy-plugins")]
-mod legacy;
+pub mod sheet;
 
 /// Перевод записи: имя и описание.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,18 +77,15 @@ impl Translations {
 pub enum LibrarySource {
     /// Общий сервер SurrealDB (рабочий режим).
     Db(DbConfig),
-    /// ВРЕМЕННО (этап 4 удалит): старые TOML-плагины, только для тестов.
-    #[cfg(feature = "legacy-plugins")]
-    Plugins(std::path::PathBuf),
 }
 
 impl LibrarySource {
     /// Строка для UI («откуда данные»), без пароля.
     pub fn describe(&self) -> String {
         match self {
-            LibrarySource::Db(c) => format!("SurrealDB {} ({}/{})", c.host, c.namespace, c.database),
-            #[cfg(feature = "legacy-plugins")]
-            LibrarySource::Plugins(p) => p.display().to_string(),
+            LibrarySource::Db(c) => {
+                format!("SurrealDB {} ({}/{})", c.host, c.namespace, c.database)
+            }
         }
     }
 }
@@ -116,8 +112,6 @@ impl Library {
     pub fn load(src: &LibrarySource) -> Result<Self, String> {
         match src {
             LibrarySource::Db(cfg) => Self::load_db(cfg),
-            #[cfg(feature = "legacy-plugins")]
-            LibrarySource::Plugins(dir) => legacy::load(dir),
         }
     }
 
@@ -131,7 +125,9 @@ impl Library {
                 .build()
                 .map_err(|e| format!("tokio: {e}"))?;
             rt.block_on(async {
-                let db = gurps_db::Db::connect(&cfg).await.map_err(|e| e.to_string())?;
+                let db = gurps_db::Db::connect(&cfg)
+                    .await
+                    .map_err(|e| e.to_string())?;
                 Self::fetch(&db).await
             })
         })
@@ -147,7 +143,30 @@ impl Library {
         let colleges = gurps_db::catalog::college_names(db)
             .await
             .map_err(|e| e.to_string())?;
-        db_adapter::from_catalog(&cat, &colleges)
+        let mut lib = db_adapter::from_catalog(&cat, &colleges)?;
+        // Подписи справочников для листа: `attribute-ST`, `encumbrance-light` (переводы из БД).
+        for (table, kind) in [
+            ("ref_attribute", "attribute"),
+            ("ref_encumbrance", "encumbrance"),
+        ] {
+            let rows = gurps_db::catalog::refs(db, table)
+                .await
+                .map_err(|e| e.to_string())?;
+            for r in rows {
+                for (lang, fields) in &r.tr {
+                    if let Some(n) = fields.get("name") {
+                        lib.translations
+                            .langs
+                            .entry(lang.clone())
+                            .or_default()
+                            .entry(format!("{kind}-{}", r.code))
+                            .or_default()
+                            .name = Some(n.clone());
+                    }
+                }
+            }
+        }
+        Ok(lib)
     }
 }
 

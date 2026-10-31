@@ -1,6 +1,0 @@
-# Language pack: Russian names and explanations for basic-set-sample.
-# Contains no data of its own, only locales/ru/*.ftl (Fluent).
-id = "lang-ru"
-name = "Русский язык (basic-set-sample)"
-version = "0.1.0"
-depends = ["basic-set-sample"]

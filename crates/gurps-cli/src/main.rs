@@ -4,20 +4,37 @@
 //!   calc <file.json>
 //!   roll <target> [--mod N] [--seed S]
 //!   validate <file.json>
+//!
+//! `calc`/`validate` считают через общую БД (`gurps-calc`), подключение - env `SURREALDB_*`.
 #![cfg_attr(test, allow(clippy::field_reassign_with_default))]
 
 use gurps_dice::{success_roll, SplitMix};
+use gurps_library::calc::{Engine, Issue};
+use gurps_library::sheet::Sheet;
+use gurps_library::DbConfig;
 use serde_json::{json, Value};
 use std::process::ExitCode;
 
 const USAGE: &str = "usage:\n  gurps calc <file.json>\n  gurps roll <target> [--mod N] [--seed S]\n  gurps validate <file.json>";
 
-fn run(args: &[String]) -> Result<(Value, bool), String> {
+/// Лист и проверки персонажа через БД.
+fn compute(path: &str, cfg: &DbConfig) -> Result<(Sheet, Vec<Issue>), String> {
+    let ch = gurps_io::load(path).map_err(|e| e.to_string())?;
+    let eng = Engine::connect(cfg)?;
+    let calc = eng.compute(&ch);
+    let sheet = match &calc {
+        Ok(c) => gurps_library::sheet::build(&ch, c, &|_, _| None),
+        Err(_) => Sheet::default(),
+    };
+    let issues = gurps_library::sheet::issues(&ch, &calc, &sheet);
+    Ok((sheet, issues))
+}
+
+fn run(args: &[String], cfg: &DbConfig) -> Result<(Value, bool), String> {
     match args.first().map(String::as_str) {
         Some("calc") => {
             let path = args.get(1).ok_or(USAGE)?;
-            let ch = gurps_io::load(path).map_err(|e| e.to_string())?;
-            let sheet = gurps_rules::compute_sheet(&ch);
+            let (sheet, _) = compute(path, cfg)?;
             Ok((
                 serde_json::to_value(sheet).map_err(|e| e.to_string())?,
                 true,
@@ -51,19 +68,15 @@ fn run(args: &[String]) -> Result<(Value, bool), String> {
         }
         Some("validate") => {
             let path = args.get(1).ok_or(USAGE)?;
-            match gurps_io::load(path) {
-                Err(e) => Ok((
-                    json!({"valid": false, "issues": [{"severity":"error","message": e.to_string()}]}),
-                    false,
-                )),
-                Ok(ch) => {
-                    let issues = gurps_rules::validate::validate(&ch);
-                    let valid = !issues
-                        .iter()
-                        .any(|i| i.severity == gurps_rules::validate::Severity::Error);
-                    Ok((json!({"valid": valid, "issues": issues}), valid))
-                }
-            }
+            let issues = match compute(path, cfg) {
+                Ok((_, issues)) => issues,
+                Err(e) => vec![Issue {
+                    severity: "error",
+                    message: e,
+                }],
+            };
+            let valid = !issues.iter().any(|i| i.severity == "error");
+            Ok((json!({"valid": valid, "issues": issues}), valid))
         }
         _ => Err(USAGE.to_string()),
     }
@@ -71,7 +84,7 @@ fn run(args: &[String]) -> Result<(Value, bool), String> {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    match run(&args) {
+    match run(&args, &DbConfig::from_env()) {
         Ok((v, ok)) => {
             println!("{}", serde_json::to_string_pretty(&v).expect("json"));
             if ok {
@@ -95,35 +108,55 @@ mod tests {
         v.iter().map(|x| x.to_string()).collect()
     }
 
-    fn hero() -> String {
-        format!("{}/../../examples/hero.json", env!("CARGO_MANIFEST_DIR"))
+    fn no_db() -> DbConfig {
+        DbConfig {
+            host: "ws://127.0.0.1:1".into(),
+            namespace: "x".into(),
+            database: "x".into(),
+            user: "x".into(),
+            password: "x".into(),
+        }
     }
 
     #[test]
-    fn calc_hero() {
-        let (v, ok) = run(&s(&["calc", &hero()])).unwrap();
+    fn calc_and_validate_via_db() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let Some((srv, _db)) = rt.block_on(gurps_db::testkit::start()) else {
+            return;
+        };
+        let mut ch = gurps_core::Character::new("CLI".to_string());
+        ch.attributes.st = 3;
+        ch.attributes.dx = 1;
+        let p = std::env::temp_dir().join(format!("gurps-cli-{}.json", std::process::id()));
+        gurps_io::save(&p, &ch).unwrap();
+        let path = p.display().to_string();
+        let (v, ok) = run(&s(&["calc", &path]), &srv.cfg).unwrap();
         assert!(ok);
         assert_eq!(v["attributes"][0]["key"], "ST");
         assert_eq!(v["attributes"][0]["total"], 13.0);
-        // 20 (ST) + 20 (DX) + 10 (HT) + 10 + 6 - 5
-        assert_eq!(v["points"]["total"], 61);
+        // 30 (ST) + 20 (DX)
+        assert_eq!(v["points"]["total"], 50);
+        let (v, ok) = run(&s(&["validate", &path]), &srv.cfg).unwrap();
+        assert!(ok, "{v}");
+        std::fs::remove_file(p).unwrap();
     }
 
     #[test]
     fn roll_seeded() {
-        let (v, _) = run(&s(&["roll", "12", "--mod", "-2", "--seed", "1"])).unwrap();
+        let (v, _) = run(&s(&["roll", "12", "--mod", "-2", "--seed", "1"]), &no_db()).unwrap();
         assert_eq!(v["effective"], 10);
         let r = v["roll"].as_i64().unwrap();
         assert!((3..=18).contains(&r));
     }
 
     #[test]
-    fn validate_hero_and_errors() {
-        let (v, ok) = run(&s(&["validate", &hero()])).unwrap();
-        assert!(ok, "{v}");
-        let (_, ok) = run(&s(&["validate", "/nonexistent.json"])).unwrap();
+    fn validate_errors() {
+        let (_, ok) = run(&s(&["validate", "/nonexistent.json"]), &no_db()).unwrap();
         assert!(!ok);
-        assert!(run(&s(&["bogus"])).is_err());
-        assert!(run(&s(&["roll", "x"])).is_err());
+        assert!(run(&s(&["bogus"]), &no_db()).is_err());
+        assert!(run(&s(&["roll", "x"]), &no_db()).is_err());
     }
 }

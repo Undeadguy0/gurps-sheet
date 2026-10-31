@@ -189,7 +189,7 @@ export interface SkillView extends ExplainedView {
 }
 export interface TechniqueView extends ExplainedView { skill: string; modifier: number; max: number; max_level?: number | null }
 
-export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; weapons?: WeaponView[]; spells?: SpellView[]; rules?: RulesOptions; notes?: string; pool?: PoolView; custom?: CustomContent; session?: SessionView; history?: HistoryView; calc?: Computed | null; calc_error?: string | null; calc_issues?: Issue[]; issues: Issue[]; path?: string | null; budget: number }
+export interface SheetView { sheet: Sheet; traits: TraitView[]; skills: SkillView[]; techniques: TechniqueView[]; equipment?: EquipmentView[]; weapons?: WeaponView[]; spells?: SpellView[]; rules?: RulesOptions; notes?: string; pool?: PoolView; custom?: CustomContent; session?: SessionView; history?: HistoryView; issues: Issue[]; path?: string | null; budget: number }
 
 export type Outcome = 'critical_success' | 'success' | 'failure' | 'critical_failure';
 export interface RollResult {
@@ -220,15 +220,3 @@ export interface PoolView {
 export type CustomKind = 'trait' | 'skill' | 'spell' | 'equipment';
 export interface CustomContent { traits?: TraitDef[]; skills?: SkillDef[]; spells?: SpellDef[]; equipment?: EquipmentDef[] }
 
-/** Результат gurps-calc по БД (этап 4); поля — как в Rust `gurps_calc::Computed`. */
-export interface CalcSkillLevel { sid: string; spec?: string | null; points: number; level?: number | null; relative?: string | null; source?: string | null }
-export interface Computed {
-  attributes: { values: Record<string, number>; basic_lift: number; striking_st?: number; thrust?: unknown; swing?: unknown };
-  skills: CalcSkillLevel[]; techniques: CalcSkillLevel[]; spells: CalcSkillLevel[];
-  attacks: Record<string, unknown>[];
-  points: { attributes: number; advantages: number; disadvantages: number; skills: number; techniques: number; spells: number; total: number; ledger_budget: number; ledger_spent: number; unspent: number; matches_ledger: boolean };
-  encumbrance?: Record<string, unknown> | null;
-  defenses?: Record<string, unknown> | null;
-  prereq_violations: unknown[];
-  missing_constants: unknown;
-}

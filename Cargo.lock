@@ -1585,12 +1585,13 @@ name = "gurps-cli"
 version = "0.1.0"
 dependencies = [
  "gurps-core",
+ "gurps-db",
  "gurps-dice",
  "gurps-io",
- "gurps-plugins",
- "gurps-rules",
+ "gurps-library",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -1638,7 +1639,6 @@ dependencies = [
  "gurps-core",
  "gurps-db",
  "gurps-io",
- "gurps-plugins",
  "serde",
  "serde_json",
  "sheet-bridge",
@@ -1646,38 +1646,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "gurps-plugins"
-version = "0.1.0"
-dependencies = [
- "fluent-syntax",
- "gurps-core",
- "serde",
- "thiserror 1.0.69",
- "toml 0.8.23",
-]
-
-[[package]]
-name = "gurps-rules"
-version = "0.1.0"
-dependencies = [
- "gurps-core",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "gurps-sheet-app"
 version = "0.1.0"
 dependencies = [
  "gurps-core",
+ "gurps-db",
  "gurps-dice",
  "gurps-io",
  "gurps-library",
- "gurps-rules",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "tokio",
 ]
 
 [[package]]

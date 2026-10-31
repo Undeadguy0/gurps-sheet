@@ -21,11 +21,11 @@ tauri = { version = "2", features = [] }
 serde.workspace = true
 serde_json.workspace = true
 gurps-core.workspace = true
-gurps-rules.workspace = true
 gurps-dice.workspace = true
 gurps-library.workspace = true
 gurps-io.workspace = true
 
 [dev-dependencies]
-# ВРЕМЕННО (этап 4): state-тесты на старых TOML-плагинах репозитория.
-gurps-library = { workspace = true, features = ["legacy-plugins"] }
+# Тесты состояния - на тестовой БД (testkit: `surreal` + сиды gurps-mcp).
+gurps-db = { workspace = true, features = ["testkit"] }
+tokio = { version = "1", features = ["rt"] }

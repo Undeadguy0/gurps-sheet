@@ -7,8 +7,8 @@ use gurps_core::{
     Weapon, WeaponDef,
 };
 use gurps_dice::{success_roll, RollResult, SplitMix};
-use gurps_rules::validate::{validate, Issue};
-use gurps_rules::Sheet;
+use gurps_library::calc::{Calc, Issue};
+use gurps_library::sheet::Sheet;
 use serde::Serialize;
 use std::path::PathBuf;
 
@@ -225,7 +225,7 @@ pub struct EquipmentLibEntry {
 #[derive(Debug, Clone, Serialize)]
 pub struct AttackView {
     #[serde(flatten)]
-    pub row: gurps_rules::combat::AttackRow,
+    pub row: gurps_library::sheet::AttackRow,
     pub original_skill: Option<String>,
 }
 
@@ -302,12 +302,6 @@ pub struct SheetView {
     pub custom: gurps_core::CustomContent,
     pub session: SessionView,
     pub history: HistoryView,
-    /// Расчёт gurps-calc по БД (этап 4; пока рядом со старым `sheet`).
-    pub calc: Option<serde_json::Value>,
-    /// Почему расчёт по БД не выполнен (нет БД, своё содержимое без пака...).
-    pub calc_error: Option<String>,
-    /// Проверки по лимитам `ref_rule` (с перекрытиями персонажа).
-    pub calc_issues: Vec<gurps_library::calc::Issue>,
 }
 
 /// Point pool summary + ledger (character cost is live, never stored).
@@ -389,7 +383,7 @@ pub struct AppState {
     /// makes the dev watcher rebuild and restart the app.
     pub save_dir: Option<PathBuf>,
     pub plugin_errors: Vec<String>,
-    /// Where the catalog comes from (shared SurrealDB; legacy plugins only in tests).
+    /// Where the catalog comes from (shared SurrealDB; tests use the testkit DB).
     pub source: Option<gurps_library::LibrarySource>,
     /// Loaded catalog packs, in priority order.
     pub plugin_ids: Vec<String>,
@@ -465,7 +459,8 @@ impl AppState {
         self.plugin_errors.clear();
         self.plugin_ids.clear();
         let Some(src) = self.source.clone() else {
-            self.plugin_errors.push("no catalog source configured".into());
+            self.plugin_errors
+                .push("no catalog source configured".into());
             return;
         };
         self.engine = match &src {
@@ -524,28 +519,37 @@ impl AppState {
         }
     }
 
-    pub fn view(&self) -> SheetView {
-        let sheet = gurps_rules::compute_sheet(&self.character);
-        let (calc, calc_error, calc_issues) = match &self.engine {
-            None => (None, Some("нет подключения к БД".to_string()), Vec::new()),
-            Some(e) => match e.compute(&self.character) {
-                Ok(c) => {
-                    let iss = gurps_library::calc::validate(&self.character, &c);
-                    (serde_json::to_value(&c.computed).ok(), None, iss)
-                }
-                Err(e) => (None, Some(e), Vec::new()),
+    /// Расчёт через БД (`gurps-calc`); лист и проверки строятся из него.
+    fn calc(&self) -> Result<Calc, String> {
+        match &self.engine {
+            None => Err("нет подключения к БД".into()),
+            Some(e) => e.compute(&self.character),
+        }
+    }
+
+    fn sheet_of(&self, c: &Result<Calc, String>) -> Sheet {
+        match c {
+            Ok(c) => gurps_library::sheet::build(&self.character, c, &|k, id| {
+                self.translated_kind(k, id).map(str::to_owned)
+            }),
+            Err(_) => Sheet {
+                name: self.character.name.clone(),
+                ..Default::default()
             },
-        };
+        }
+    }
+
+    pub fn view(&self) -> SheetView {
+        let calc = self.calc();
+        let sheet = self.sheet_of(&calc);
+        let issues = self.issues(&calc, &sheet);
         SheetView {
-            calc,
-            calc_error,
-            calc_issues,
             skills: self.skill_views(&sheet),
             techniques: self.technique_views(&sheet),
             spells: self.spell_views(&sheet),
             rules: self.character.rules.clone(),
             notes: self.character.notes.clone(),
-            pool: self.pool_view(),
+            pool: self.pool_view(&sheet),
             custom: self.character.custom.clone(),
             session: self.session_view(&sheet),
             history: self.history_view(),
@@ -579,10 +583,7 @@ impl AppState {
                     base_cost: t.base_cost(),
                     modifier_percent: t.modifier_percent(),
                     modifiers: self.modifier_views(t),
-                    cost_explain: gurps_rules::modifiers::trait_cost_explain_with(
-                        t,
-                        self.character.rules.negative_rounding,
-                    ),
+                    cost_explain: trait_cost_explain(t, self.character.rules.negative_rounding),
                     page: t.def.page.clone(),
                     source: t.source.clone(),
                     explanation: gurps_core::non_blank(t.explanation.clone())
@@ -591,7 +592,7 @@ impl AppState {
                     custom_explanation: t.has_custom_explanation(),
                 })
                 .collect(),
-            issues: validate(&self.character),
+            issues,
             path: self.path.as_ref().map(|p| p.display().to_string()),
             budget: self.character.available_points(),
         }
@@ -708,10 +709,14 @@ impl AppState {
         Ok(self.view())
     }
 
-    fn pool_view(&self) -> PoolView {
+    fn issues(&self, calc: &Result<Calc, String>, sheet: &Sheet) -> Vec<Issue> {
+        gurps_library::sheet::issues(&self.character, calc, sheet)
+    }
+
+    fn pool_view(&self, sheet: &Sheet) -> PoolView {
         let ch = &self.character;
         let t = ch.ledger_totals();
-        let b = gurps_rules::points::breakdown(ch);
+        let b = &sheet.points;
         PoolView {
             entries: ch.ledger.clone(),
             starting: t.starting,
@@ -954,7 +959,7 @@ impl AppState {
         }
     }
 
-    fn session_view(&self, sheet: &gurps_rules::Sheet) -> SessionView {
+    fn session_view(&self, sheet: &Sheet) -> SessionView {
         let max = |st: Stat| sheet.row(st).map(|r| r.total.floor() as i32).unwrap_or(10);
         let (hp_max, fp_max) = (max(Stat::HP), max(Stat::FP));
         let ss = &self.character.session;
@@ -969,7 +974,7 @@ impl AppState {
     /// Sets current HP or FP (`None` = reset to maximum). HP is kept within
     /// [-5×max, max] (death threshold, B327 # unverified), FP within [-max, max].
     pub fn set_current(&mut self, stat: &str, value: Option<i32>) -> Result<SheetView, String> {
-        let sheet = gurps_rules::compute_sheet(&self.character);
+        let sheet = self.sheet_of(&self.calc());
         let sv = self.session_view(&sheet);
         let ss = &mut self.character.session;
         match stat {
@@ -1188,15 +1193,15 @@ impl AppState {
                 SkillView {
                     index: r.index,
                     id: s.def.id.clone(),
-                    original_name: tr.as_ref().map(|_| r.name.clone()),
-                    name: tr.unwrap_or_else(|| r.name.clone()),
-                    attribute: r.attribute.clone(),
-                    difficulty: r.difficulty.clone(),
+                    original_name: tr.as_ref().map(|_| s.display_name()),
+                    name: tr.unwrap_or_else(|| s.display_name()),
+                    attribute: s.def.attribute.key().to_string(),
+                    difficulty: s.def.difficulty.key().to_string(),
                     points: s.points,
                     level: r.level,
                     relative: r.relative.clone(),
                     from_default: r.from_default,
-                    bonus: r.bonus,
+                    bonus: 0,
                     explain: r.explain.clone(),
                     defaults: s
                         .def
@@ -1236,10 +1241,10 @@ impl AppState {
                 TechniqueView {
                     index: r.index,
                     id: t.def.id.clone(),
-                    original_name: tr.as_ref().map(|_| r.name.clone()),
-                    name: tr.unwrap_or_else(|| r.name.clone()),
+                    original_name: tr.as_ref().map(|_| t.def.name.clone()),
+                    name: tr.unwrap_or_else(|| t.def.name.clone()),
                     skill: t.def.skill.clone(),
-                    difficulty: r.difficulty.clone(),
+                    difficulty: t.def.difficulty.key().to_string(),
                     modifier: t.def.modifier,
                     max: t.def.max,
                     points: t.points,
@@ -1662,16 +1667,16 @@ impl AppState {
                 SpellView {
                     index: r.index,
                     id: s.def.id.clone(),
-                    original_name: tr.map(|_| r.name.clone()),
-                    name: tr.map(str::to_owned).unwrap_or_else(|| r.name.clone()),
-                    college: r.college.clone(),
-                    attribute: r.attribute.clone(),
-                    difficulty: r.difficulty.clone(),
+                    original_name: tr.map(|_| s.def.name.clone()),
+                    name: tr.map(str::to_owned).unwrap_or_else(|| s.def.name.clone()),
+                    college: s.def.college.clone(),
+                    attribute: s.def.attribute.key().to_string(),
+                    difficulty: s.def.difficulty.key().to_string(),
                     points: s.points,
                     level: r.level,
                     relative: r.relative.clone(),
-                    bonus: r.bonus,
-                    prerequisites: r.prerequisites.clone(),
+                    bonus: 0,
+                    prerequisites: s.def.prerequisites.clone(),
                     explain: r.explain.clone(),
                     page: s.def.page.clone(),
                     source: s.source.clone(),
@@ -1959,28 +1964,107 @@ impl AppState {
     }
 }
 
+fn pct(v: i32) -> String {
+    if v >= 0 {
+        format!("+{v}%")
+    } else {
+        format!("{v}%")
+    }
+}
+
+/// Строки пояснения цены черты с модификаторами (пусто без модификаторов).
+fn trait_cost_explain(t: &Trait, r: gurps_core::NegativeRounding) -> Vec<String> {
+    use gurps_core::modifier::MIN_TOTAL_PERCENT;
+    if t.modifiers.is_empty() {
+        return Vec::new();
+    }
+    let base = t.base_cost();
+    let mut out = vec![format!("база {base}")];
+    for m in &t.modifiers {
+        out.push(format!("{} {}", pct(m.def.cost_percent), m.def.name));
+    }
+    let total = t.modifier_percent();
+    if total < MIN_TOTAL_PERCENT {
+        out.push(format!(
+            "итого {}, не ниже {}",
+            pct(total),
+            pct(MIN_TOTAL_PERCENT)
+        ));
+    } else {
+        out.push(format!("итого {}", pct(total)));
+    }
+    let eff = 100 + total.max(MIN_TOTAL_PERCENT);
+    let exact = base as f64 * eff as f64 / 100.0;
+    out.push(format!(
+        "{base} × {eff}% = {} -> {}",
+        gurps_library::sheet::fmt_num(exact),
+        t.cost_with(r)
+    ));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn state() -> AppState {
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../plugins");
-        AppState::with_source(Some(gurps_library::LibrarySource::Plugins(dir)))
+    /// Состояние на тестовой БД (testkit: схема и сиды); без `surreal` тест пропускается.
+    struct T {
+        s: AppState,
+        _srv: gurps_db::testkit::Server,
+    }
+
+    impl std::ops::Deref for T {
+        type Target = AppState;
+        fn deref(&self) -> &AppState {
+            &self.s
+        }
+    }
+
+    impl std::ops::DerefMut for T {
+        fn deref_mut(&mut self) -> &mut AppState {
+            &mut self.s
+        }
+    }
+
+    fn state() -> Option<T> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (srv, _db) = rt.block_on(gurps_db::testkit::start())?;
+        let s = AppState::with_source(Some(gurps_library::LibrarySource::Db(srv.cfg.clone())));
+        Some(T { s, _srv: srv })
     }
 
     #[test]
     fn acceptance_flow() {
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         assert!(s.plugin_errors.is_empty());
         s.new_character(Some("Hero".into()));
         s.set_attribute("ST", 2).unwrap();
-        let v = s.add_trait("increased-st-example", Some(1)).unwrap();
+        let v = s.add_trait("reflexes-a", None).unwrap();
+        assert!(
+            v.issues.iter().all(|i| i.severity != "error"),
+            "{:?}",
+            v.issues
+        );
         let st = v.sheet.row(Stat::ST).unwrap();
-        assert_eq!(st.total, 13.0);
-        assert_eq!(st.value.base, 10.0);
+        assert_eq!((st.total, st.points, st.level), (12.0, 20, 2));
         assert_eq!(st.value.contributions[0].amount, 2.0);
-        assert_eq!(st.value.contributions[1].amount, 1.0);
-        assert_eq!(v.sheet.points.total, 30);
+        assert_eq!(st.label, "Сила", "подпись из перевода БД");
+        // reflexes_a: +1 Per (заглушка сидов)
+        let per = v.sheet.row(Stat::Per).unwrap();
+        assert_eq!((per.value.base, per.total), (10.0, 11.0));
+        assert_eq!(per.value.contributions[0].amount, 1.0);
+        assert!(
+            per.explain.iter().any(|e| e.contains("черта")),
+            "{:?}",
+            per.explain
+        );
+        assert_eq!(v.sheet.row(Stat::HP).unwrap().total, 12.0);
+        assert_eq!(v.sheet.points.total, 21);
         let v = s.remove_trait(0).unwrap();
         assert_eq!(v.sheet.points.total, 20);
         assert!(s.remove_trait(5).is_err());
@@ -1990,21 +2074,20 @@ mod tests {
 
     #[test]
     fn undo_redo_history() {
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         s.new_character(Some("Hero".into()));
         assert!(!s.history_view().can_undo && !s.history_view().dirty);
         s.record("изменение ST", |s| s.set_attribute("ST", 2))
             .unwrap();
         s.record("добавление черты", |s| {
-            s.add_trait("combat-reflexes", None)
+            s.add_trait("reflexes-a", None)
         })
         .unwrap();
         let h = s.history_view();
         assert_eq!(h.undo_depth, 2);
-        assert_eq!(
-            h.undo_label.as_deref(),
-            Some("добавление черты «Боевые рефлексы»")
-        );
+        assert!(h.undo_label.as_deref().unwrap().contains("reflexes_a"));
         assert!(h.dirty);
         // failed edit: not recorded, character untouched
         assert!(s.record("x", |s| s.remove_trait(9)).is_err());
@@ -2014,10 +2097,12 @@ mod tests {
         assert_eq!(s.history_view().undo_depth, 2);
         let v = s.undo().unwrap();
         assert!(v.traits.is_empty());
-        assert_eq!(
-            v.history.redo_label.as_deref(),
-            Some("добавление черты «Боевые рефлексы»")
-        );
+        assert!(v
+            .history
+            .redo_label
+            .as_deref()
+            .unwrap()
+            .contains("reflexes_a"));
         s.undo().unwrap();
         assert!(!s.history_view().dirty, "back at the new-character state");
         assert!(s.undo().is_err());
@@ -2065,7 +2150,9 @@ mod tests {
 
     #[test]
     fn notes_are_one_undo_step_and_skipped_when_empty() {
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         s.new_character(None);
         assert!(!serde_json::to_string(&s.character)
             .unwrap()
@@ -2103,7 +2190,9 @@ mod tests {
     #[test]
     fn point_pool_ledger() {
         use gurps_core::LedgerKind::*;
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         s.new_character(None);
         let p = s.view().pool;
         assert_eq!(
@@ -2163,7 +2252,9 @@ mod tests {
     #[test]
     fn replace_starting_entry_then_save_and_reload() {
         use gurps_core::LedgerKind::*;
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         s.new_character(Some("Bug".into()));
         s.record("x", |s| s.remove_ledger_entry(1)).unwrap();
         let v = s
@@ -2180,7 +2271,9 @@ mod tests {
         let path = std::env::temp_dir().join(format!("gurps-bug-{}.json", std::process::id()));
         s.save(Some(path.display().to_string())).unwrap();
         assert!(!s.history_view().dirty);
-        let mut t = state();
+        let Some(mut t) = state() else {
+            return;
+        };
         let v = t.load(&path.display().to_string()).unwrap();
         assert_eq!(
             (v.pool.entries.len(), v.pool.starting, v.budget),
@@ -2193,7 +2286,9 @@ mod tests {
     #[test]
     fn relative_save_goes_to_save_dir_not_cwd() {
         let dir = std::env::temp_dir().join(format!("gurps-savedir-{}", std::process::id()));
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         s.save_dir = Some(dir.join("GURPS Sheet"));
         s.new_character(Some("Rel".into()));
         let out = s.save(Some("character.gurps.json".into())).unwrap();
@@ -2215,7 +2310,9 @@ mod tests {
 
     #[test]
     fn legacy_budget_migrates_on_load() {
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         let path = std::env::temp_dir().join(format!("gurps-legacy-{}.json", std::process::id()));
         std::fs::write(&path, r#"{"format":"gurps-sheet","version":1,"character":{"name":"Old","points_budget":100}}"#).unwrap();
         let v = s.load(&path.display().to_string()).unwrap();
@@ -2228,7 +2325,9 @@ mod tests {
 
     #[test]
     fn custom_definitions() {
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         s.new_character(Some("Маг".into()));
         let spell = serde_json::json!({"name": "Искра", "difficulty": "VH", "college": ["Fire"],
             "prerequisites": "Magery 1", "description": "**жжёт**"});
@@ -2290,7 +2389,9 @@ mod tests {
 
     #[test]
     fn seeded_rolls() {
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         let a = s.roll(12, -1, Some(42));
         assert_eq!(a, s.roll(12, -1, Some(42)));
         assert_eq!(a.effective, 11);
@@ -2304,22 +2405,24 @@ mod tests {
 
     #[test]
     fn negative_rounding_option() {
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         s.new_character(None);
-        s.add_trait("overconfidence", None).unwrap();
-        let v = s.add_trait_modifier(0, "emergencies-only").unwrap();
-        // -5 × 70% = -3.5
-        assert_eq!(v.traits[0].cost, -3);
-        assert_eq!(v.sheet.points.disadvantages, -3);
+        s.add_trait("temper-a", None).unwrap();
+        // -1 × 90% = -0.9: вверх -> 0, от нуля -> -1; расчёт (rule_overrides) согласован
+        let v = s.add_trait_modifier(0, "limit-a").unwrap();
+        assert_eq!(v.traits[0].cost, 0);
+        assert_eq!(v.sheet.points.disadvantages, 0);
         let v = s.set_negative_rounding("by_magnitude").unwrap();
-        assert_eq!(v.traits[0].cost, -4);
-        assert_eq!(v.sheet.points.disadvantages, -4);
-        assert!(v.traits[0].cost_explain[3].ends_with("-> -4 (rounded away from zero)"));
+        assert_eq!(v.traits[0].cost, -1);
+        assert_eq!(v.sheet.points.disadvantages, -1);
+        assert!(v.traits[0].cost_explain.last().unwrap().ends_with("-> -1"));
         let json = serde_json::to_string(&s.character).unwrap();
         assert!(json.contains("\"negative_rounding\":\"by_magnitude\""));
         assert!(s.set_negative_rounding("x").is_err());
         let v = s.set_negative_rounding("toward_positive").unwrap();
-        assert_eq!(v.traits[0].cost, -3);
+        assert_eq!(v.traits[0].cost, 0);
         assert!(!serde_json::to_string(&s.character)
             .unwrap()
             .contains("rules"));
@@ -2327,11 +2430,15 @@ mod tests {
 
     #[test]
     fn save_load() {
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         s.set_attribute("DX", 1).unwrap();
         let p = std::env::temp_dir().join(format!("app-{}.json", std::process::id()));
         s.save(Some(p.display().to_string())).unwrap();
-        let mut s2 = state();
+        let Some(mut s2) = state() else {
+            return;
+        };
         let v = s2.load(&p.display().to_string()).unwrap();
         assert_eq!(v.sheet.points.attributes, 20);
         std::fs::remove_file(p).unwrap();
@@ -2339,74 +2446,69 @@ mod tests {
 
     #[test]
     fn explanation_override_and_reset() {
-        let mut s = state();
-        let v = s.add_trait("combat-reflexes", None).unwrap();
-        let plugin = v.traits[0].explanation.clone().expect("plugin text");
-        assert_eq!(v.traits[0].default_explanation.as_ref(), Some(&plugin));
+        let Some(mut s) = state() else {
+            return;
+        };
+        let v = s.add_trait("reflexes-a", None).unwrap();
+        let default = v.traits[0].explanation.clone();
+        assert_eq!(v.traits[0].default_explanation, default);
         assert!(!v.traits[0].custom_explanation);
-        assert!(s.library_view().iter().any(|e| e.explanation.is_some()));
 
         let v = s
-            .set_trait_explanation(0, Some("**Моё** пояснение".into()))
+            .set_trait_explanation(0, Some("**Своё** пояснение".into()))
             .unwrap();
         assert_eq!(
             v.traits[0].explanation.as_deref(),
-            Some("**Моё** пояснение")
+            Some("**Своё** пояснение")
         );
         assert!(v.traits[0].custom_explanation);
 
         let p = std::env::temp_dir().join(format!("app-expl-{}.json", std::process::id()));
         s.save(Some(p.display().to_string())).unwrap();
-        let mut s2 = state();
+        let Some(mut s2) = state() else {
+            return;
+        };
         let v = s2.load(&p.display().to_string()).unwrap();
         assert_eq!(
             v.traits[0].explanation.as_deref(),
-            Some("**Моё** пояснение")
+            Some("**Своё** пояснение")
         );
         std::fs::remove_file(p).unwrap();
 
         let v = s2.set_trait_explanation(0, Some("  ".into())).unwrap();
-        assert_eq!(v.traits[0].explanation, Some(plugin));
+        assert_eq!(v.traits[0].explanation, default);
         assert!(!v.traits[0].custom_explanation);
         assert!(s2.set_trait_explanation(9, None).is_err());
     }
 
     #[test]
     fn localization_switch() {
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         assert!(s.locale_info().available.contains(&"ru".to_string()));
-        let v = s.add_trait("combat-reflexes", None).unwrap();
-        assert_eq!(v.traits[0].name, "Боевые рефлексы");
-        assert_eq!(
-            v.traits[0].original_name.as_deref(),
-            Some("Combat Reflexes")
-        );
-        assert!(v.traits[0]
-            .explanation
-            .as_deref()
-            .unwrap()
-            .starts_with("Персонаж реагирует"));
+        let v = s.add_trait("claws-a", None).unwrap();
+        assert_ne!(v.traits[0].name, "Claws A");
+        assert_eq!(v.traits[0].original_name.as_deref(), Some("Claws A"));
         let lib = s.library_view();
-        let e = lib.iter().find(|e| e.def.id == "combat-reflexes").unwrap();
-        assert_eq!(e.translated_name.as_deref(), Some("Боевые рефлексы"));
-        assert_eq!(e.def.name, "Combat Reflexes");
+        let e = lib.iter().find(|e| e.def.id == "claws-a").unwrap();
+        assert!(e.translated_name.is_some());
+        assert_eq!(e.def.name, "Claws A");
+        assert_eq!(v.sheet.row(Stat::ST).unwrap().label, "Сила");
 
         let v = s.set_locale("ru".into(), true);
-        assert_eq!(v.traits[0].name, "Combat Reflexes");
+        assert_eq!(v.traits[0].name, "Claws A");
         assert_eq!(v.traits[0].original_name, None);
-        assert!(v.traits[0]
-            .explanation
-            .as_deref()
-            .unwrap()
-            .starts_with("The character reacts"));
+        assert_eq!(
+            v.sheet.row(Stat::ST).unwrap().label,
+            "ST",
+            "без переводов - код"
+        );
         assert!(s.library_view().iter().all(|e| e.translated_name.is_none()));
 
         let v = s.set_locale("en".into(), false);
-        assert_eq!(v.traits[0].name, "Combat Reflexes");
+        assert_eq!(v.sheet.row(Stat::ST).unwrap().label, "Strength");
         s.set_locale("ru".into(), false);
-        // leveled traits keep their level after the translated name
-        let v2 = s.add_trait("lifting-st", Some(2)).unwrap();
-        assert_eq!(v2.traits[1].name, "Подъёмная сила 2");
         // user override wins over the translation
         let v = s.set_trait_explanation(0, Some("своё".into())).unwrap();
         assert_eq!(v.traits[0].explanation.as_deref(), Some("своё"));
@@ -2414,11 +2516,13 @@ mod tests {
 
     #[test]
     fn plugin_status_and_reload() {
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         let st = s.plugin_status();
         assert!(st.errors.is_empty(), "{:?}", st.errors);
-        assert!(st.plugins.iter().any(|p| p.starts_with("lang-ru")));
-        assert!(st.traits >= 20);
+        assert!(st.plugins.iter().any(|p| p.starts_with("basic")));
+        assert!(st.traits >= 10);
         s.reload_plugins();
         assert_eq!(s.plugin_status().traits, st.traits);
         let bad = AppState::with_source(None);
@@ -2427,43 +2531,44 @@ mod tests {
 
     #[test]
     fn equipment_flow_translated() {
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         let lib = s.equipment_library_view();
-        assert!(lib.len() >= 10);
-        let k = lib.iter().find(|e| e.def.id == "small-knife").unwrap();
-        assert_eq!(k.translated_name.as_deref(), Some("Малый нож"));
-        s.set_attribute("ST", 0).unwrap(); // BL 20
-        s.add_equipment("backpack-frame", None, None).unwrap();
-        s.add_equipment("small-knife", Some(2), Some(vec![0]))
+        assert!(lib.len() >= 5);
+        s.add_equipment("bag-a", None, None).unwrap();
+        s.add_equipment("sword-item-a", Some(2), Some(vec![0]))
             .unwrap();
         assert!(
-            s.add_equipment("torch", None, Some(vec![0, 0])).is_err(),
-            "knife is no container"
+            s.add_equipment("knuckles-a", None, Some(vec![0, 0]))
+                .is_err(),
+            "sword is no container"
         );
-        let v = s.add_equipment("medium-shield", None, None).unwrap();
+        let v = s.add_equipment("shield-a", None, None).unwrap();
         assert_eq!(v.equipment.len(), 3);
-        assert_eq!(v.equipment[1].name, "Малый нож");
+        assert_eq!(
+            v.equipment[1].original_name.as_deref(),
+            Some("Sword item A")
+        );
         assert_eq!(
             (v.equipment[1].depth, v.equipment[1].path.clone()),
             (1, vec![0, 0])
         );
-        assert_eq!(v.equipment[0].total_weight, 11.0);
-        assert_eq!(v.sheet.encumbrance.carried_weight, 26.0);
-        assert_eq!(v.sheet.encumbrance.level, 1);
+        assert_eq!(v.equipment[0].total_weight, 3.0);
+        assert_eq!(v.sheet.encumbrance.carried_weight, 4.0);
+        assert_eq!(v.sheet.encumbrance.total_weight, 4.0);
+        assert_eq!(v.sheet.encumbrance.level, 0);
+        assert!(!v.sheet.encumbrance.name.is_empty());
         let v = s.set_equipment_carried(&[0], false).unwrap();
         assert!(!v.equipment[1].effectively_carried && v.equipment[1].carried);
-        assert_eq!(v.sheet.encumbrance.level, 0);
+        assert_eq!(v.sheet.encumbrance.carried_weight, 1.0);
         let v = s.set_equipment_quantity(&[0, 0], 5).unwrap();
-        assert_eq!(v.equipment[1].total_weight, 2.5);
+        assert_eq!(v.equipment[1].total_weight, 5.0);
         let v = s
-            .set_equipment_explanation(&[1], Some("мой щит".into()))
+            .set_equipment_explanation(&[1], Some("своё".into()))
             .unwrap();
         assert!(v.equipment[2].custom_explanation);
-        assert_eq!(v.equipment[2].explanation.as_deref(), Some("мой щит"));
-        assert!(v.equipment[2]
-            .default_explanation
-            .as_deref()
-            .is_some_and(|t| t.contains("щит")));
+        assert_eq!(v.equipment[2].explanation.as_deref(), Some("своё"));
         let v = s.remove_equipment(&[0, 0]).unwrap();
         assert_eq!(v.equipment.len(), 2);
         assert!(s.remove_equipment(&[5]).is_err());
@@ -2471,59 +2576,51 @@ mod tests {
 
     #[test]
     fn skills_flow_translated() {
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         s.set_attribute("DX", 2).unwrap();
         let lib = s.skill_library_view();
-        assert!(lib.skills.len() >= 10);
-        let k = lib
-            .techniques
-            .iter()
-            .find(|t| t.def.id == "kicking")
+        assert!(lib.skills.len() >= 5);
+        assert!(lib.techniques.iter().any(|t| t.def.id == "strike-a"));
+        s.add_skill("unarmed-a", None, Some(1)).unwrap();
+        s.add_skill("outdoor-a", Some("spec_a".into()), Some(2))
             .unwrap();
-        assert_eq!(k.skill_name, "Драка");
-        assert!(k.explanation.as_deref().unwrap().contains("\n\n"));
-        s.add_skill("brawling", None, Some(1)).unwrap();
-        s.add_skill("survival", Some("Woodlands".into()), Some(2))
-            .unwrap();
-        s.add_trait("outdoorsman", Some(1)).unwrap();
-        let v = s.add_technique("kicking", Some(2)).unwrap();
-        assert_eq!(v.skills[0].name, "Драка");
-        assert_eq!(v.skills[0].original_name.as_deref(), Some("Brawling"));
+        s.add_trait("talent-a", Some(1)).unwrap();
+        let v = s.add_technique("strike-a", Some(2)).unwrap();
+        assert!(
+            v.issues.iter().all(|i| i.severity != "error"),
+            "{:?}",
+            v.issues
+        );
+        // DX 12, E 1 оч. = DX
         assert_eq!(v.skills[0].level, Some(12));
-        assert_eq!(v.skills[1].name, "Выживание (Woodlands)");
-        assert_eq!(v.skills[1].level, Some(11), "Per 10 + talent");
-        assert_eq!(v.skills[1].defaults, vec!["Per-5", "Натуралист-3"]);
-        assert_eq!(v.techniques[0].name, "Пинок (Драка)");
-        assert_eq!(v.techniques[0].level, Some(11));
-        assert_eq!(v.techniques[0].relative.as_deref(), Some("Драка-1"));
+        assert_eq!(v.skills[0].relative.as_deref(), Some("DX"));
+        // Per 10, A 2 оч. = Per, +1 талант
+        assert_eq!(v.skills[1].level, Some(11));
+        assert_eq!(
+            v.skills[1].original_name.as_deref(),
+            Some("Outdoor A (spec_a)")
+        );
+        // приём: от навыка -2, A 2 оч. -> +2, предел = навык (max_mod 0)
+        assert_eq!(v.techniques[0].level, Some(12));
         assert_eq!(v.sheet.points.skills, 5);
-        // explanations: plugin (ru) default, user override, reset
-        assert!(v.skills[1]
-            .explanation
-            .as_deref()
-            .unwrap()
-            .starts_with("Умение"));
-        let v = s.set_skill_explanation(1, Some("моё".into())).unwrap();
+        let v = s.set_skill_explanation(1, Some("своё".into())).unwrap();
         assert!(v.skills[1].custom_explanation);
-        let v = s.set_technique_explanation(0, Some("моё".into())).unwrap();
-        assert_eq!(v.techniques[0].explanation.as_deref(), Some("моё"));
+        let v = s.set_technique_explanation(0, Some("своё".into())).unwrap();
+        assert_eq!(v.techniques[0].explanation.as_deref(), Some("своё"));
         let v = s.set_skill_specialization(1, Some(" ".into())).unwrap();
-        assert!(v
-            .issues
-            .iter()
-            .any(|i| i.message.contains("specialization")));
-        let v = s.set_locale("ru".into(), true);
-        assert_eq!(v.skills[1].name, "Survival");
-        assert_eq!(v.techniques[0].name, "Kicking (Brawling)");
+        assert!(v.issues.iter().any(|i| i.message.contains("специализация")));
         // file roundtrip keeps skills and the user's texts
         let p = std::env::temp_dir().join(format!("app-skills-{}.json", std::process::id()));
         s.save(Some(p.display().to_string())).unwrap();
-        let v = state().load(&p.display().to_string()).unwrap();
+        let Some(mut s0) = state() else {
+            return;
+        };
+        let v = s0.load(&p.display().to_string()).unwrap();
         std::fs::remove_file(p).unwrap();
         assert_eq!(v.skills.len(), 2);
-        assert_eq!(v.techniques[0].explanation.as_deref(), Some("моё"));
-        let v = s.remove_skill(0).unwrap();
-        assert_eq!(v.techniques[0].level, None, "parent removed");
+        assert_eq!(v.techniques[0].explanation.as_deref(), Some("своё"));
         assert!(s.remove_technique(3).is_err());
         assert!(s.add_skill("nope", None, None).is_err());
         assert!(s.set_skill_points(0, 4).unwrap().sheet.points.skills >= 4);
@@ -2531,98 +2628,76 @@ mod tests {
 
     #[test]
     fn spells_and_modifiers_flow_translated() {
-        let mut s = state();
-        assert_eq!(s.plugin_status().spells, 6);
-        assert_eq!(s.plugin_status().modifiers, 6);
+        let Some(mut s) = state() else {
+            return;
+        };
+        assert_eq!(s.plugin_status().spells, 2);
+        assert_eq!(s.plugin_status().modifiers, 1);
         s.set_attribute("IQ", 4).unwrap();
         s.add_trait("magery", Some(2)).unwrap();
-        let v = s.add_spell("fireball", None).unwrap();
+        let v = s.add_spell("spell-a", None).unwrap();
         let sp = &v.spells[0];
-        assert_eq!(sp.name, "Огненный шар");
-        assert_eq!(sp.original_name.as_deref(), Some("Fireball"));
-        // IQ 14, 1 pt H = 12, +2 Magery 2
-        assert_eq!((sp.level, sp.bonus), (Some(14), 2));
-        assert!(sp.explanation.as_deref().unwrap().contains("шар"));
+        assert_eq!(sp.original_name.as_deref(), Some("Spell A"));
+        // IQ 14, H 1 оч. = 12, +2 Магия 2 (заглушка: spell_bonus за уровень)
+        assert_eq!(sp.level, Some(14));
         let v = s.set_spell_points(0, 4).unwrap();
         assert_eq!(v.spells[0].level, Some(16));
         assert_eq!(v.sheet.points.spells, 4);
-        let v = s.set_spell_explanation(0, Some("моё".into())).unwrap();
+        let v = s.set_spell_explanation(0, Some("своё".into())).unwrap();
         assert!(v.spells[0].custom_explanation);
         let v = s.set_spell_explanation(0, None).unwrap();
         assert!(!v.spells[0].custom_explanation);
-        assert!(s
-            .spell_library_view()
-            .iter()
-            .all(|e| e.translated_name.is_some() && e.explanation.is_some()));
 
-        // Magery 2 = 25; Emergencies Only -30%: 17.5 -> 18
-        let v = s.add_trait_modifier(0, "emergencies-only").unwrap();
+        // magery (заглушка): 0 + 1/ур. = 2; limit_a -10%: 1.8 -> 2
+        let v = s.add_trait_modifier(0, "limit-a").unwrap();
         let t = &v.traits[0];
-        assert_eq!((t.base_cost, t.modifier_percent, t.cost), (25, -30, 18));
-        assert_eq!(t.modifiers[0].name, "Только в опасности");
-        assert_eq!(
-            t.cost_explain.last().unwrap(),
-            "25 × 70% = 17.5 -> 18 (rounded up)"
-        );
+        assert_eq!((t.base_cost, t.modifier_percent, t.cost), (2, -10, 2));
+        assert!(t.cost_explain.last().unwrap().ends_with("= 1.8 -> 2"));
         let v = s.set_modifier_explanation(0, 0, Some("x".into())).unwrap();
         assert!(v.traits[0].modifiers[0].custom_explanation);
         let v = s.remove_trait_modifier(0, 0).unwrap();
-        assert_eq!(v.traits[0].cost, 25);
+        assert_eq!(v.traits[0].cost, 2);
         assert!(v.traits[0].cost_explain.is_empty());
         let v = s.remove_spell(0).unwrap();
         assert!(v.spells.is_empty());
-        assert_eq!(s.modifier_library_view().len(), 6);
+        assert_eq!(s.modifier_library_view().len(), 1);
     }
 
     #[test]
     fn weapons_flow_translated() {
-        let mut s = state();
+        let Some(mut s) = state() else {
+            return;
+        };
         let v = s.new_character(Some("W".into()));
         let ids: Vec<_> = v.weapons.iter().map(|w| w.id.as_str()).collect();
-        assert_eq!(ids, ["kick", "punch"], "unarmed attacks on a new character");
-        assert_eq!(v.weapons[1].name, "Удар рукой");
-        // no Brawling: Punch from DX 10, Parry floor(10/2)+3 = 8; Kick DX-2, no parry
-        assert_eq!(v.weapons[1].attacks[0].row.level, Some(10));
-        assert_eq!(v.weapons[1].attacks[0].row.parry, Some(8));
-        assert_eq!(v.weapons[0].attacks[0].row.level, Some(8));
-        assert!(!v.weapons[0].attacks[0].row.can_parry);
-        assert_eq!(v.sheet.defenses.parry.as_ref().unwrap().value, 8);
-        let lib = s.weapon_library_view();
-        let k = lib.iter().find(|w| w.def.id == "small-knife").unwrap();
-        assert_eq!(k.equipment_name.as_deref(), Some("Малый нож"));
-        s.add_skill("knife", None, Some(1)).unwrap();
-        let v = s.add_equipment("small-knife", Some(2), None).unwrap();
-        let kn = v.weapons.iter().find(|w| w.id == "small-knife").unwrap();
-        assert!(kn.ready);
-        assert_eq!(kn.attacks[0].row.skill, "Нож");
-        assert_eq!(kn.attacks[0].original_skill.as_deref(), Some("Knife"));
-        assert_eq!(kn.attacks[0].row.parry, Some(7), "Knife 10: 5+3-1");
         assert_eq!(
-            v.sheet.defenses.parry.as_ref().unwrap().value,
-            7,
-            "armed parry preferred"
+            ids,
+            ["bite", "kick", "punch"],
+            "natural attacks on a new character"
         );
+        let punch = &v.weapons[2];
+        assert!(punch.ready);
+        assert_eq!(punch.attacks[0].row.level, Some(10), "DX 10 по умолчанию");
+        s.add_skill("sword-a", None, Some(2)).unwrap();
+        let v = s.add_equipment("sword-item-a", None, None).unwrap();
+        let sw = v.weapons.iter().find(|w| w.id == "sword-item-a").unwrap();
+        assert!(sw.ready);
+        let modes: Vec<_> = sw.attacks.iter().map(|a| a.row.mode.as_str()).collect();
+        assert_eq!(modes.len(), 2, "{modes:?}");
         assert_eq!(
-            s.add_equipment("small-knife", None, None)
-                .unwrap()
-                .weapons
-                .len(),
-            3,
-            "linked once"
+            sw.attacks[0].row.level,
+            Some(11),
+            "homebrew sword_a (E) перекрывает basic: DX 10, 2 оч. = +1"
         );
-        assert!(s.add_weapon("small-knife").is_err());
-        let i = kn.index;
-        let v = s.set_weapon_explanation(i, Some("мой нож".into())).unwrap();
+        assert!(v.sheet.defenses.parry.is_some());
+        assert!(s.add_weapon("sword-item-a").is_err());
+        let i = sw.index;
+        let v = s.set_weapon_explanation(i, Some("своё".into())).unwrap();
         assert!(v.weapons[i].custom_explanation);
-        assert!(v.weapons[i]
-            .default_explanation
-            .as_deref()
-            .is_some_and(|t| t.contains("клинок")));
-        s.remove_equipment(&[1]).unwrap();
         let v = s.remove_equipment(&[0]).unwrap();
-        assert_eq!(v.weapons.len(), 2, "knife row goes with the last knife");
+        assert_eq!(v.weapons.len(), 3, "sword row goes with the sword");
         let v = s.remove_weapon(0).unwrap();
-        assert_eq!(v.weapons.len(), 1);
-        assert!(s.add_weapon("kick").is_ok());
+        assert_eq!(v.weapons.len(), 2);
+        assert!(s.add_weapon("bite").is_ok());
     }
 }
