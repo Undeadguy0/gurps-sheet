@@ -383,16 +383,16 @@ pub struct AppState {
     /// makes the dev watcher rebuild and restart the app.
     pub save_dir: Option<PathBuf>,
     pub plugin_errors: Vec<String>,
-    /// Directory the library was loaded from.
-    pub plugin_dir: Option<PathBuf>,
-    /// Loaded plugin ids with versions, in load order.
+    /// Where the catalog comes from (shared SurrealDB; legacy plugins only in tests).
+    pub source: Option<gurps_library::LibrarySource>,
+    /// Loaded catalog packs, in priority order.
     pub plugin_ids: Vec<String>,
     /// UI locale used to resolve localized plugin text (default "ru").
     pub locale: String,
     /// Show plugin originals only (no translations).
     pub original_only: bool,
-    /// Merged Fluent translations of all plugins.
-    pub catalog: gurps_plugins::Catalog,
+    /// Catalog translations (non-`en`), `lang -> kind-id`.
+    pub catalog: gurps_library::Translations,
     /// Undo stack: (action label, character before the action); newest last.
     pub undo_stack: std::collections::VecDeque<(String, Character)>,
     /// Redo stack: (action label, character after the action).
@@ -418,7 +418,7 @@ impl Default for AppState {
             path: None,
             save_dir: None,
             plugin_errors: Vec::new(),
-            plugin_dir: None,
+            source: None,
             plugin_ids: Vec::new(),
             locale: DEFAULT_LOCALE.into(),
             original_only: false,
@@ -432,9 +432,9 @@ impl Default for AppState {
 }
 
 impl AppState {
-    pub fn with_plugins(dir: Option<PathBuf>) -> Self {
+    pub fn with_source(source: Option<gurps_library::LibrarySource>) -> Self {
         let mut s = Self {
-            plugin_dir: dir,
+            source,
             ..Self::default()
         };
         s.reload_plugins();
@@ -443,7 +443,7 @@ impl AppState {
         s
     }
 
-    /// (Re)reads plugin data from `plugin_dir`; nothing is cached between runs.
+    /// (Re)reads the catalog from `source`; nothing is cached between runs.
     pub fn reload_plugins(&mut self) {
         self.library.clear();
         self.skill_library.clear();
@@ -455,24 +455,25 @@ impl AppState {
         self.catalog = Default::default();
         self.plugin_errors.clear();
         self.plugin_ids.clear();
-        let Some(dir) = self.plugin_dir.clone() else {
-            self.plugin_errors.push("no plugins directory found".into());
+        let Some(src) = self.source.clone() else {
+            self.plugin_errors.push("no catalog source configured".into());
             return;
         };
-        match gurps_plugins::load_all(&dir) {
-            Ok(plugins) => {
-                self.plugin_ids = plugins
-                    .iter()
-                    .map(|p| format!("{} {}", p.manifest.id, p.manifest.version))
-                    .collect();
-                self.catalog = gurps_plugins::translations(&plugins);
-                self.skill_library = gurps_plugins::skill_library(&plugins);
-                self.technique_library = gurps_plugins::technique_library(&plugins);
-                self.equipment_library = gurps_plugins::equipment_library(&plugins);
-                self.weapon_library = gurps_plugins::weapon_library(&plugins);
-                self.spell_library = gurps_plugins::spell_library(&plugins);
-                self.modifier_library = gurps_plugins::modifier_library(&plugins);
-                self.library = gurps_plugins::trait_library(&plugins)
+        match gurps_library::Library::load(&src) {
+            Ok(lib) => {
+                for w in &lib.warnings {
+                    eprintln!("gurps-sheet: catalog: {w}");
+                }
+                self.plugin_ids = lib.packs;
+                self.catalog = lib.translations;
+                self.skill_library = lib.skills;
+                self.technique_library = lib.techniques;
+                self.equipment_library = lib.equipment;
+                self.weapon_library = lib.weapons;
+                self.spell_library = lib.spells;
+                self.modifier_library = lib.modifiers;
+                self.library = lib
+                    .traits
                     .into_iter()
                     .map(|(plugin, def)| LibraryEntry {
                         plugin,
@@ -482,14 +483,14 @@ impl AppState {
                     })
                     .collect();
             }
-            Err(e) => self.plugin_errors.push(e.to_string()),
+            Err(e) => self.plugin_errors.push(e),
         }
         self.sync_custom();
     }
 
     pub fn plugin_status(&self) -> PluginStatus {
         PluginStatus {
-            dir: self.plugin_dir.as_ref().map(|p| p.display().to_string()),
+            dir: self.source.as_ref().map(|s| s.describe()),
             plugins: self.plugin_ids.clone(),
             errors: self.plugin_errors.clone(),
             traits: self.library.len(),
@@ -905,53 +906,6 @@ impl AppState {
         }
         self.sync_custom();
         Ok(self.view())
-    }
-
-    /// Writes the custom definitions as a user plugin folder under `root`
-    /// (default: the plugins directory). Returns the folder path.
-    pub fn export_custom_plugin(&self, root: Option<PathBuf>) -> Result<String, String> {
-        let c = &self.character.custom;
-        if c.is_empty() {
-            return Err("no custom entries to export".into());
-        }
-        let root = root
-            .or_else(|| self.plugin_dir.clone())
-            .ok_or("no plugins directory")?;
-        let slug: String = self
-            .character
-            .name
-            .chars()
-            .map(|ch| {
-                if ch.is_alphanumeric() {
-                    ch.to_lowercase().next().unwrap_or(ch)
-                } else {
-                    '-'
-                }
-            })
-            .collect::<String>()
-            .trim_matches('-')
-            .to_string();
-        let manifest = gurps_plugins::Manifest {
-            id: format!(
-                "user-{}",
-                if slug.is_empty() {
-                    "custom".into()
-                } else {
-                    slug
-                }
-            ),
-            name: format!("Своё: {}", self.character.name),
-            version: "0.1.0".into(),
-            depends: vec![],
-        };
-        let data = gurps_plugins::DataFile {
-            traits: c.traits.clone(),
-            skills: c.skills.clone(),
-            spells: c.spells.clone(),
-            equipment: c.equipment.clone(),
-            ..Default::default()
-        };
-        gurps_plugins::write_plugin(&root, &manifest, &data).map(|p| p.display().to_string())
     }
 
     pub fn history_view(&self) -> HistoryView {
@@ -1976,7 +1930,7 @@ mod tests {
 
     fn state() -> AppState {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../plugins");
-        AppState::with_plugins(Some(dir))
+        AppState::with_source(Some(gurps_library::LibrarySource::Plugins(dir)))
     }
 
     #[test]
@@ -2293,13 +2247,6 @@ mod tests {
             .equipment_library_view()
             .iter()
             .any(|e| e.def.name == "Колода" && e.plugin == CUSTOM));
-        // export
-        let root = std::env::temp_dir().join(format!("gurps-custom-{}", std::process::id()));
-        let dir = s.export_custom_plugin(Some(root.clone())).unwrap();
-        assert!(dir.ends_with("user-маг"), "{dir}");
-        let p = gurps_plugins::load_plugin(std::path::Path::new(&dir)).unwrap();
-        assert_eq!(p.spells.len(), 1);
-        std::fs::remove_dir_all(&root).unwrap();
         // remove
         s.remove_custom("spell", &id).unwrap();
         assert!(s.spell_library_view().iter().all(|e| e.def.id != id));
@@ -2439,7 +2386,7 @@ mod tests {
         assert!(st.traits >= 20);
         s.reload_plugins();
         assert_eq!(s.plugin_status().traits, st.traits);
-        let bad = AppState::with_plugins(None);
+        let bad = AppState::with_source(None);
         assert!(!bad.plugin_status().errors.is_empty());
     }
 

@@ -139,12 +139,6 @@ fn remove_custom(state: S, kind: String, id: String) -> Result<SheetView, String
 }
 
 #[tauri::command]
-fn export_custom_plugin(state: S) -> Result<String, String> {
-    let s = state.lock().map_err(|e| e.to_string())?;
-    s.export_custom_plugin(None)
-}
-
-#[tauri::command]
 fn set_notes(state: S, text: String) -> Result<SheetView, String> {
     edit(&state, "заметки", |s| Ok(s.set_notes(text)))
 }
@@ -477,41 +471,12 @@ fn set_current(state: S, stat: String, value: Option<i32>) -> Result<SheetView, 
     edit(&state, label, |s| s.set_current(&stat, value))
 }
 
-/// Plugin directory candidates, in priority order:
-/// 1. `$GURPS_PLUGINS`;
-/// 2. `plugins/` next to the executable (installed/portable app);
-/// 3. debug builds only: the repo's `plugins/` (from `CARGO_MANIFEST_DIR`), so
-///    `cargo tauri dev` / `npm run tauri dev` always load the working-tree data
-///    regardless of the current directory;
-/// 4. `./plugins`, `../plugins` relative to the current directory.
-fn plugin_dir_candidates() -> Vec<PathBuf> {
-    let mut v = Vec::new();
-    if let Ok(p) = std::env::var("GURPS_PLUGINS") {
-        v.push(PathBuf::from(p));
-    }
-    if let Some(d) = std::env::current_exe()
-        .ok()
-        .and_then(|e| e.parent().map(|p| p.join("plugins")))
-    {
-        v.push(d);
-    }
-    if cfg!(debug_assertions) {
-        v.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../plugins"));
-    }
-    v.extend(["plugins", "../plugins"].iter().map(PathBuf::from));
-    v
-}
-
-fn plugin_dir() -> Option<PathBuf> {
-    let dir = plugin_dir_candidates()
-        .into_iter()
-        .find(|p| p.is_dir())
-        .map(|p| p.canonicalize().unwrap_or(p));
-    match &dir {
-        Some(d) => eprintln!("gurps-sheet: loading plugins from {}", d.display()),
-        None => eprintln!("gurps-sheet: no plugins directory found (set GURPS_PLUGINS)"),
-    }
-    dir
+/// Catalog source: the shared SurrealDB server (same as gurps-mcp), read-only.
+/// Connection from env `SURREALDB_HOST/NAMESPACE/NAME/USER/PASSWORD`.
+fn library_source() -> gurps_library::LibrarySource {
+    let src = gurps_library::LibrarySource::Db(gurps_library::DbConfig::from_env());
+    eprintln!("gurps-sheet: catalog from {}", src.describe());
+    src
 }
 
 #[tauri::command]
@@ -528,7 +493,7 @@ fn reload_plugins(state: S) -> PluginStatus {
 
 pub fn run() {
     tauri::Builder::default()
-        .manage(Mutex::new(AppState::with_plugins(plugin_dir())))
+        .manage(Mutex::new(AppState::with_source(Some(library_source()))))
         .setup(|app| {
             use tauri::Manager;
             let dir = default_save_dir(app);
@@ -553,8 +518,7 @@ pub fn run() {
             set_disadvantage_limit,
             save_custom,
             remove_custom,
-            export_custom_plugin,
-            add_trait,
+                add_trait,
             set_trait_levels,
             remove_trait,
             set_trait_explanation,
