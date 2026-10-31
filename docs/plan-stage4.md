@@ -15,25 +15,28 @@
 - 4ea2fd4: Block: `ref_rule` block_base/block_skill_divisor/block_rounding (только структура, сиды — от Мастера),
   `item.shield.block_skill {skill, spec}`; Block без нагрузки, DB щита к Dodge/Parry/Block.
 
+- 163a59d: sheet-bridge — школа заклинания по коду/имени en из БД.
+- cb3e57f: `calc_input::load_doc/doc_of` — вход расчёта из документа персонажа `(pack, sid)`.
+- 06e1109: встроенные определения (`inline`) в документе рядом со ссылками `(pack, sid)` — своё
+  содержимое листа (решение: хранится в документе персонажа, не в каталоге; на этапе 5 — в записи персонажа).
+- 042a111: gurps-calc — `attributes.rows` (база, шаги, шаг, цена шага, очки, эффекты), `points.perks/quirks/quirk_count`,
+  `equipment` (вес/стоимость всего и при себе, DR надетой брони по зонам), `max_level` техник,
+  `SkillLevel::is_default()`; «при себе» в БД-источнике учитывает контейнеры.
+
 ## Сделано (gurps-sheet)
 
 - 40d1664: броски — крейт приложения `gurps-dice`.
+- 9494fce…16af44f: `gurps-library/tests/golden_db.rs` — golden на БД (ожидания прежние), документ = БД.
+- fca5a13, 39b6cd6, 8da7fbf: `gurps_library::calc` — лист -> документ (каталог или inline), `rule_overrides`,
+  лимиты недостатков/причуд из `ref_rule` (`validate`), `Engine` (синхронный расчёт для приложения).
+- b405f92: SheetView.calc / calc_error / calc_issues рядом со старым `sheet`; TS-тип `Computed`.
 
 ## Осталось
 
-1. (Block/DB сделаны.) gurps-calc: Block (нужны `ref_rule` block_base/block_skill_divisor и способ указать навыки блока —
-   сид/схема), DB щита, DR брони (`parse_db/parse_dr` из gurps-core), explain-строки
-   (Value.explain: атрибуты, BL, урон, нагрузка, атаки, стоимость черт с модификаторами).
-2. (Структура в БД сделана; осталось: RulesOptions персонажа -> rule_overrides.) Опции правил листа (`RulesOptions`, `NegativeRounding`) — в `ref_rule` или настройки персонажа.
-3. Броски (`gurps_rules::dice`: success roll, damage_roll) — не правила-таблицы; решить: перенести
-   в gurps-calc (критические пороги в `ref_rule`) или оставить в приложении.
-4. (Решение: остаётся в приложении; перенести из gurps-rules в крейт/модуль приложения при переделке модели.) `validate` (лимиты уровней черт и т.п.) -> `gurps-calc::prereq`/новый модуль.
-5. Модель персонажа: `gurps-core::Character` -> входная модель с `(pack, sid)` и ref-кодами;
-   сборка `gurps_calc::model::Input` из персонажа + каталога (через gurps-library/gurps-db),
-   без enum `Stat/Difficulty/TraitCategory`.
-6. src-tauri `state.rs` (≈2600 строк, 117 функций) и TS-типы (`ui/src/types.ts`, combat/encumbrance/
-   skills/magic) — на `gurps_calc::Computed`; `npm run build`.
-7. gurps-io: JSON с `(pack, sid)`; старый JSON не читается.
-8. Golden (`gurps-cli/tests/golden.rs`, `spells_modifiers.rs`) — тестовый пак-сид, ожидания прежние.
-   Известное изменение правил: Dodge под нагрузкой не ниже 1 (`dodge_min`, B17); раньше минимума не было.
-9. Удалить `gurps-rules`, `db_adapter`, feature `legacy-plugins`, `gurps-plugins`, `plugins/`.
+1. gurps-calc: explain-строки (навыки, урон, атаки, защиты, стоимость черт) — сейчас только структурные данные;
+   inline-предметы без оружия/щита, inline-заклинания — школа как slug, у inline нет пререквизитов.
+2. UI с `sheet` на `calc` (подписи атрибутов — переводы БД), удалить старый путь.
+3. Модель персонажа `(pack, sid)` + inline, gurps-io v2 (старый JSON не читается).
+4. Удалить `gurps-rules`, `db_adapter`, `legacy-plugins`, `gurps-plugins`, `plugins/` (ftl — только переводы каталога);
+   golden.rs/spells_modifiers.rs gurps-cli — покрыты golden_db, удалить вместе с gurps-rules.
+5. `warrior_unarmed_pending`: сиды punch/kick (mod 0) и связь техника -> атака (Kicking).
