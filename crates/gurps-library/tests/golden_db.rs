@@ -52,6 +52,14 @@ impl Env {
         let _ = std::fs::remove_file(&f);
         let inp = gurps_db::calc_input::load(&self.db, id).await.unwrap();
         let out = gurps_calc::compute(&inp);
+        // Тот же персонаж документом (pack, sid) даёт тот же расчёт.
+        let doc = gurps_db::calc_input::doc_of(&self.db, id).await.unwrap();
+        let din = gurps_db::calc_input::load_doc(&self.db, &doc).await.unwrap();
+        assert_eq!(
+            serde_json::to_value(gurps_calc::compute(&din)).unwrap(),
+            serde_json::to_value(&out).unwrap(),
+            "{id}: документ != БД"
+        );
         assert!(
             out.missing_constants.0.is_empty(),
             "{id}: {:?}",
