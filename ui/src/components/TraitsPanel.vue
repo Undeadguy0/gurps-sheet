@@ -33,8 +33,8 @@ const sorting = ref<SortingState>([]);
 const col = createColumnHelper<TraitView>();
 const columns = [
   col.accessor('name', { header: 'Название' }),
-  col.accessor('category', { header: 'Тип', cell: (c) => CATEGORY_LABEL[c.getValue()] }),
-  col.accessor('levels', { header: 'Уровень', meta: { num: true } }),
+  col.accessor('kind', { header: 'Тип', cell: (c) => CATEGORY_LABEL[c.getValue()] }),
+  col.accessor('level', { header: 'Уровень', meta: { num: true } }),
   col.accessor('cost', { header: 'Стоим.', meta: { num: true } }),
   col.accessor((r) => r.page ?? '', { id: 'page', header: 'Стр.' }),
   col.display({ id: 'actions', header: '' }),
@@ -82,16 +82,16 @@ const summary = computed(() => `Преим ${props.points.advantages + props.poi
       </thead>
       <tbody>
         <template v-for="row in table.getRowModel().rows" :key="row.id">
-        <tr class="data-table__row" :data-category="row.original.category" tabindex="0" :title="tip(row.original)"
+        <tr class="data-table__row" :data-category="row.original.kind" tabindex="0" :title="tip(row.original)"
           @keydown.enter.self="toggle(row.original.index)">
           <td v-for="cell in row.getVisibleCells()" :key="cell.id" :class="['cell', `cell--${cell.column.id}`, { 'is-num': (cell.column.columnDef.meta as any)?.num }]">
-            <template v-if="cell.column.id === 'levels'">
+            <template v-if="cell.column.id === 'level'">
               <span v-if="row.original.leveled" class="stepper">
-                <button class="btn btn--step" type="button" aria-label="Уменьшить уровень" :disabled="row.original.levels <= row.original.min_level"
-                  @click="emit('setLevels', row.original.index, row.original.levels - 1)">−</button>
-                <span class="stepper__value num">{{ row.original.levels }}</span>
+                <button class="btn btn--step" type="button" aria-label="Уменьшить уровень" :disabled="row.original.level <= row.original.min_level"
+                  @click="emit('setLevels', row.original.index, row.original.level - 1)">−</button>
+                <span class="stepper__value num">{{ row.original.level }}</span>
                 <button class="btn btn--step" type="button" aria-label="Увеличить уровень"
-                  @click="emit('setLevels', row.original.index, row.original.levels + 1)">+</button>
+                  @click="emit('setLevels', row.original.index, row.original.level + 1)">+</button>
               </span>
               <span v-else class="muted">—</span>
             </template>

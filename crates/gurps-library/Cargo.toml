@@ -10,10 +10,10 @@ serde.workspace = true
 serde_json.workspace = true
 gurps-core.workspace = true
 gurps-db.workspace = true
-sheet-bridge.workspace = true
 tokio = { version = "1", features = ["rt"] }
 
 [dev-dependencies]
 gurps-db = { workspace = true, features = ["testkit"] }
 gurps-io.workspace = true
+sheet-bridge.workspace = true
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

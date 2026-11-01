@@ -1,81 +1,48 @@
 {
   "format": "gurps-sheet",
-  "version": 1,
+  "version": 2,
   "character": {
     "name": "Hero (example)",
-    "player": "",
-    "points_budget": 150,
-    "attributes": {
-      "st": 2,
-      "dx": 1,
-      "iq": 0,
-      "ht": 1,
-      "hp": 0,
-      "will": 0,
-      "per": 0,
-      "fp": 0,
-      "basic_speed_quarters": 0,
-      "basic_move": 0
+    "ledger": [
+      { "id": 1, "amount": 150, "kind": "starting" }
+    ],
+    "custom": {
+      "traits": [
+        {
+          "sid": "lucky_charm",
+          "name": "Lucky Charm",
+          "kind": "perk",
+          "cost": { "type": "fixed", "base": 1 }
+        }
+      ]
     },
+    "attributes": { "ST": 2, "DX": 1, "HT": 1 },
     "traits": [
+      { "pack": "basic", "sid": "reflexes_a" },
+      { "pack": "basic", "sid": "lifting_a", "level": 2 },
+      { "pack": "basic", "sid": "magery", "level": 1 },
       {
-        "id": "increased-st-example",
-        "name": "Increased ST (example)",
-        "category": "advantage",
-        "cost": 0,
-        "cost_per_level": 10,
-        "max_levels": null,
-        "page": "example",
-        "features": [
-          {
-            "type": "attribute_bonus",
-            "target": "ST",
-            "amount": 1.0,
-            "per_level": true
-          }
-        ],
-        "levels": 1,
-        "source": "basic-set-sample"
-      },
-      {
-        "id": "lifting-st",
-        "name": "Lifting ST",
-        "category": "advantage",
-        "cost": 0,
-        "cost_per_level": 3,
-        "max_levels": null,
-        "page": "B65",
-        "features": [
-          {
-            "type": "lifting_st_bonus",
-            "amount": 1.0,
-            "per_level": true
-          }
-        ],
-        "levels": 2,
-        "source": "basic-set-sample"
-      },
-      {
-        "id": "overconfidence",
-        "name": "Overconfidence",
-        "category": "disadvantage",
-        "cost": -5,
-        "cost_per_level": 0,
-        "max_levels": null,
-        "page": "B148",
-        "features": [],
-        "levels": 0,
-        "source": "basic-set-sample"
+        "inline": {
+          "sid": "lucky_charm",
+          "name": "Lucky Charm",
+          "kind": "perk",
+          "cost": { "type": "fixed", "base": 1 }
+        }
       }
     ],
-    "equipment": [
-      {
-        "name": "Broadsword",
-        "quantity": 1,
-        "weight": 3.0,
-        "cost": 500.0
-      }
+    "skills": [
+      { "pack": "basic", "sid": "sword_a", "points": 4 }
     ],
-    "notes": ""
+    "items": [
+      { "pack": "basic", "sid": "sword_item_a" },
+      { "pack": "basic", "sid": "shield_a" },
+      {
+        "pack": "basic",
+        "sid": "bag_a",
+        "contents": [
+          { "pack": "basic", "sid": "armor_a", "equipped": false }
+        ]
+      }
+    ]
   }
 }

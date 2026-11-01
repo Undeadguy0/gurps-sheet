@@ -21,9 +21,9 @@ const list = computed<Entry[]>(() => (tab.value === 'skill' ? props.library.skil
 const items = computed(() => list.value.filter((e) => matchesLibrary(e, query.value)));
 const preview = computed(() => list.value.find((e) => e.id === previewId.value) ?? null);
 const isSkill = (e: Entry): e is SkillLibEntry => 'attribute' in e;
-const kindText = (e: Entry) => (isSkill(e) ? `${e.attribute}/${e.difficulty}` : `${e.skill_name}${signedInt(e.modifier)} · ${e.difficulty}`);
-const defaultsText = (e: SkillLibEntry) => (e.defaults ?? []).map((d) => ('attribute' in d ? `${d.attribute}${signedInt(d.modifier)}`
-  : `${props.library.skills.find((s) => s.id === d.skill)?.translated_name ?? props.library.skills.find((s) => s.id === d.skill)?.name ?? d.skill}${signedInt(d.modifier)}`)).join(', ');
+const kindText = (e: Entry) => (isSkill(e) ? `${e.attribute}/${e.difficulty}` : `${e.skill_name}${signedInt(e.default_mod)} · ${e.difficulty}`);
+const defaultsText = (e: SkillLibEntry) => (e.defaults ?? []).map((d) => (d.attribute ? `${d.attribute}${signedInt(d.mod)}`
+  : `${props.library.skills.find((s) => s.id === d.skill)?.translated_name ?? props.library.skills.find((s) => s.id === d.skill)?.name ?? d.skill}${signedInt(d.mod)}`)).join(', ');
 function pick(e: Entry) { previewId.value = e.id; spec.value = ''; }
 function add(e: Entry) {
   if (isSkill(e)) emit('addSkill', e.id, spec.value.trim() || null); else emit('addTechnique', e.id);
@@ -72,14 +72,14 @@ function switchTab(t: 'skill' | 'technique') { tab.value = t; previewId.value = 
                 <li v-else>Без умолчания: без очков навык недоступен</li>
               </template>
               <template v-else>
-                <li>Умолчание: {{ preview.skill_name }}{{ signedInt(preview.modifier) }}</li>
-                <li>Максимум: {{ preview.skill_name }}{{ preview.max ? signedInt(preview.max) : '' }}</li>
+                <li>Умолчание: {{ preview.skill_name }}{{ signedInt(preview.default_mod) }}</li>
+                <li>Максимум: {{ preview.skill_name }}{{ preview.max_mod ? signedInt(preview.max_mod) : '' }}</li>
                 <li>{{ preview.difficulty === 'A' ? '1 очко за уровень' : '2 очка за первый уровень, затем по 1 очку' }}</li>
               </template>
             </ul>
           </section>
-          <label v-if="isSkill(preview) && (preview.specialization_required || preview.specializations?.length)" class="skill-details__spec">
-            Специализация<span v-if="preview.specialization_required"> (обязательна)</span>:
+          <label v-if="isSkill(preview) && (preview.spec_required || preview.specializations?.length)" class="skill-details__spec">
+            Специализация<span v-if="preview.spec_required"> (обязательна)</span>:
             <input v-model="spec" class="field" list="slib-spec" />
             <datalist id="slib-spec"><option v-for="s in preview.specializations" :key="s" :value="s" /></datalist>
           </label>

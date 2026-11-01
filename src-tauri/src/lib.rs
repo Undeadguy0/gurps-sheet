@@ -4,7 +4,7 @@ use gurps_dice::{DamageRoll, RollResult};
 pub use state::{AppState, SheetView};
 use state::{
     EquipmentLibEntry, LibraryEntry, LocaleInfo, ModifierLibEntry, PluginStatus, SkillLibrary,
-    SpellLibEntry, WeaponLibEntry,
+    SpellLibEntry,
 };
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -44,7 +44,7 @@ fn guard<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
             .cloned()
             .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
             .unwrap_or_else(|| "unknown panic".into());
-        Err(format!("внутренняя ошибка: {msg}"))
+        Err(format!("РІРЅСѓС‚СЂРµРЅРЅСЏСЏ РѕС€РёР±РєР°: {msg}"))
     })
 }
 
@@ -78,21 +78,21 @@ fn save(state: S, path: Option<String>) -> Result<String, String> {
 
 #[tauri::command]
 fn set_negative_rounding(state: S, mode: String) -> Result<SheetView, String> {
-    edit(&state, "правило округления", |s| {
+    edit(&state, "РїСЂР°РІРёР»Рѕ РѕРєСЂСѓРіР»РµРЅРёСЏ", |s| {
         s.set_negative_rounding(&mode)
     })
 }
 
 #[tauri::command]
 fn set_attribute(state: S, key: String, level: i32) -> Result<SheetView, String> {
-    edit(&state, format!("изменение {key}"), |s| {
+    edit(&state, format!("РёР·РјРµРЅРµРЅРёРµ {key}"), |s| {
         s.set_attribute(&key, level)
     })
 }
 
 #[tauri::command]
 fn add_ledger_entry(state: S, entry: state::LedgerInput) -> Result<SheetView, String> {
-    edit(&state, "запись в журнале очков", |s| {
+    edit(&state, "Р·Р°РїРёСЃСЊ РІ Р¶СѓСЂРЅР°Р»Рµ РѕС‡РєРѕРІ", |s| {
         s.add_ledger_entry(entry)
     })
 }
@@ -101,7 +101,7 @@ fn add_ledger_entry(state: S, entry: state::LedgerInput) -> Result<SheetView, St
 fn update_ledger_entry(state: S, id: u32, entry: state::LedgerInput) -> Result<SheetView, String> {
     edit(
         &state,
-        "правка записи журнала очков",
+        "РїСЂР°РІРєР° Р·Р°РїРёСЃРё Р¶СѓСЂРЅР°Р»Р° РѕС‡РєРѕРІ",
         |s| s.update_ledger_entry(id, entry),
     )
 }
@@ -110,21 +110,21 @@ fn update_ledger_entry(state: S, id: u32, entry: state::LedgerInput) -> Result<S
 fn remove_ledger_entry(state: S, id: u32) -> Result<SheetView, String> {
     edit(
         &state,
-        "удаление записи журнала очков",
+        "СѓРґР°Р»РµРЅРёРµ Р·Р°РїРёСЃРё Р¶СѓСЂРЅР°Р»Р° РѕС‡РєРѕРІ",
         |s| s.remove_ledger_entry(id),
     )
 }
 
 #[tauri::command]
 fn set_disadvantage_limit(state: S, limit: Option<i32>) -> Result<SheetView, String> {
-    edit(&state, "лимит недостатков", |s| {
+    edit(&state, "Р»РёРјРёС‚ РЅРµРґРѕСЃС‚Р°С‚РєРѕРІ", |s| {
         s.set_disadvantage_limit(limit)
     })
 }
 
 #[tauri::command]
 fn save_custom(state: S, kind: String, def: serde_json::Value) -> Result<SheetView, String> {
-    edit(&state, "своё определение", |s| {
+    edit(&state, "СЃРІРѕС‘ РѕРїСЂРµРґРµР»РµРЅРёРµ", |s| {
         s.save_custom(&kind, def)
     })
 }
@@ -133,40 +133,40 @@ fn save_custom(state: S, kind: String, def: serde_json::Value) -> Result<SheetVi
 fn remove_custom(state: S, kind: String, id: String) -> Result<SheetView, String> {
     edit(
         &state,
-        "удаление своего определения",
+        "СѓРґР°Р»РµРЅРёРµ СЃРІРѕРµРіРѕ РѕРїСЂРµРґРµР»РµРЅРёСЏ",
         |s| s.remove_custom(&kind, &id),
     )
 }
 
 #[tauri::command]
 fn set_notes(state: S, text: String) -> Result<SheetView, String> {
-    edit(&state, "заметки", |s| Ok(s.set_notes(text)))
+    edit(&state, "Р·Р°РјРµС‚РєРё", |s| Ok(s.set_notes(text)))
 }
 
 #[tauri::command]
 fn set_name(state: S, name: String) -> Result<SheetView, String> {
-    edit(&state, "переименование", |s| {
+    edit(&state, "РїРµСЂРµРёРјРµРЅРѕРІР°РЅРёРµ", |s| {
         Ok(s.set_name(name))
     })
 }
 
 #[tauri::command]
-fn add_trait(state: S, id: String, levels: Option<u32>) -> Result<SheetView, String> {
-    edit(&state, "добавление черты", |s| {
+fn add_trait(state: S, id: String, levels: Option<i32>) -> Result<SheetView, String> {
+    edit(&state, "РґРѕР±Р°РІР»РµРЅРёРµ С‡РµСЂС‚С‹", |s| {
         s.add_trait(&id, levels)
     })
 }
 
 #[tauri::command]
-fn set_trait_levels(state: S, index: usize, levels: u32) -> Result<SheetView, String> {
-    edit(&state, "уровень черты", |s| {
+fn set_trait_levels(state: S, index: usize, levels: i32) -> Result<SheetView, String> {
+    edit(&state, "СѓСЂРѕРІРµРЅСЊ С‡РµСЂС‚С‹", |s| {
         s.set_trait_levels(index, levels)
     })
 }
 
 #[tauri::command]
 fn remove_trait(state: S, index: usize) -> Result<SheetView, String> {
-    edit(&state, "удаление черты", |s| {
+    edit(&state, "СѓРґР°Р»РµРЅРёРµ С‡РµСЂС‚С‹", |s| {
         s.remove_trait(index)
     })
 }
@@ -177,7 +177,7 @@ fn set_trait_explanation(
     index: usize,
     text: Option<String>,
 ) -> Result<SheetView, String> {
-    edit(&state, "пояснение черты", |s| {
+    edit(&state, "РїРѕСЏСЃРЅРµРЅРёРµ С‡РµСЂС‚С‹", |s| {
         s.set_trait_explanation(index, text)
     })
 }
@@ -214,14 +214,14 @@ fn add_skill(
     specialization: Option<String>,
     points: Option<i32>,
 ) -> Result<SheetView, String> {
-    edit(&state, "добавление навыка", |s| {
+    edit(&state, "РґРѕР±Р°РІР»РµРЅРёРµ РЅР°РІС‹РєР°", |s| {
         s.add_skill(&id, specialization, points)
     })
 }
 
 #[tauri::command]
 fn set_skill_points(state: S, index: usize, points: i32) -> Result<SheetView, String> {
-    edit(&state, "очки навыка", |s| {
+    edit(&state, "РѕС‡РєРё РЅР°РІС‹РєР°", |s| {
         s.set_skill_points(index, points)
     })
 }
@@ -232,7 +232,7 @@ fn set_skill_specialization(
     index: usize,
     specialization: Option<String>,
 ) -> Result<SheetView, String> {
-    edit(&state, "специализация навыка", |s| {
+    edit(&state, "СЃРїРµС†РёР°Р»РёР·Р°С†РёСЏ РЅР°РІС‹РєР°", |s| {
         s.set_skill_specialization(index, specialization)
     })
 }
@@ -243,28 +243,28 @@ fn set_skill_explanation(
     index: usize,
     text: Option<String>,
 ) -> Result<SheetView, String> {
-    edit(&state, "пояснение навыка", |s| {
+    edit(&state, "РїРѕСЏСЃРЅРµРЅРёРµ РЅР°РІС‹РєР°", |s| {
         s.set_skill_explanation(index, text)
     })
 }
 
 #[tauri::command]
 fn remove_skill(state: S, index: usize) -> Result<SheetView, String> {
-    edit(&state, "удаление навыка", |s| {
+    edit(&state, "СѓРґР°Р»РµРЅРёРµ РЅР°РІС‹РєР°", |s| {
         s.remove_skill(index)
     })
 }
 
 #[tauri::command]
 fn add_technique(state: S, id: String, points: Option<i32>) -> Result<SheetView, String> {
-    edit(&state, "добавление приёма", |s| {
+    edit(&state, "РґРѕР±Р°РІР»РµРЅРёРµ РїСЂРёС‘РјР°", |s| {
         s.add_technique(&id, points)
     })
 }
 
 #[tauri::command]
 fn set_technique_points(state: S, index: usize, points: i32) -> Result<SheetView, String> {
-    edit(&state, "очки приёма", |s| {
+    edit(&state, "РѕС‡РєРё РїСЂРёС‘РјР°", |s| {
         s.set_technique_points(index, points)
     })
 }
@@ -275,14 +275,14 @@ fn set_technique_explanation(
     index: usize,
     text: Option<String>,
 ) -> Result<SheetView, String> {
-    edit(&state, "пояснение приёма", |s| {
+    edit(&state, "РїРѕСЏСЃРЅРµРЅРёРµ РїСЂРёС‘РјР°", |s| {
         s.set_technique_explanation(index, text)
     })
 }
 
 #[tauri::command]
 fn remove_technique(state: S, index: usize) -> Result<SheetView, String> {
-    edit(&state, "удаление приёма", |s| {
+    edit(&state, "СѓРґР°Р»РµРЅРёРµ РїСЂРёС‘РјР°", |s| {
         s.remove_technique(index)
     })
 }
@@ -299,21 +299,21 @@ fn add_equipment(
     quantity: Option<u32>,
     parent: Option<Vec<usize>>,
 ) -> Result<SheetView, String> {
-    edit(&state, "добавление снаряжения", |s| {
+    edit(&state, "РґРѕР±Р°РІР»РµРЅРёРµ СЃРЅР°СЂСЏР¶РµРЅРёСЏ", |s| {
         s.add_equipment(&id, quantity, parent)
     })
 }
 
 #[tauri::command]
 fn set_equipment_quantity(state: S, path: Vec<usize>, quantity: u32) -> Result<SheetView, String> {
-    edit(&state, "количество снаряжения", |s| {
+    edit(&state, "РєРѕР»РёС‡РµСЃС‚РІРѕ СЃРЅР°СЂСЏР¶РµРЅРёСЏ", |s| {
         s.set_equipment_quantity(&path, quantity)
     })
 }
 
 #[tauri::command]
 fn set_equipment_carried(state: S, path: Vec<usize>, carried: bool) -> Result<SheetView, String> {
-    edit(&state, "при себе / оставлено", |s| {
+    edit(&state, "РїСЂРё СЃРµР±Рµ / РѕСЃС‚Р°РІР»РµРЅРѕ", |s| {
         s.set_equipment_carried(&path, carried)
     })
 }
@@ -324,45 +324,15 @@ fn set_equipment_explanation(
     path: Vec<usize>,
     text: Option<String>,
 ) -> Result<SheetView, String> {
-    edit(&state, "пояснение снаряжения", |s| {
+    edit(&state, "РїРѕСЏСЃРЅРµРЅРёРµ СЃРЅР°СЂСЏР¶РµРЅРёСЏ", |s| {
         s.set_equipment_explanation(&path, text)
     })
 }
 
 #[tauri::command]
 fn remove_equipment(state: S, path: Vec<usize>) -> Result<SheetView, String> {
-    edit(&state, "удаление снаряжения", |s| {
+    edit(&state, "СѓРґР°Р»РµРЅРёРµ СЃРЅР°СЂСЏР¶РµРЅРёСЏ", |s| {
         s.remove_equipment(&path)
-    })
-}
-
-#[tauri::command]
-fn list_weapon_library(state: S) -> Vec<WeaponLibEntry> {
-    lock(&state).weapon_library_view()
-}
-
-#[tauri::command]
-fn add_weapon(state: S, id: String) -> Result<SheetView, String> {
-    edit(&state, "добавление оружия", |s| {
-        s.add_weapon(&id)
-    })
-}
-
-#[tauri::command]
-fn remove_weapon(state: S, index: usize) -> Result<SheetView, String> {
-    edit(&state, "удаление оружия", |s| {
-        s.remove_weapon(index)
-    })
-}
-
-#[tauri::command]
-fn set_weapon_explanation(
-    state: S,
-    index: usize,
-    text: Option<String>,
-) -> Result<SheetView, String> {
-    edit(&state, "пояснение оружия", |s| {
-        s.set_weapon_explanation(index, text)
     })
 }
 
@@ -373,14 +343,14 @@ fn list_spell_library(state: S) -> Vec<SpellLibEntry> {
 
 #[tauri::command]
 fn add_spell(state: S, id: String, points: Option<i32>) -> Result<SheetView, String> {
-    edit(&state, "добавление заклинания", |s| {
+    edit(&state, "РґРѕР±Р°РІР»РµРЅРёРµ Р·Р°РєР»РёРЅР°РЅРёСЏ", |s| {
         s.add_spell(&id, points)
     })
 }
 
 #[tauri::command]
 fn set_spell_points(state: S, index: usize, points: i32) -> Result<SheetView, String> {
-    edit(&state, "очки заклинания", |s| {
+    edit(&state, "РѕС‡РєРё Р·Р°РєР»РёРЅР°РЅРёСЏ", |s| {
         s.set_spell_points(index, points)
     })
 }
@@ -391,14 +361,14 @@ fn set_spell_explanation(
     index: usize,
     text: Option<String>,
 ) -> Result<SheetView, String> {
-    edit(&state, "пояснение заклинания", |s| {
+    edit(&state, "РїРѕСЏСЃРЅРµРЅРёРµ Р·Р°РєР»РёРЅР°РЅРёСЏ", |s| {
         s.set_spell_explanation(index, text)
     })
 }
 
 #[tauri::command]
 fn remove_spell(state: S, index: usize) -> Result<SheetView, String> {
-    edit(&state, "удаление заклинания", |s| {
+    edit(&state, "СѓРґР°Р»РµРЅРёРµ Р·Р°РєР»РёРЅР°РЅРёСЏ", |s| {
         s.remove_spell(index)
     })
 }
@@ -412,14 +382,14 @@ fn list_modifier_library(state: S) -> Vec<ModifierLibEntry> {
 fn add_trait_modifier(state: S, trait_index: usize, id: String) -> Result<SheetView, String> {
     edit(
         &state,
-        "добавление модификатора",
+        "РґРѕР±Р°РІР»РµРЅРёРµ РјРѕРґРёС„РёРєР°С‚РѕСЂР°",
         |s| s.add_trait_modifier(trait_index, &id),
     )
 }
 
 #[tauri::command]
 fn remove_trait_modifier(state: S, trait_index: usize, index: usize) -> Result<SheetView, String> {
-    edit(&state, "удаление модификатора", |s| {
+    edit(&state, "СѓРґР°Р»РµРЅРёРµ РјРѕРґРёС„РёРєР°С‚РѕСЂР°", |s| {
         s.remove_trait_modifier(trait_index, index)
     })
 }
@@ -431,7 +401,7 @@ fn set_modifier_explanation(
     index: usize,
     text: Option<String>,
 ) -> Result<SheetView, String> {
-    edit(&state, "пояснение модификатора", |s| {
+    edit(&state, "РїРѕСЏСЃРЅРµРЅРёРµ РјРѕРґРёС„РёРєР°С‚РѕСЂР°", |s| {
         s.set_modifier_explanation(trait_index, index, text)
     })
 }
@@ -465,8 +435,8 @@ fn redo(state: S) -> Result<SheetView, String> {
 #[tauri::command]
 fn set_current(state: S, stat: String, value: Option<i32>) -> Result<SheetView, String> {
     let label = match (stat.as_str(), value) {
-        ("HP", None) | ("FP", None) => format!("сброс {stat}"),
-        _ => format!("текущие {stat}"),
+        ("HP", None) | ("FP", None) => format!("СЃР±СЂРѕСЃ {stat}"),
+        _ => format!("С‚РµРєСѓС‰РёРµ {stat}"),
     };
     edit(&state, label, |s| s.set_current(&stat, value))
 }
@@ -518,7 +488,7 @@ pub fn run() {
             set_disadvantage_limit,
             save_custom,
             remove_custom,
-                add_trait,
+            add_trait,
             set_trait_levels,
             remove_trait,
             set_trait_explanation,
@@ -542,10 +512,6 @@ pub fn run() {
             set_equipment_carried,
             set_equipment_explanation,
             remove_equipment,
-            list_weapon_library,
-            add_weapon,
-            remove_weapon,
-            set_weapon_explanation,
             list_spell_library,
             add_spell,
             set_spell_points,

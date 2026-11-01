@@ -1,221 +1,160 @@
-//! Domain model for a GURPS 4th edition character.
+//! Domain model for a GURPS 4th edition character (sheet file format v2).
 //!
-//! This crate contains only data types; all calculations live in `gurps-rules`.
-#![cfg_attr(test, allow(clippy::field_reassign_with_default))]
+//! A character stores references `(pack, sid)` to the shared catalog plus inline
+//! definitions for the user's own content; codes (`ST`, `H`, `adv`) are plain strings.
+//! All calculations live in `gurps-calc`.
 
-pub mod damage;
-pub mod equipment;
+pub mod defs;
 pub mod ledger;
 pub mod modifier;
-pub mod skill;
-pub mod spell;
-pub mod weapon;
 
-pub use equipment::{Equipment, EquipmentDef};
-pub use ledger::{LedgerEntry, LedgerKind, LedgerTotals};
-pub use modifier::{
-    modified_cost, modified_cost_with, ModifierDef, NegativeRounding, TraitModifier,
+pub use defs::{
+    ArmorLoc, AttackDefault, AttackMode, Damage, Def, ItemDef, ModifierDef, ShieldDef,
+    SkillDamageBonus, SkillDef, SkillDefault, SpellDef, TechniqueDef, TraitCost, TraitDef,
 };
-pub use skill::{Difficulty, Skill, SkillDef, SkillDefault, Technique, TechniqueDef};
-pub use spell::{Spell, SpellDef};
-pub use weapon::{AttackDef, DamageExpr, SkillDamageBonus, Weapon, WeaponDef};
+pub use ledger::{LedgerEntry, LedgerKind, LedgerTotals};
+pub use modifier::{modified_cost, modified_cost_with, NegativeRounding};
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::fmt;
 
-/// A value that can be targeted by features and shown on the sheet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum Stat {
-    ST,
-    DX,
-    IQ,
-    HT,
-    HP,
-    Will,
-    Per,
-    FP,
-    BasicSpeed,
-    BasicMove,
-    BasicLift,
-}
+/// Pack code of the user's own content (stored inline).
+pub const CUSTOM_PACK: &str = "custom";
 
-impl Stat {
-    pub const PRIMARY: [Stat; 4] = [Stat::ST, Stat::DX, Stat::IQ, Stat::HT];
-    pub const SECONDARY: [Stat; 6] = [
-        Stat::HP,
-        Stat::Will,
-        Stat::Per,
-        Stat::FP,
-        Stat::BasicSpeed,
-        Stat::BasicMove,
-    ];
+/// Attribute codes the sheet buys levels in (Speed in quarter-steps).
+pub const ATTRIBUTES: [&str; 10] = [
+    "ST", "DX", "IQ", "HT", "HP", "Will", "Per", "FP", "Speed", "Move",
+];
 
-    pub fn key(self) -> &'static str {
-        match self {
-            Stat::ST => "ST",
-            Stat::DX => "DX",
-            Stat::IQ => "IQ",
-            Stat::HT => "HT",
-            Stat::HP => "HP",
-            Stat::Will => "Will",
-            Stat::Per => "Per",
-            Stat::FP => "FP",
-            Stat::BasicSpeed => "BasicSpeed",
-            Stat::BasicMove => "BasicMove",
-            Stat::BasicLift => "BasicLift",
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Stat::BasicSpeed => "Basic Speed",
-            Stat::BasicMove => "Basic Move",
-            Stat::BasicLift => "Basic Lift",
-            s => s.key(),
-        }
-    }
-
-    pub fn parse(s: &str) -> Option<Stat> {
-        let all = [
-            Stat::PRIMARY.as_slice(),
-            Stat::SECONDARY.as_slice(),
-            &[Stat::BasicLift],
-        ];
-        all.iter()
-            .flat_map(|x| x.iter())
-            .copied()
-            .find(|st| st.key().eq_ignore_ascii_case(s) || st.label().eq_ignore_ascii_case(s))
-    }
-
-    /// Size of one purchasable step (Basic Speed is bought in 0.25 steps).
-    pub fn step(self) -> f64 {
-        if self == Stat::BasicSpeed {
-            0.25
-        } else {
-            1.0
-        }
-    }
-}
-
-impl fmt::Display for Stat {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.label())
-    }
-}
-
-/// Purchased levels (above/below the base value) for attributes and secondary characteristics.
-/// Basic Speed is stored in quarter-steps (1 = +0.25).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Attributes {
-    pub st: i32,
-    pub dx: i32,
-    pub iq: i32,
-    pub ht: i32,
-    pub hp: i32,
-    pub will: i32,
-    pub per: i32,
-    pub fp: i32,
-    pub basic_speed_quarters: i32,
-    pub basic_move: i32,
-}
-
-impl Attributes {
-    pub fn purchased(&self, stat: Stat) -> i32 {
-        match stat {
-            Stat::ST => self.st,
-            Stat::DX => self.dx,
-            Stat::IQ => self.iq,
-            Stat::HT => self.ht,
-            Stat::HP => self.hp,
-            Stat::Will => self.will,
-            Stat::Per => self.per,
-            Stat::FP => self.fp,
-            Stat::BasicSpeed => self.basic_speed_quarters,
-            Stat::BasicMove => self.basic_move,
-            Stat::BasicLift => 0,
-        }
-    }
-
-    /// Sets purchased levels. Returns false for stats that cannot be bought directly.
-    pub fn set_purchased(&mut self, stat: Stat, levels: i32) -> bool {
-        let slot = match stat {
-            Stat::ST => &mut self.st,
-            Stat::DX => &mut self.dx,
-            Stat::IQ => &mut self.iq,
-            Stat::HT => &mut self.ht,
-            Stat::HP => &mut self.hp,
-            Stat::Will => &mut self.will,
-            Stat::Per => &mut self.per,
-            Stat::FP => &mut self.fp,
-            Stat::BasicSpeed => &mut self.basic_speed_quarters,
-            Stat::BasicMove => &mut self.basic_move,
-            Stat::BasicLift => return false,
-        };
-        *slot = levels;
-        true
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum TraitCategory {
-    #[default]
-    Advantage,
-    Perk,
-    Disadvantage,
-    Quirk,
-}
-
-/// A mechanical effect of a trait.
+/// Where a definition comes from: a catalog reference or an inline definition.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum Feature {
-    /// Adds `amount` (per level if `per_level`) to a stat.
-    AttributeBonus {
-        target: Stat,
-        amount: f64,
-        #[serde(default)]
-        per_level: bool,
-    },
-    /// Adds to ST only for the purpose of Basic Lift (e.g. Lifting ST).
-    LiftingStBonus {
-        amount: f64,
-        #[serde(default)]
-        per_level: bool,
-    },
-    /// Adds to ST only for the purpose of basic damage thr/sw (e.g. Striking ST).
-    StrikingStBonus {
-        amount: f64,
-        #[serde(default)]
-        per_level: bool,
-    },
-    /// Adds to active defences (Combat Reflexes: +1 to Dodge, Parry and Block).
-    /// `defenses` lists "dodge" / "parry" / "block"; empty = all three.
-    DefenseBonus {
-        amount: f64,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        defenses: Vec<String>,
-        #[serde(default)]
-        per_level: bool,
-    },
-    /// Magery-style bonus to spell levels (`amount` per level, so Magery 0 adds nothing).
-    /// `colleges` limits it (empty = all spells).
-    SpellBonus {
-        amount: f64,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        colleges: Vec<String>,
-        #[serde(default)]
-        per_level: bool,
-    },
-    /// Talent: adds `amount` (per level if `per_level`) to every listed skill id.
-    SkillBonus {
-        skills: Vec<String>,
-        amount: f64,
-        #[serde(default)]
-        per_level: bool,
-    },
+#[serde(untagged)]
+pub enum Src<D> {
+    Inline { inline: D },
+    Ref { pack: String, sid: String },
+}
+
+impl<D: Def> Src<D> {
+    pub fn catalog(pack: impl Into<String>, sid: impl Into<String>) -> Self {
+        Src::Ref {
+            pack: pack.into(),
+            sid: sid.into(),
+        }
+    }
+    pub fn sid(&self) -> &str {
+        match self {
+            Src::Inline { inline } => inline.sid(),
+            Src::Ref { sid, .. } => sid,
+        }
+    }
+    /// Catalog pack, `custom` for inline definitions.
+    pub fn pack(&self) -> &str {
+        match self {
+            Src::Inline { .. } => CUSTOM_PACK,
+            Src::Ref { pack, .. } => pack,
+        }
+    }
+    pub fn inline(&self) -> Option<&D> {
+        match self {
+            Src::Inline { inline } => Some(inline),
+            Src::Ref { .. } => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Modifier {
+    #[serde(flatten)]
+    pub src: Src<ModifierDef>,
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub explanation: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Trait {
+    #[serde(flatten)]
+    pub src: Src<TraitDef>,
+    /// Level of a leveled trait (absent for fixed-cost traits).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<i32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modifiers: Vec<Modifier>,
+    /// User's own explanation (Markdown); overrides the catalog text when non-blank.
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub explanation: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Skill {
+    #[serde(flatten)]
+    pub src: Src<SkillDef>,
+    #[serde(default)]
+    pub points: i32,
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub spec: Option<String>,
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub explanation: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Technique {
+    #[serde(flatten)]
+    pub src: Src<TechniqueDef>,
+    #[serde(default)]
+    pub points: i32,
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub explanation: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Spell {
+    #[serde(flatten)]
+    pub src: Src<SpellDef>,
+    #[serde(default)]
+    pub points: i32,
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub explanation: Option<String>,
+}
+
+fn one() -> u32 {
+    1
+}
+fn yes() -> bool {
+    true
+}
+fn is_one(v: &u32) -> bool {
+    *v == 1
+}
+fn is_true(v: &bool) -> bool {
+    *v
+}
+
+/// Owned item; `contents` for containers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Item {
+    #[serde(flatten)]
+    pub src: Src<ItemDef>,
+    #[serde(default = "one", skip_serializing_if = "is_one")]
+    pub qty: u32,
+    /// Carried/equipped (counts for weight, armor, attacks).
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub equipped: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contents: Vec<Item>,
+    #[serde(default, skip_serializing_if = "is_blank")]
+    pub explanation: Option<String>,
+}
+
+impl Item {
+    pub fn new(src: Src<ItemDef>) -> Self {
+        Self {
+            src,
+            qty: 1,
+            equipped: true,
+            contents: Vec::new(),
+            explanation: None,
+        }
+    }
 }
 
 /// Multi-line Markdown text from plugin data: either a plain string or a
@@ -272,185 +211,6 @@ pub fn non_blank(s: Option<String>) -> Option<String> {
     s.filter(|t| !t.trim().is_empty())
 }
 
-/// Shared shape for library entries that so far only carry identity, a page
-/// reference and an explanation (skills, spells, equipment, weapons, modifiers).
-/// Unknown keys are ignored so richer data can be added later.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LibraryItemDef {
-    pub id: String,
-    pub name: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub page: Option<String>,
-    /// Markdown explanation (plain string or `{ ru, en }` table).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<LocalizedText>,
-}
-
-impl LibraryItemDef {
-    pub fn explanation(&self, locale: &str) -> Option<&str> {
-        self.description.as_ref().and_then(|d| d.get(locale))
-    }
-}
-
-/// Trait definition (from a plugin library).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TraitDef {
-    pub id: String,
-    pub name: String,
-    #[serde(default)]
-    pub category: TraitCategory,
-    /// Fixed cost.
-    #[serde(default)]
-    pub cost: i32,
-    /// Additional cost per level (leveled traits).
-    #[serde(default)]
-    pub cost_per_level: i32,
-    #[serde(default)]
-    pub max_levels: Option<u32>,
-    /// Minimum levels for leveled traits (default 1; e.g. Magery allows 0).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub min_levels: Option<u32>,
-    /// Page reference, e.g. "B65".
-    #[serde(default)]
-    pub page: Option<String>,
-    #[serde(default)]
-    pub features: Vec<Feature>,
-    /// Plugin explanation in Markdown (plain string or `{ ru, en }` table).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<LocalizedText>,
-}
-
-impl TraitDef {
-    /// Plugin explanation for `locale` (with locale fallback).
-    pub fn explanation(&self, locale: &str) -> Option<&str> {
-        self.description.as_ref().and_then(|d| d.get(locale))
-    }
-
-    pub fn is_leveled(&self) -> bool {
-        self.cost_per_level != 0
-    }
-
-    /// Effective minimum level (1 for leveled traits unless overridden, else 0).
-    pub fn min_level(&self) -> u32 {
-        self.min_levels
-            .unwrap_or(if self.is_leveled() { 1 } else { 0 })
-    }
-}
-
-/// A trait taken by a character: a snapshot of its definition plus chosen levels.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Trait {
-    #[serde(flatten)]
-    pub def: TraitDef,
-    #[serde(default)]
-    pub levels: u32,
-    /// Plugin the trait came from (informational).
-    #[serde(default)]
-    pub source: Option<String>,
-    /// User's own explanation (Markdown); overrides the plugin text when non-blank.
-    #[serde(default, skip_serializing_if = "is_blank")]
-    pub explanation: Option<String>,
-    /// Enhancements and limitations.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub modifiers: Vec<TraitModifier>,
-}
-
-impl Trait {
-    pub fn new(def: TraitDef, levels: u32) -> Self {
-        Self {
-            def,
-            levels,
-            source: None,
-            explanation: None,
-            modifiers: Vec::new(),
-        }
-    }
-
-    /// Effective explanation: user override, else plugin text for `locale`.
-    pub fn explanation(&self, locale: &str) -> Option<&str> {
-        self.explanation
-            .as_deref()
-            .filter(|t| !t.trim().is_empty())
-            .or_else(|| self.def.explanation(locale))
-    }
-
-    /// True when the user text is in effect.
-    pub fn has_custom_explanation(&self) -> bool {
-        !is_blank(&self.explanation)
-    }
-
-    /// Cost before modifiers.
-    pub fn base_cost(&self) -> i32 {
-        self.def.cost + self.def.cost_per_level * self.levels as i32
-    }
-
-    /// Sum of modifier percentages (before the -80% floor).
-    pub fn modifier_percent(&self) -> i32 {
-        self.modifiers.iter().map(|m| m.def.cost_percent).sum()
-    }
-
-    /// Final cost: base cost with modifiers applied (see [`modified_cost`]).
-    pub fn cost(&self) -> i32 {
-        self.cost_with(NegativeRounding::default())
-    }
-
-    /// Final cost with the character's rounding rule for negative costs.
-    pub fn cost_with(&self, r: NegativeRounding) -> i32 {
-        if self.modifiers.is_empty() {
-            self.base_cost()
-        } else {
-            modified_cost_with(self.base_cost(), self.modifier_percent(), r)
-        }
-    }
-
-    /// Display name including level, e.g. "Lifting ST 3".
-    pub fn display_name(&self) -> String {
-        if self.def.is_leveled() {
-            format!("{} {}", self.def.name, self.levels)
-        } else {
-            self.def.name.clone()
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Character {
-    pub name: String,
-    pub player: String,
-    /// Legacy starting budget. Files from before the ledger only have this; it is
-    /// migrated into a `starting` ledger entry on load and afterwards kept equal
-    /// to the pool's available points so older versions still read a sane budget.
-    pub points_budget: i32,
-    /// Point pool ledger (earned points and spends outside the sheet).
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub ledger: Vec<LedgerEntry>,
-    /// User-made definitions (shown in the libraries as «своё»).
-    #[serde(skip_serializing_if = "CustomContent::is_empty")]
-    pub custom: CustomContent,
-    pub attributes: Attributes,
-    pub traits: Vec<Trait>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub skills: Vec<Skill>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub techniques: Vec<Technique>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub spells: Vec<Spell>,
-    pub equipment: Vec<Equipment>,
-    /// Weapons (library snapshots); linked ones show only while their equipment is owned.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub weapons: Vec<Weapon>,
-    /// Free-form Markdown notes (player's own text); omitted from JSON when empty.
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub notes: String,
-    /// Optional rules switches (house rules), stored with the character.
-    #[serde(skip_serializing_if = "RulesOptions::is_default")]
-    pub rules: RulesOptions,
-    /// Play-session state (current HP/FP); separate from build points.
-    #[serde(skip_serializing_if = "Session::is_default")]
-    pub session: Session,
-}
-
 /// Current values at the table. `None` = at maximum.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -478,7 +238,13 @@ pub struct RulesOptions {
     pub disadvantage_limit: Option<i32>,
 }
 
-/// User-defined library entries stored in the character file.
+impl RulesOptions {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// The user's own definitions (shown in the libraries as «своё»; entries embed copies inline).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CustomContent {
@@ -489,7 +255,7 @@ pub struct CustomContent {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub spells: Vec<SpellDef>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub equipment: Vec<EquipmentDef>,
+    pub items: Vec<ItemDef>,
 }
 
 impl CustomContent {
@@ -497,14 +263,37 @@ impl CustomContent {
         self.traits.is_empty()
             && self.skills.is_empty()
             && self.spells.is_empty()
-            && self.equipment.is_empty()
+            && self.items.is_empty()
     }
 }
 
-impl RulesOptions {
-    pub fn is_default(&self) -> bool {
-        *self == Self::default()
-    }
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Character {
+    pub name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub player: String,
+    /// Point pool ledger (starting points, earned points, spends outside the sheet).
+    pub ledger: Vec<LedgerEntry>,
+    #[serde(skip_serializing_if = "CustomContent::is_empty")]
+    pub custom: CustomContent,
+    /// Purchased levels by attribute code (`ST`, ..., `Speed` in quarters, `Move`).
+    pub attributes: BTreeMap<String, i32>,
+    pub traits: Vec<Trait>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub skills: Vec<Skill>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub techniques: Vec<Technique>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub spells: Vec<Spell>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub items: Vec<Item>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub notes: String,
+    #[serde(skip_serializing_if = "RulesOptions::is_default")]
+    pub rules: RulesOptions,
+    #[serde(skip_serializing_if = "Session::is_default")]
+    pub session: Session,
 }
 
 impl Default for Character {
@@ -512,17 +301,22 @@ impl Default for Character {
         Self {
             name: "New character".into(),
             player: String::new(),
-            points_budget: 150,
-            attributes: Attributes::default(),
+            ledger: vec![LedgerEntry {
+                id: 1,
+                date: String::new(),
+                amount: 150,
+                kind: LedgerKind::Starting,
+                note: String::new(),
+                skill: None,
+            }],
+            custom: CustomContent::default(),
+            attributes: BTreeMap::new(),
             traits: Vec::new(),
             skills: Vec::new(),
             techniques: Vec::new(),
             spells: Vec::new(),
-            equipment: Vec::new(),
-            weapons: Vec::new(),
+            items: Vec::new(),
             notes: String::new(),
-            ledger: Vec::new(),
-            custom: CustomContent::default(),
             rules: RulesOptions::default(),
             session: Session::default(),
         }
@@ -530,17 +324,14 @@ impl Default for Character {
 }
 
 impl Character {
-    /// Ledger totals; a character without a ledger counts `points_budget` as starting points.
-    pub fn ledger_totals(&self) -> LedgerTotals {
-        if self.ledger.is_empty() {
-            let mut t = LedgerTotals {
-                starting: self.points_budget,
-                ..Default::default()
-            };
-            t.earned = t.starting;
-            t.available = t.starting;
-            return t;
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            ..Self::default()
         }
+    }
+
+    pub fn ledger_totals(&self) -> LedgerTotals {
         ledger::totals(&self.ledger)
     }
 
@@ -549,32 +340,17 @@ impl Character {
         self.ledger_totals().available
     }
 
-    /// Moves a legacy `points_budget` into a `starting` ledger entry (idempotent).
-    pub fn migrate(&mut self) {
-        if self.ledger.is_empty() {
-            self.ledger.push(LedgerEntry {
-                id: 1,
-                date: String::new(),
-                amount: self.points_budget,
-                kind: LedgerKind::Starting,
-                note: String::new(),
-                skill: None,
-            });
-        }
-        self.points_budget = self.available_points();
+    /// Purchased levels of an attribute code (0 when absent).
+    pub fn attribute(&self, code: &str) -> i32 {
+        self.attributes.get(code).copied().unwrap_or(0)
     }
 
-    /// Effective disadvantage limit in points (positive).
-    pub fn disadvantage_limit(&self) -> i32 {
-        self.rules
-            .disadvantage_limit
-            .unwrap_or_else(|| self.ledger_totals().starting / 2)
-    }
-
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            ..Self::default()
+    /// Sets purchased levels (0 removes the key).
+    pub fn set_attribute(&mut self, code: &str, levels: i32) {
+        if levels == 0 {
+            self.attributes.remove(code);
+        } else {
+            self.attributes.insert(code.to_string(), levels);
         }
     }
 }
@@ -582,57 +358,7 @@ impl Character {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn stat_parse_roundtrip() {
-        for s in Stat::PRIMARY.iter().chain(Stat::SECONDARY.iter()) {
-            assert_eq!(Stat::parse(s.key()), Some(*s));
-        }
-        assert_eq!(Stat::parse("basic speed"), Some(Stat::BasicSpeed));
-        assert_eq!(Stat::parse("nope"), None);
-    }
-
-    #[test]
-    fn trait_cost_and_name() {
-        let def = TraitDef {
-            id: "x".into(),
-            name: "Lifting ST".into(),
-            category: TraitCategory::Advantage,
-            cost: 0,
-            cost_per_level: 3,
-            max_levels: None,
-            min_levels: None,
-            page: Some("B65".into()),
-            features: vec![],
-            description: None,
-        };
-        let t = Trait::new(def, 4);
-        assert_eq!(t.cost(), 12);
-        assert_eq!(t.display_name(), "Lifting ST 4");
-    }
-
-    #[test]
-    fn set_purchased() {
-        let mut a = Attributes::default();
-        assert!(a.set_purchased(Stat::ST, 2));
-        assert_eq!(a.purchased(Stat::ST), 2);
-        assert!(!a.set_purchased(Stat::BasicLift, 1));
-    }
-
-    fn def_with(desc: Option<LocalizedText>) -> TraitDef {
-        TraitDef {
-            id: "x".into(),
-            name: "X".into(),
-            category: TraitCategory::Advantage,
-            cost: 5,
-            cost_per_level: 0,
-            max_levels: None,
-            min_levels: None,
-            page: None,
-            features: vec![],
-            description: desc,
-        }
-    }
+    use serde_json::json;
 
     #[test]
     fn localized_fallback() {
@@ -655,20 +381,19 @@ mod tests {
     }
 
     #[test]
-    fn override_precedence() {
-        let mut t = Trait::new(def_with(Some("plugin".into())), 0);
-        assert_eq!(t.explanation("ru"), Some("plugin"));
-        assert!(!t.has_custom_explanation());
-        t.explanation = Some("  ".into());
-        assert_eq!(
-            t.explanation("ru"),
-            Some("plugin"),
-            "blank override ignored"
-        );
-        t.explanation = Some("mine".into());
-        assert_eq!(t.explanation("ru"), Some("mine"));
-        assert!(t.has_custom_explanation());
-        let t = Trait::new(def_with(None), 0);
-        assert_eq!(t.explanation("ru"), None);
+    fn src_forms() {
+        let t: Trait =
+            serde_json::from_value(json!({"pack": "basic", "sid": "fit", "level": 0})).unwrap();
+        assert_eq!(t.level, Some(0));
+        assert_eq!(t.src, Src::catalog("basic", "fit"));
+        let t: Trait = serde_json::from_value(json!({"inline": {"sid": "x", "name": "X", "kind": "adv", "cost": {"type": "fixed", "base": 5}}, "level": 2})).unwrap();
+        assert_eq!(t.src.sid(), "x");
+        assert_eq!(t.src.pack(), CUSTOM_PACK);
+        assert_eq!(t.level, Some(2));
+        let back = serde_json::to_value(&t).unwrap();
+        assert_eq!(back["inline"]["cost"]["base"], 5);
+        let i: Item = serde_json::from_value(json!({"pack": "basic", "sid": "rope"})).unwrap();
+        assert!(i.equipped);
+        assert_eq!(i.qty, 1);
     }
 }

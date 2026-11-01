@@ -12,11 +12,11 @@ const query = ref('');
 const college = ref('');
 const previewId = ref<string | null>(null);
 const preview = computed(() => props.library.find((e) => e.id === previewId.value) ?? null);
-const colleges = computed(() => [...new Set(props.library.flatMap((e) => e.college ?? []))].sort());
-const items = computed(() => props.library.filter((e) => (!college.value || (e.college ?? []).includes(college.value)) && matchesLibrary(e, query.value)));
+const colleges = computed(() => [...new Set(props.library.flatMap((e) => e.colleges ?? []))].sort());
+const items = computed(() => props.library.filter((e) => (!college.value || (e.colleges ?? []).includes(college.value)) && matchesLibrary(e, query.value)));
 const search = ref<HTMLInputElement | null>(null);
 onMounted(() => nextTick(() => search.value?.focus()));
-const kind = (e: SpellLibEntry) => `${e.attribute ?? 'IQ'}/${e.difficulty ?? 'H'}`;
+const kind = (e: SpellLibEntry) => `IQ/${e.difficulty ?? 'H'}`;
 </script>
 
 <template>
@@ -45,13 +45,13 @@ const kind = (e: SpellLibEntry) => `${e.attribute ?? 'IQ'}/${e.difficulty ?? 'H'
           <header class="library-preview__head">
             <h3 class="library-preview__title">{{ preview.translated_name ?? preview.name }}<small v-if="preview.translated_name" class="muted original-name"> ({{ preview.name }})</small></h3>
             <p class="library-preview__meta muted">
-              {{ kind(preview) }} — {{ DIFF_LABEL[preview.difficulty ?? 'H'] }} · школа: {{ (preview.college ?? []).join(', ') || '—' }}<template v-if="preview.page"> · стр. {{ preview.page }}</template>
+              {{ kind(preview) }} — {{ DIFF_LABEL[preview.difficulty ?? 'H'] }} · школа: {{ (preview.colleges ?? []).join(', ') || '—' }}<template v-if="preview.page"> · стр. {{ preview.page }}</template>
             </p>
           </header>
           <LibraryExplanation :text="preview.explanation" />
           <section class="library-preview__section">
             <h4 class="library-preview__label">Требования</h4>
-            <p>{{ preview.prerequisites || '—' }}</p>
+            <p>{{ preview.prereqs ? JSON.stringify(preview.prereqs) : '—' }}</p>
             <p class="library-preview__note muted">Требования не проверяются. Уровень = IQ + сложность по очкам + уровень магических способностей; без очков заклинания нет.</p>
           </section>
           <p class="library-preview__note muted">Плагин: {{ preview.plugin }}</p>

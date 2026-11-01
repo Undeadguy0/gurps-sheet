@@ -1,7 +1,7 @@
 // GENERATED from plugins/basic-set-sample/data/skills.toml and
 // plugins/lang-ru/locales/ru/basic-set-skills.ftl for the browser preview backend.
 // Own-words texts, not book text; page references are unverified.
-import type { SkillDef, TechniqueDef, TraitDef } from './types';
+import type { SkillDef, TechniqueDef, TraitDef } from './mockTypes';
 
 export const SKILL_DEFS: SkillDef[] = [
   {

@@ -10,8 +10,11 @@ async fn library_from_seeded_db() {
     assert!(!lib.skills.is_empty(), "навыки из сидов");
     assert!(!lib.traits.is_empty(), "трейты из сидов");
     for (pack, s) in &lib.skills {
-        assert!(!pack.is_empty() && !s.id.is_empty());
+        assert!(!pack.is_empty() && !s.sid.is_empty());
     }
+    assert!(lib.warnings.is_empty(), "{:?}", lib.warnings);
+    assert!(!lib.natural.is_empty(), "естественные атаки");
+    assert!(lib.items.iter().any(|(_, i)| !i.attack_modes.is_empty()));
     // переводы из translation (ru) доступны по ключу kind-id
     assert!(lib.translations.languages().iter().any(|l| l == "ru"));
 

@@ -1,29 +1,36 @@
 //! UI-independent application state; all Tauri commands delegate here so the
 //! logic can be unit-tested without a webview.
+//!
+//! The character stores catalog references `(pack, sid)` and inline definitions for
+//! its own content; views resolve them through the loaded [`Library`].
 
 use gurps_core::{
-    Character, Equipment, EquipmentDef, LocalizedText, ModifierDef, Skill, SkillDef, SkillDefault,
-    Spell, SpellDef, Stat, Technique, TechniqueDef, Trait, TraitCategory, TraitDef, TraitModifier,
-    Weapon, WeaponDef,
+    modified_cost_with, Character, Def, Item, ItemDef, LocalizedText, Modifier, ModifierDef, Skill,
+    SkillDef, SkillDefault, Spell, SpellDef, Src, Technique, TechniqueDef, Trait, TraitDef,
+    ATTRIBUTES, CUSTOM_PACK,
 };
 use gurps_dice::{success_roll, RollResult, SplitMix};
 use gurps_library::calc::{Calc, Issue};
-use gurps_library::sheet::Sheet;
+use gurps_library::sheet::{attr_code, trait_name, Sheet};
+use gurps_library::{effective, find, resolve, Library};
 use serde::Serialize;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TraitView {
     pub index: usize,
+    /// Catalog sid (or own sid for inline content).
     pub id: String,
     /// Display name in the UI language (with level), falls back to the original.
     pub name: String,
-    /// Original (plugin) display name when `name` is a translation.
+    /// Original (catalog) display name when `name` is a translation.
     pub original_name: Option<String>,
-    pub category: TraitCategory,
-    pub levels: u32,
+    /// `adv` / `disadv` / `perk` / `quirk`.
+    pub kind: String,
+    pub level: i32,
     pub leveled: bool,
     pub min_level: u32,
+    pub max_level: Option<u32>,
     /// Final cost (with modifiers).
     pub cost: i32,
     /// Cost before modifiers.
@@ -34,10 +41,11 @@ pub struct TraitView {
     /// How the cost was obtained (empty without modifiers).
     pub cost_explain: Vec<String>,
     pub page: Option<String>,
-    pub source: Option<String>,
-    /// Effective explanation (user text, else plugin text), Markdown.
+    /// Pack code (`custom` for own content).
+    pub source: String,
+    /// Effective explanation (user text, else catalog text), Markdown.
     pub explanation: Option<String>,
-    /// Plugin text for the current locale (for "reset to default").
+    /// Catalog text for the current locale (for "reset to default").
     pub default_explanation: Option<String>,
     /// True when the user override is in effect.
     pub custom_explanation: bool,
@@ -52,20 +60,29 @@ pub struct ModifierView {
     pub original_name: Option<String>,
     pub cost_percent: i32,
     pub page: Option<String>,
-    pub source: Option<String>,
+    pub source: String,
     pub explanation: Option<String>,
     pub default_explanation: Option<String>,
     pub custom_explanation: bool,
 }
 
+/// Library entry: pack, the definition (flattened) and texts for the UI language.
 #[derive(Debug, Clone, Serialize)]
-pub struct ModifierLibEntry {
+pub struct LibEntry<D> {
     pub plugin: String,
+    /// Same as `sid` (the UI keys entries by `id`).
+    pub id: String,
     #[serde(flatten)]
-    pub def: ModifierDef,
+    pub def: D,
     pub explanation: Option<String>,
     pub translated_name: Option<String>,
 }
+
+pub type LibraryEntry = LibEntry<TraitDef>;
+pub type ModifierLibEntry = LibEntry<ModifierDef>;
+pub type SpellLibEntry = LibEntry<SpellDef>;
+pub type SkillLibEntry = LibEntry<SkillDef>;
+pub type EquipmentLibEntry = LibEntry<ItemDef>;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SpellView {
@@ -73,6 +90,7 @@ pub struct SpellView {
     pub id: String,
     pub name: String,
     pub original_name: Option<String>,
+    /// College names.
     pub college: Vec<String>,
     pub attribute: String,
     pub difficulty: String,
@@ -83,30 +101,10 @@ pub struct SpellView {
     pub prerequisites: Option<String>,
     pub explain: Vec<String>,
     pub page: Option<String>,
-    pub source: Option<String>,
+    pub source: String,
     pub explanation: Option<String>,
     pub default_explanation: Option<String>,
     pub custom_explanation: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct SpellLibEntry {
-    pub plugin: String,
-    #[serde(flatten)]
-    pub def: SpellDef,
-    pub explanation: Option<String>,
-    pub translated_name: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LibraryEntry {
-    pub plugin: String,
-    #[serde(flatten)]
-    pub def: TraitDef,
-    /// Plugin explanation resolved for the UI locale.
-    pub explanation: Option<String>,
-    /// Translated name (None when showing originals or no translation exists).
-    pub translated_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -130,7 +128,7 @@ pub struct SkillView {
     pub specialization_required: bool,
     pub specializations: Vec<String>,
     pub page: Option<String>,
-    pub source: Option<String>,
+    pub source: String,
     pub explanation: Option<String>,
     pub default_explanation: Option<String>,
     pub custom_explanation: bool,
@@ -143,6 +141,7 @@ pub struct TechniqueView {
     /// E.g. "Пинок (Драка)".
     pub name: String,
     pub original_name: Option<String>,
+    /// Parent skill sid.
     pub skill: String,
     pub difficulty: String,
     pub modifier: i32,
@@ -153,28 +152,16 @@ pub struct TechniqueView {
     pub max_level: Option<i32>,
     pub explain: Vec<String>,
     pub page: Option<String>,
-    pub source: Option<String>,
+    pub source: String,
     pub explanation: Option<String>,
     pub default_explanation: Option<String>,
     pub custom_explanation: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct SkillLibEntry {
-    pub plugin: String,
-    #[serde(flatten)]
-    pub def: SkillDef,
-    pub explanation: Option<String>,
-    pub translated_name: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
 pub struct TechniqueLibEntry {
-    pub plugin: String,
     #[serde(flatten)]
-    pub def: TechniqueDef,
-    pub explanation: Option<String>,
-    pub translated_name: Option<String>,
+    pub entry: LibEntry<TechniqueDef>,
     /// Parent skill name in the UI language.
     pub skill_name: String,
 }
@@ -204,24 +191,16 @@ pub struct EquipmentView {
     /// False when an enclosing container is not carried.
     pub effectively_carried: bool,
     pub container: bool,
+    /// Short summary: DR, DB, attack modes.
     pub stats: Option<String>,
     pub page: Option<String>,
-    pub source: Option<String>,
+    pub source: String,
     pub explanation: Option<String>,
     pub default_explanation: Option<String>,
     pub custom_explanation: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct EquipmentLibEntry {
-    pub plugin: String,
-    #[serde(flatten)]
-    pub def: EquipmentDef,
-    pub explanation: Option<String>,
-    pub translated_name: Option<String>,
-}
-
-/// One attack row; `skill` is translated, `original_skill` keeps the plugin name.
+/// One attack row; `skill` is translated, `original_skill` keeps the catalog name.
 #[derive(Debug, Clone, Serialize)]
 pub struct AttackView {
     #[serde(flatten)]
@@ -229,33 +208,19 @@ pub struct AttackView {
     pub original_skill: Option<String>,
 }
 
+/// A weapon: an owned item with attack modes, or a natural attack (punch, kick, ...).
 #[derive(Debug, Clone, Serialize)]
 pub struct WeaponView {
     pub index: usize,
     pub id: String,
     pub name: String,
     pub original_name: Option<String>,
+    /// Item sid (None for natural attacks).
     pub equipment: Option<String>,
     pub available: bool,
     pub ready: bool,
     pub attacks: Vec<AttackView>,
-    pub page: Option<String>,
-    pub source: Option<String>,
     pub explanation: Option<String>,
-    pub default_explanation: Option<String>,
-    pub custom_explanation: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct WeaponLibEntry {
-    pub plugin: String,
-    #[serde(flatten)]
-    pub def: WeaponDef,
-    pub explanation: Option<String>,
-    pub translated_name: Option<String>,
-    /// Linked equipment name in the UI language.
-    pub equipment_name: Option<String>,
-    pub skill_name: String,
 }
 
 /// Where library data came from (shown in the UI; helps spot stale data).
@@ -268,6 +233,7 @@ pub struct PluginStatus {
     /// Skills + techniques.
     pub skills: usize,
     pub equipment: usize,
+    /// Natural attacks.
     pub weapons: usize,
     pub spells: usize,
     pub modifiers: usize,
@@ -340,7 +306,7 @@ pub struct LedgerInput {
 }
 
 /// Library tag of user-made definitions.
-pub const CUSTOM: &str = "custom";
+pub const CUSTOM: &str = CUSTOM_PACK;
 
 /// Current HP/FP at the table (session state, not build points).
 #[derive(Debug, Clone, Serialize)]
@@ -369,14 +335,8 @@ pub const HISTORY_LIMIT: usize = 200;
 #[derive(Debug)]
 pub struct AppState {
     pub character: Character,
-    pub library: Vec<LibraryEntry>,
-    /// (plugin id, definition)
-    pub skill_library: Vec<(String, SkillDef)>,
-    pub technique_library: Vec<(String, TechniqueDef)>,
-    pub equipment_library: Vec<(String, EquipmentDef)>,
-    pub weapon_library: Vec<(String, WeaponDef)>,
-    pub spell_library: Vec<(String, SpellDef)>,
-    pub modifier_library: Vec<(String, ModifierDef)>,
+    /// Catalog (all packs) plus the character's own definitions under pack `custom`.
+    pub lib: Library,
     pub path: Option<PathBuf>,
     /// Where relative file names are resolved (the user's documents folder in the app).
     /// Never the process CWD: under `tauri dev` that is src-tauri/, and writing there
@@ -385,14 +345,10 @@ pub struct AppState {
     pub plugin_errors: Vec<String>,
     /// Where the catalog comes from (shared SurrealDB; tests use the testkit DB).
     pub source: Option<gurps_library::LibrarySource>,
-    /// Loaded catalog packs, in priority order.
-    pub plugin_ids: Vec<String>,
-    /// UI locale used to resolve localized plugin text (default "ru").
+    /// UI locale used to resolve localized catalog text (default "ru").
     pub locale: String,
-    /// Show plugin originals only (no translations).
+    /// Show catalog originals only (no translations).
     pub original_only: bool,
-    /// Catalog translations (non-`en`), `lang -> kind-id`.
-    pub catalog: gurps_library::Translations,
     /// Undo stack: (action label, character before the action); newest last.
     pub undo_stack: std::collections::VecDeque<(String, Character)>,
     /// Redo stack: (action label, character after the action).
@@ -410,27 +366,54 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             character: Character::default(),
-            library: Vec::new(),
-            skill_library: Vec::new(),
-            technique_library: Vec::new(),
-            equipment_library: Vec::new(),
-            weapon_library: Vec::new(),
-            spell_library: Vec::new(),
-            modifier_library: Vec::new(),
+            lib: Library::default(),
             path: None,
             save_dir: None,
             plugin_errors: Vec::new(),
             source: None,
-            plugin_ids: Vec::new(),
             locale: DEFAULT_LOCALE.into(),
             original_only: false,
-            catalog: Default::default(),
             undo_stack: Default::default(),
             redo_stack: Vec::new(),
             saved: Character::default(),
             rng: SplitMix::from_time(),
             engine: None,
         }
+    }
+}
+
+fn walk_mut<'a>(list: &'a mut [Item], path: &[usize]) -> Option<&'a mut Item> {
+    let (first, rest) = path.split_first()?;
+    let it = list.get_mut(*first)?;
+    if rest.is_empty() {
+        Some(it)
+    } else {
+        walk_mut(&mut it.contents, rest)
+    }
+}
+
+/// The list that holds the item at `path`.
+fn parent_list_mut<'a>(list: &'a mut Vec<Item>, path: &[usize]) -> Option<&'a mut Vec<Item>> {
+    match path.split_last()? {
+        (_, []) => Some(list),
+        (_, parent) => walk_mut(list, parent).map(|p| &mut p.contents),
+    }
+}
+
+/// Library entry -> reference for the sheet (own content is copied inline).
+fn src_of<D: Def + Clone>(pack: &str, d: &D) -> Src<D> {
+    if pack == CUSTOM {
+        Src::Inline { inline: d.clone() }
+    } else {
+        Src::catalog(pack, d.sid())
+    }
+}
+
+fn signed(m: i64) -> String {
+    if m >= 0 {
+        format!("+{m}")
+    } else {
+        m.to_string()
     }
 }
 
@@ -441,23 +424,14 @@ impl AppState {
             ..Self::default()
         };
         s.reload_plugins();
-        s.character.migrate();
         s.saved = s.character.clone();
         s
     }
 
     /// (Re)reads the catalog from `source`; nothing is cached between runs.
     pub fn reload_plugins(&mut self) {
-        self.library.clear();
-        self.skill_library.clear();
-        self.technique_library.clear();
-        self.equipment_library.clear();
-        self.weapon_library.clear();
-        self.spell_library.clear();
-        self.modifier_library.clear();
-        self.catalog = Default::default();
+        self.lib = Library::default();
         self.plugin_errors.clear();
-        self.plugin_ids.clear();
         let Some(src) = self.source.clone() else {
             self.plugin_errors
                 .push("no catalog source configured".into());
@@ -473,32 +447,13 @@ impl AppState {
                     }
                 }
             }
-            #[allow(unreachable_patterns)]
-            _ => None,
         };
-        match gurps_library::Library::load(&src) {
+        match Library::load(&src) {
             Ok(lib) => {
                 for w in &lib.warnings {
                     eprintln!("gurps-sheet: catalog: {w}");
                 }
-                self.plugin_ids = lib.packs;
-                self.catalog = lib.translations;
-                self.skill_library = lib.skills;
-                self.technique_library = lib.techniques;
-                self.equipment_library = lib.equipment;
-                self.weapon_library = lib.weapons;
-                self.spell_library = lib.spells;
-                self.modifier_library = lib.modifiers;
-                self.library = lib
-                    .traits
-                    .into_iter()
-                    .map(|(plugin, def)| LibraryEntry {
-                        plugin,
-                        def,
-                        explanation: None,
-                        translated_name: None,
-                    })
-                    .collect();
+                self.lib = lib;
             }
             Err(e) => self.plugin_errors.push(e),
         }
@@ -506,16 +461,17 @@ impl AppState {
     }
 
     pub fn plugin_status(&self) -> PluginStatus {
+        let n = |c: usize| c;
         PluginStatus {
             dir: self.source.as_ref().map(|s| s.describe()),
-            plugins: self.plugin_ids.clone(),
+            plugins: self.lib.packs.clone(),
             errors: self.plugin_errors.clone(),
-            traits: self.library.len(),
-            skills: self.skill_library.len() + self.technique_library.len(),
-            equipment: self.equipment_library.len(),
-            weapons: self.weapon_library.len(),
-            spells: self.spell_library.len(),
-            modifiers: self.modifier_library.len(),
+            traits: n(effective(&self.lib.traits).len()),
+            skills: effective(&self.lib.skills).len() + effective(&self.lib.techniques).len(),
+            equipment: effective(&self.lib.items).len(),
+            weapons: self.lib.natural.len(),
+            spells: effective(&self.lib.spells).len(),
+            modifiers: effective(&self.lib.modifiers).len(),
         }
     }
 
@@ -529,7 +485,7 @@ impl AppState {
 
     fn sheet_of(&self, c: &Result<Calc, String>) -> Sheet {
         match c {
-            Ok(c) => gurps_library::sheet::build(&self.character, c, &|k, id| {
+            Ok(c) => gurps_library::sheet::build(&self.character, &self.lib, c, &|k, id| {
                 self.translated_kind(k, id).map(str::to_owned)
             }),
             Err(_) => Sheet {
@@ -542,7 +498,7 @@ impl AppState {
     pub fn view(&self) -> SheetView {
         let calc = self.calc();
         let sheet = self.sheet_of(&calc);
-        let issues = self.issues(&calc, &sheet);
+        let issues = gurps_library::sheet::issues(&self.character, &self.lib, &calc, &sheet);
         SheetView {
             skills: self.skill_views(&sheet),
             techniques: self.technique_views(&sheet),
@@ -555,43 +511,8 @@ impl AppState {
             history: self.history_view(),
             equipment: self.equipment_views(),
             weapons: self.weapon_views(&sheet),
+            traits: self.trait_views(),
             sheet,
-            traits: self
-                .character
-                .traits
-                .iter()
-                .enumerate()
-                .map(|(index, t)| TraitView {
-                    index,
-                    id: t.def.id.clone(),
-                    name: self
-                        .translated(&t.def.id)
-                        .map(|n| {
-                            if t.def.is_leveled() {
-                                format!("{n} {}", t.levels)
-                            } else {
-                                n.to_owned()
-                            }
-                        })
-                        .unwrap_or_else(|| t.display_name()),
-                    original_name: self.translated(&t.def.id).map(|_| t.display_name()),
-                    category: t.def.category,
-                    levels: t.levels,
-                    leveled: t.def.is_leveled(),
-                    min_level: t.def.min_level(),
-                    cost: t.cost_with(self.character.rules.negative_rounding),
-                    base_cost: t.base_cost(),
-                    modifier_percent: t.modifier_percent(),
-                    modifiers: self.modifier_views(t),
-                    cost_explain: trait_cost_explain(t, self.character.rules.negative_rounding),
-                    page: t.def.page.clone(),
-                    source: t.source.clone(),
-                    explanation: gurps_core::non_blank(t.explanation.clone())
-                        .or_else(|| self.plugin_explanation(t)),
-                    default_explanation: self.plugin_explanation(t),
-                    custom_explanation: t.has_custom_explanation(),
-                })
-                .collect(),
             issues,
             path: self.path.as_ref().map(|p| p.display().to_string()),
             budget: self.character.available_points(),
@@ -600,21 +521,12 @@ impl AppState {
 
     pub fn new_character(&mut self, name: Option<String>) -> SheetView {
         self.character = Character::new(name.unwrap_or_else(|| "New character".into()));
-        // everyone can punch and kick
-        for (plugin, d) in &self.weapon_library {
-            if d.equipment.is_none() {
-                self.character
-                    .weapons
-                    .push(Self::weapon_snapshot(plugin, d));
-            }
-        }
         self.path = None;
         self.reset_history();
         self.view()
     }
 
     fn reset_history(&mut self) {
-        self.character.migrate();
         self.sync_custom();
         self.undo_stack.clear();
         self.redo_stack.clear();
@@ -653,7 +565,7 @@ impl AppState {
     }
 
     /// Name (UI language) of the first list item that differs between `before` and the
-    /// current character: the added, removed or edited trait/skill/spell/…
+    /// current character: the added, removed or edited trait/skill/spell/item.
     fn changed_item(&self, before: &Character) -> Option<String> {
         fn diff<T: PartialEq>(a: &[T], b: &[T]) -> Option<(bool, usize)> {
             let i = a.iter().zip(b).position(|(x, y)| x != y);
@@ -669,28 +581,31 @@ impl AppState {
         }
         let now = &self.character;
         macro_rules! check {
-            ($field:ident, $kind:expr) => {
+            ($field:ident, $kind:expr, $list:ident) => {
                 if let Some((from_before, i)) = diff(&before.$field, &now.$field) {
                     let item = if from_before {
                         &before.$field[i]
                     } else {
                         &now.$field[i]
                     };
-                    return Some(
-                        self.translated_kind($kind, &item.def.id)
-                            .map(str::to_owned)
-                            .unwrap_or_else(|| item.def.name.clone()),
-                    );
+                    return Some(self.name_of($kind, &self.lib.$list, &item.src));
                 }
             };
         }
-        check!(traits, "trait");
-        check!(skills, "skill");
-        check!(techniques, "technique");
-        check!(spells, "spell");
-        check!(equipment, "equipment");
-        check!(weapons, "weapon");
+        check!(traits, "trait", traits);
+        check!(skills, "skill", skills);
+        check!(techniques, "technique", techniques);
+        check!(spells, "spell", spells);
+        check!(items, "equipment", items);
         None
+    }
+
+    /// Name in the UI language: translation, else definition name, else sid.
+    fn name_of<D: Def>(&self, kind: &str, list: &[(String, D)], src: &Src<D>) -> String {
+        self.translated_kind(kind, src.sid())
+            .map(str::to_owned)
+            .or_else(|| resolve(list, src).map(|d| d.name().to_owned()))
+            .unwrap_or_else(|| src.sid().to_owned())
     }
 
     pub fn undo(&mut self) -> Result<SheetView, String> {
@@ -709,10 +624,6 @@ impl AppState {
         Ok(self.view())
     }
 
-    fn issues(&self, calc: &Result<Calc, String>, sheet: &Sheet) -> Vec<Issue> {
-        gurps_library::sheet::issues(&self.character, calc, sheet)
-    }
-
     fn pool_view(&self, sheet: &Sheet) -> PoolView {
         let ch = &self.character;
         let t = ch.ledger_totals();
@@ -726,24 +637,19 @@ impl AppState {
             available: t.available,
             character_cost: b.total,
             unspent: t.available - b.total,
-            disadvantage_limit: ch.disadvantage_limit(),
+            disadvantage_limit: ch.rules.disadvantage_limit.unwrap_or(t.starting / 2),
             disadvantage_limit_custom: ch.rules.disadvantage_limit.is_some(),
             disadvantages: -b.disadvantages,
             quirks: ch
                 .traits
                 .iter()
-                .filter(|x| x.def.category == TraitCategory::Quirk)
+                .filter(|x| resolve(&self.lib.traits, &x.src).is_some_and(|d| d.kind == "quirk"))
                 .count(),
             quirk_points: b.quirks,
         }
     }
 
     pub fn add_ledger_entry(&mut self, e: LedgerInput) -> Result<SheetView, String> {
-        // Migrate only a legacy (non-zero) budget; an emptied ledger stays empty
-        // instead of growing a 0-point starting entry.
-        if self.character.ledger.is_empty() && self.character.points_budget != 0 {
-            self.character.migrate();
-        }
         let id = self
             .character
             .ledger
@@ -762,12 +668,10 @@ impl AppState {
         }
         .normalized()?;
         self.character.ledger.push(entry);
-        self.character.points_budget = self.character.available_points();
         Ok(self.view())
     }
 
     pub fn update_ledger_entry(&mut self, id: u32, e: LedgerInput) -> Result<SheetView, String> {
-        self.character.migrate();
         let slot = self
             .character
             .ledger
@@ -783,7 +687,6 @@ impl AppState {
             skill: gurps_core::non_blank(e.skill),
         }
         .normalized()?;
-        self.character.migrate();
         Ok(self.view())
     }
 
@@ -793,11 +696,6 @@ impl AppState {
         if self.character.ledger.len() == n {
             return Err("no such ledger entry".into());
         }
-        if self.character.ledger.is_empty() {
-            // Removing everything means "no points", not "back to the legacy budget".
-            self.character.points_budget = 0;
-        }
-        self.character.points_budget = self.character.available_points();
         Ok(self.view())
     }
 
@@ -810,25 +708,18 @@ impl AppState {
         Ok(self.view())
     }
 
-    /// Puts the character's custom definitions into the libraries (tag "custom");
-    /// they override plugin entries with the same id.
+    /// Puts the character's own definitions into the libraries (pack `custom`, last, so
+    /// they win over catalog entries with the same sid).
     pub fn sync_custom(&mut self) {
         let c = self.character.custom.clone();
-        self.library
-            .retain(|e| e.plugin != CUSTOM && !c.traits.iter().any(|d| d.id == e.def.id));
-        self.library.extend(c.traits.iter().map(|d| LibraryEntry {
-            plugin: CUSTOM.into(),
-            def: d.clone(),
-            explanation: None,
-            translated_name: None,
-        }));
-        fn merge<D: Clone>(lib: &mut Vec<(String, D)>, custom: &[D], id: impl Fn(&D) -> &str) {
-            lib.retain(|(p, d)| p != CUSTOM && !custom.iter().any(|c| id(c) == id(d)));
+        fn merge<D: Clone>(lib: &mut Vec<(String, D)>, custom: &[D]) {
+            lib.retain(|(p, _)| p != CUSTOM);
             lib.extend(custom.iter().map(|d| (CUSTOM.to_string(), d.clone())));
         }
-        merge(&mut self.skill_library, &c.skills, |d| &d.id);
-        merge(&mut self.spell_library, &c.spells, |d| &d.id);
-        merge(&mut self.equipment_library, &c.equipment, |d| &d.id);
+        merge(&mut self.lib.traits, &c.traits);
+        merge(&mut self.lib.skills, &c.skills);
+        merge(&mut self.lib.spells, &c.spells);
+        merge(&mut self.lib.items, &c.items);
     }
 
     fn new_custom_id(&self, kind: &str) -> String {
@@ -836,36 +727,46 @@ impl AppState {
         let used: Vec<&str> = c
             .traits
             .iter()
-            .map(|d| d.id.as_str())
-            .chain(c.skills.iter().map(|d| d.id.as_str()))
-            .chain(c.spells.iter().map(|d| d.id.as_str()))
-            .chain(c.equipment.iter().map(|d| d.id.as_str()))
+            .map(|d| d.sid.as_str())
+            .chain(c.skills.iter().map(|d| d.sid.as_str()))
+            .chain(c.spells.iter().map(|d| d.sid.as_str()))
+            .chain(c.items.iter().map(|d| d.sid.as_str()))
             .collect();
         (1..)
-            .map(|n| format!("custom-{kind}-{n}"))
+            .map(|n| format!("custom_{kind}_{n}"))
             .find(|id| !used.contains(&id.as_str()))
             .unwrap()
     }
 
-    /// Adds or replaces (by id) a user-made definition. `kind`: trait | skill | spell | equipment.
-    /// An empty id creates a new entry. Items already on the sheet get the new definition.
+    /// Adds or replaces (by sid) a user-made definition. `kind`: trait | skill | spell | equipment.
+    /// An empty sid creates a new entry. Inline copies on the sheet get the new definition.
     pub fn save_custom(&mut self, kind: &str, def: serde_json::Value) -> Result<SheetView, String> {
         fn parse<D: serde::de::DeserializeOwned>(v: serde_json::Value) -> Result<D, String> {
             serde_json::from_value(v).map_err(|e| format!("invalid definition: {e}"))
         }
-        fn upsert<D: Clone>(list: &mut Vec<D>, d: D, id: impl Fn(&D) -> &str) {
-            match list.iter().position(|x| id(x) == id(&d)) {
+        fn upsert<D: Def + Clone>(list: &mut Vec<D>, d: D) {
+            match list.iter().position(|x| x.sid() == d.sid()) {
                 Some(i) => list[i] = d,
                 None => list.push(d),
             }
         }
+        fn refresh<D: Def + Clone>(src: &mut Src<D>, d: &D) {
+            if let Src::Inline { inline } = src {
+                if inline.sid() == d.sid() {
+                    *inline = d.clone();
+                }
+            }
+        }
+        if !["trait", "skill", "spell", "equipment"].contains(&kind) {
+            return Err(format!("unknown custom kind '{kind}'"));
+        }
         let mut v = def;
         let blank_id = v
-            .get("id")
+            .get("sid")
             .and_then(|x| x.as_str())
             .is_none_or(|x| x.trim().is_empty());
         if blank_id {
-            v["id"] = self.new_custom_id(kind).into();
+            v["sid"] = self.new_custom_id(kind).into();
         }
         let name_ok = v
             .get("name")
@@ -878,67 +779,48 @@ impl AppState {
         match kind {
             "trait" => {
                 let d: TraitDef = parse(v)?;
-                for t in ch.traits.iter_mut().filter(|t| t.def.id == d.id) {
-                    t.def = TraitDef {
-                        description: None,
-                        ..d.clone()
-                    };
-                }
-                upsert(&mut ch.custom.traits, d, |d| &d.id);
+                ch.traits.iter_mut().for_each(|t| refresh(&mut t.src, &d));
+                upsert(&mut ch.custom.traits, d);
             }
             "skill" => {
                 let d: SkillDef = parse(v)?;
-                for t in ch.skills.iter_mut().filter(|t| t.def.id == d.id) {
-                    t.def = SkillDef {
-                        description: None,
-                        ..d.clone()
-                    };
-                }
-                upsert(&mut ch.custom.skills, d, |d| &d.id);
+                ch.skills.iter_mut().for_each(|t| refresh(&mut t.src, &d));
+                upsert(&mut ch.custom.skills, d);
             }
             "spell" => {
                 let d: SpellDef = parse(v)?;
-                for t in ch.spells.iter_mut().filter(|t| t.def.id == d.id) {
-                    t.def = SpellDef {
-                        description: None,
-                        ..d.clone()
-                    };
+                ch.spells.iter_mut().for_each(|t| refresh(&mut t.src, &d));
+                upsert(&mut ch.custom.spells, d);
+            }
+            _ => {
+                let d: ItemDef = parse(v)?;
+                fn all(list: &mut [Item], d: &ItemDef) {
+                    for i in list {
+                        refresh(&mut i.src, d);
+                        all(&mut i.contents, d);
+                    }
                 }
-                upsert(&mut ch.custom.spells, d, |d| &d.id);
+                all(&mut ch.items, &d);
+                upsert(&mut ch.custom.items, d);
             }
-            "equipment" => {
-                let d: EquipmentDef = parse(v)?;
-                upsert(&mut ch.custom.equipment, d, |d| &d.id);
-            }
-            _ => return Err(format!("unknown custom kind '{kind}'")),
         }
         self.sync_custom();
         Ok(self.view())
     }
 
+    /// Removes a definition from «Своё» (inline copies already on the sheet stay).
     pub fn remove_custom(&mut self, kind: &str, id: &str) -> Result<SheetView, String> {
+        fn drop<D: Def>(list: &mut Vec<D>, id: &str) -> usize {
+            let n = list.len();
+            list.retain(|d| d.sid() != id);
+            n - list.len()
+        }
         let c = &mut self.character.custom;
         let n = match kind {
-            "trait" => {
-                let n = c.traits.len();
-                c.traits.retain(|d| d.id != id);
-                n - c.traits.len()
-            }
-            "skill" => {
-                let n = c.skills.len();
-                c.skills.retain(|d| d.id != id);
-                n - c.skills.len()
-            }
-            "spell" => {
-                let n = c.spells.len();
-                c.spells.retain(|d| d.id != id);
-                n - c.spells.len()
-            }
-            "equipment" => {
-                let n = c.equipment.len();
-                c.equipment.retain(|d| d.id != id);
-                n - c.equipment.len()
-            }
+            "trait" => drop(&mut c.traits, id),
+            "skill" => drop(&mut c.skills, id),
+            "spell" => drop(&mut c.spells, id),
+            "equipment" => drop(&mut c.items, id),
             _ => return Err(format!("unknown custom kind '{kind}'")),
         };
         if n == 0 {
@@ -960,8 +842,8 @@ impl AppState {
     }
 
     fn session_view(&self, sheet: &Sheet) -> SessionView {
-        let max = |st: Stat| sheet.row(st).map(|r| r.total.floor() as i32).unwrap_or(10);
-        let (hp_max, fp_max) = (max(Stat::HP), max(Stat::FP));
+        let max = |k: &str| sheet.row(k).map(|r| r.total.floor() as i32).unwrap_or(10);
+        let (hp_max, fp_max) = (max("HP"), max("FP"));
         let ss = &self.character.session;
         SessionView {
             hp: ss.hp.unwrap_or(hp_max),
@@ -1008,9 +890,7 @@ impl AppState {
         self.character = ch;
         self.path = Some(path);
         self.reset_history();
-        let v = self.view();
-        self.saved = self.character.clone();
-        Ok(v)
+        Ok(self.view())
     }
 
     pub fn save(&mut self, path: Option<String>) -> Result<String, String> {
@@ -1028,11 +908,13 @@ impl AppState {
         Ok(p.display().to_string())
     }
 
+    /// Buys levels of an attribute by sheet key (`ST`, `BasicSpeed`, ...) or DB code (`Speed`).
     pub fn set_attribute(&mut self, key: &str, level: i32) -> Result<SheetView, String> {
-        let stat = Stat::parse(key).ok_or_else(|| format!("unknown attribute {key}"))?;
-        if !self.character.attributes.set_purchased(stat, level) {
+        let code = attr_code(key);
+        if !ATTRIBUTES.contains(&code) {
             return Err(format!("{key} cannot be bought directly"));
         }
+        self.character.set_attribute(code, level);
         Ok(self.view())
     }
 
@@ -1061,29 +943,29 @@ impl AppState {
         self.view()
     }
 
-    pub fn add_trait(&mut self, id: &str, levels: Option<u32>) -> Result<SheetView, String> {
-        let entry = self
-            .library
-            .iter()
-            .find(|e| e.def.id == id)
-            .ok_or_else(|| format!("trait {id} not in library"))?;
-        let lv = levels.unwrap_or(if entry.def.is_leveled() { 1 } else { 0 });
-        // Plugin text stays in the library; the file stores only the user's override.
-        let mut def = entry.def.clone();
-        def.description = None;
-        let mut t = Trait::new(def, lv);
-        t.source = Some(entry.plugin.clone());
+    pub fn add_trait(&mut self, id: &str, levels: Option<i32>) -> Result<SheetView, String> {
+        let (pack, d) =
+            find(&self.lib.traits, id).ok_or_else(|| format!("trait {id} not in library"))?;
+        let level = d
+            .is_leveled()
+            .then(|| levels.unwrap_or((d.min_level() as i32).max(1)));
+        let t = Trait {
+            src: src_of(pack, d),
+            level,
+            modifiers: Vec::new(),
+            explanation: None,
+        };
         self.character.traits.push(t);
         Ok(self.view())
     }
 
-    pub fn set_trait_levels(&mut self, index: usize, levels: u32) -> Result<SheetView, String> {
+    pub fn set_trait_levels(&mut self, index: usize, levels: i32) -> Result<SheetView, String> {
         let t = self
             .character
             .traits
             .get_mut(index)
             .ok_or("no such trait")?;
-        t.levels = levels;
+        t.level = Some(levels);
         Ok(self.view())
     }
 
@@ -1095,7 +977,7 @@ impl AppState {
         Ok(self.view())
     }
 
-    /// Locale used for the plugin's own (TOML) text.
+    /// Locale used for the catalog's own text.
     fn data_locale(&self) -> &str {
         if self.original_only {
             "en"
@@ -1104,73 +986,164 @@ impl AppState {
         }
     }
 
-    /// Translated trait name for the current language, unless showing originals.
-    fn translated(&self, id: &str) -> Option<&str> {
-        self.translated_kind("trait", id)
-    }
-
     fn translated_kind(&self, kind: &str, id: &str) -> Option<&str> {
         if self.original_only {
             return None;
         }
-        self.catalog.name(&self.locale, kind, id)
+        self.lib.translations.name(&self.locale, kind, id)
     }
 
-    /// Fluent description, else the plugin's own text.
+    /// Translated description, else the definition's own text.
     fn text_for(&self, kind: &str, id: &str, own: Option<&LocalizedText>) -> Option<String> {
         (!self.original_only)
-            .then(|| self.catalog.description(&self.locale, kind, id))
+            .then(|| self.lib.translations.description(&self.locale, kind, id))
             .flatten()
             .or_else(|| own.and_then(|d| d.get(self.data_locale())))
             .map(str::to_owned)
     }
 
-    fn skill_def(&self, id: &str) -> Option<&SkillDef> {
-        self.skill_library
-            .iter()
-            .map(|(_, d)| d)
-            .find(|d| d.id == id)
-    }
-
-    fn technique_def(&self, id: &str) -> Option<&TechniqueDef> {
-        self.technique_library
-            .iter()
-            .map(|(_, d)| d)
-            .find(|d| d.id == id)
+    /// Catalog text of an entry for the UI language.
+    fn default_text<D: Def>(
+        &self,
+        kind: &str,
+        list: &[(String, D)],
+        src: &Src<D>,
+    ) -> Option<String> {
+        self.text_for(
+            kind,
+            src.sid(),
+            resolve(list, src).and_then(|d| d.description()),
+        )
     }
 
     /// Skill name in the UI language (no specialization).
     fn skill_name(&self, id: &str) -> String {
         self.translated_kind("skill", id)
             .map(str::to_owned)
-            .or_else(|| self.skill_def(id).map(|d| d.name.clone()))
+            .or_else(|| find(&self.lib.skills, id).map(|(_, d)| d.name.clone()))
             .or_else(|| {
                 self.character
                     .skills
                     .iter()
-                    .find(|s| s.def.id == id)
-                    .map(|s| s.def.name.clone())
+                    .find(|s| s.src.sid() == id)
+                    .and_then(|s| resolve(&self.lib.skills, &s.src))
+                    .map(|d| d.name.clone())
             })
             .unwrap_or_else(|| id.to_owned())
     }
 
-    fn default_text(&self, d: &SkillDefault) -> String {
-        let sg = |m: i32| {
-            if m >= 0 {
-                format!("+{m}")
-            } else {
-                m.to_string()
-            }
-        };
-        match d {
-            SkillDefault::Attribute {
-                attribute,
-                modifier,
-            } => format!("{}{}", attribute.key(), sg(*modifier)),
-            SkillDefault::Skill { skill, modifier } => {
-                format!("{}{}", self.skill_name(skill), sg(*modifier))
-            }
+    fn default_line(&self, d: &SkillDefault) -> String {
+        match (&d.attribute, &d.skill) {
+            (Some(a), _) => format!("{a}{}", signed(d.modifier)),
+            (None, Some(s)) => format!("{}{}", self.skill_name(s), signed(d.modifier)),
+            _ => signed(d.modifier),
         }
+    }
+
+    fn lib_entry<D: Def + Clone>(&self, kind: &str, pack: &str, d: &D) -> LibEntry<D> {
+        LibEntry {
+            plugin: pack.to_owned(),
+            id: d.sid().to_owned(),
+            explanation: self.text_for(kind, d.sid(), d.description()),
+            translated_name: self.translated_kind(kind, d.sid()).map(str::to_owned),
+            def: d.clone(),
+        }
+    }
+
+    fn lib_view<D: Def + Clone>(&self, kind: &str, list: &[(String, D)]) -> Vec<LibEntry<D>> {
+        effective(list)
+            .iter()
+            .map(|(p, d)| self.lib_entry(kind, p, d))
+            .collect()
+    }
+
+    fn trait_views(&self) -> Vec<TraitView> {
+        let r = self.character.rules.negative_rounding;
+        self.character
+            .traits
+            .iter()
+            .enumerate()
+            .map(|(index, t)| {
+                let d = resolve(&self.lib.traits, &t.src);
+                let sid = t.src.sid();
+                let original = d.map_or_else(|| sid.to_owned(), |d| trait_name(d, t.level));
+                let tr = self.translated_kind("trait", sid).map(|n| match t.level {
+                    Some(l) if d.is_some_and(|d| d.is_leveled()) => format!("{n} {l}"),
+                    _ => n.to_owned(),
+                });
+                let (base, pct, cost, explain) = self.trait_cost(t, r);
+                let default_explanation = self.default_text("trait", &self.lib.traits, &t.src);
+                TraitView {
+                    index,
+                    id: sid.to_owned(),
+                    original_name: tr.as_ref().map(|_| original.clone()),
+                    name: tr.unwrap_or(original),
+                    kind: d.map(|d| d.kind.clone()).unwrap_or_default(),
+                    level: t.level.unwrap_or(0),
+                    leveled: d.is_some_and(|d| d.is_leveled()),
+                    min_level: d.map_or(0, |d| d.min_level()),
+                    max_level: d.and_then(|d| d.cost.max_level),
+                    cost,
+                    base_cost: base,
+                    modifier_percent: pct,
+                    modifiers: self.modifier_views(t),
+                    cost_explain: explain,
+                    page: d.and_then(|d| d.page.clone()),
+                    source: t.src.pack().to_owned(),
+                    explanation: gurps_core::non_blank(t.explanation.clone())
+                        .or_else(|| default_explanation.clone()),
+                    default_explanation,
+                    custom_explanation: !gurps_core::is_blank(&t.explanation),
+                }
+            })
+            .collect()
+    }
+
+    /// (base cost, modifier %, final cost, explanation lines) of a trait.
+    fn trait_cost(
+        &self,
+        t: &Trait,
+        r: gurps_core::NegativeRounding,
+    ) -> (i32, i32, i32, Vec<String>) {
+        use gurps_core::modifier::MIN_TOTAL_PERCENT;
+        let base = resolve(&self.lib.traits, &t.src)
+            .map_or(0, |d| d.base_cost(t.level.unwrap_or(0))) as i32;
+        let mods: Vec<(i32, String)> = t
+            .modifiers
+            .iter()
+            .map(|m| {
+                let d = resolve(&self.lib.modifiers, &m.src);
+                (
+                    d.map_or(0, |d| d.percent()),
+                    d.map_or_else(|| m.src.sid().to_owned(), |d| d.name.clone()),
+                )
+            })
+            .collect();
+        if mods.is_empty() {
+            return (base, 0, base, Vec::new());
+        }
+        let total: i32 = mods.iter().map(|(p, _)| p).sum();
+        let cost = modified_cost_with(base, total, r);
+        let mut out = vec![format!("база {base}")];
+        for (p, n) in &mods {
+            out.push(format!("{} {n}", pct(*p)));
+        }
+        if total < MIN_TOTAL_PERCENT {
+            out.push(format!(
+                "итого {}, не ниже {}",
+                pct(total),
+                pct(MIN_TOTAL_PERCENT)
+            ));
+        } else {
+            out.push(format!("итого {}", pct(total)));
+        }
+        let eff = 100 + total.max(MIN_TOTAL_PERCENT);
+        let exact = base as f64 * eff as f64 / 100.0;
+        out.push(format!(
+            "{base} × {eff}% = {} -> {cost}",
+            gurps_library::sheet::fmt_num(exact)
+        ));
+        (base, total, cost, out)
     }
 
     fn skill_views(&self, sheet: &Sheet) -> Vec<SkillView> {
@@ -1179,45 +1152,40 @@ impl AppState {
             .iter()
             .zip(&sheet.skills)
             .map(|(s, r)| {
-                let tr = self.translated_kind("skill", &s.def.id).map(|n| {
-                    match gurps_core::non_blank(s.specialization.clone()) {
-                        Some(sp) => format!("{n} ({})", sp.trim()),
-                        None => n.to_owned(),
-                    }
-                });
-                let own = self
-                    .skill_def(&s.def.id)
-                    .and_then(|d| d.description.as_ref())
-                    .or(s.def.description.as_ref());
-                let default_explanation = self.text_for("skill", &s.def.id, own);
+                let d = resolve(&self.lib.skills, &s.src);
+                let sid = s.src.sid();
+                let with_spec = |n: &str| match gurps_core::non_blank(s.spec.clone()) {
+                    Some(sp) => format!("{n} ({})", sp.trim()),
+                    None => n.to_owned(),
+                };
+                let original = with_spec(d.map_or(sid, |d| d.name.as_str()));
+                let tr = self.translated_kind("skill", sid).map(with_spec);
+                let default_explanation = self.default_text("skill", &self.lib.skills, &s.src);
                 SkillView {
                     index: r.index,
-                    id: s.def.id.clone(),
-                    original_name: tr.as_ref().map(|_| s.display_name()),
-                    name: tr.unwrap_or_else(|| s.display_name()),
-                    attribute: s.def.attribute.key().to_string(),
-                    difficulty: s.def.difficulty.key().to_string(),
+                    id: sid.to_owned(),
+                    original_name: tr.as_ref().map(|_| original.clone()),
+                    name: tr.unwrap_or(original),
+                    attribute: d.map(|d| d.attribute.clone()).unwrap_or_default(),
+                    difficulty: d.map(|d| d.difficulty.clone()).unwrap_or_default(),
                     points: s.points,
                     level: r.level,
                     relative: r.relative.clone(),
                     from_default: r.from_default,
                     bonus: 0,
                     explain: r.explain.clone(),
-                    defaults: s
-                        .def
-                        .defaults
-                        .iter()
-                        .map(|d| self.default_text(d))
-                        .collect(),
-                    specialization: s.specialization.clone(),
-                    specialization_required: s.def.specialization_required,
-                    specializations: s.def.specializations.clone(),
-                    page: s.def.page.clone(),
-                    source: s.source.clone(),
+                    defaults: d
+                        .map(|d| d.defaults.iter().map(|x| self.default_line(x)).collect())
+                        .unwrap_or_default(),
+                    specialization: s.spec.clone(),
+                    specialization_required: d.is_some_and(|d| d.spec_required),
+                    specializations: d.map(|d| d.specializations.clone()).unwrap_or_default(),
+                    page: d.and_then(|d| d.page.clone()),
+                    source: s.src.pack().to_owned(),
                     explanation: gurps_core::non_blank(s.explanation.clone())
                         .or_else(|| default_explanation.clone()),
                     default_explanation,
-                    custom_explanation: s.has_custom_explanation(),
+                    custom_explanation: !gurps_core::is_blank(&s.explanation),
                 }
             })
             .collect()
@@ -1229,114 +1197,139 @@ impl AppState {
             .iter()
             .zip(&sheet.techniques)
             .map(|(t, r)| {
+                let d = resolve(&self.lib.techniques, &t.src);
+                let sid = t.src.sid();
+                let parent = d.map(|d| d.parent_skill.clone()).unwrap_or_default();
+                let sk = self.skill_name(&parent);
+                let original = d.map_or_else(|| sid.to_owned(), |d| d.name.clone());
                 let tr = self
-                    .translated_kind("technique", &t.def.id)
-                    .map(|n| format!("{n} ({})", self.skill_name(&t.def.skill)));
-                let own = self
-                    .technique_def(&t.def.id)
-                    .and_then(|d| d.description.as_ref())
-                    .or(t.def.description.as_ref());
-                let default_explanation = self.text_for("technique", &t.def.id, own);
-                let sk = self.skill_name(&t.def.skill);
+                    .translated_kind("technique", sid)
+                    .map(|n| format!("{n} ({sk})"));
+                let max = d.and_then(|d| d.max_mod).unwrap_or(0) as i32;
+                let default_explanation =
+                    self.default_text("technique", &self.lib.techniques, &t.src);
                 TechniqueView {
                     index: r.index,
-                    id: t.def.id.clone(),
-                    original_name: tr.as_ref().map(|_| t.def.name.clone()),
-                    name: tr.unwrap_or_else(|| t.def.name.clone()),
-                    skill: t.def.skill.clone(),
-                    difficulty: t.def.difficulty.key().to_string(),
-                    modifier: t.def.modifier,
-                    max: t.def.max,
+                    id: sid.to_owned(),
+                    original_name: tr.as_ref().map(|_| original.clone()),
+                    name: tr.unwrap_or(original),
+                    skill: parent,
+                    difficulty: d.map(|d| d.difficulty.clone()).unwrap_or_default(),
+                    modifier: d.map_or(0, |d| d.default_mod) as i32,
+                    max,
                     points: t.points,
                     level: r.level,
-                    relative: r.level.zip(r.max_level).map(|(l, cap)| {
-                        let d = l - (cap - t.def.max);
-                        format!(
-                            "{sk}{}",
-                            if d >= 0 {
-                                format!("+{d}")
-                            } else {
-                                d.to_string()
-                            }
-                        )
-                    }),
+                    relative: r
+                        .level
+                        .zip(r.max_level)
+                        .map(|(l, cap)| format!("{sk}{}", signed((l - (cap - max)) as i64))),
                     max_level: r.max_level,
                     explain: r.explain.clone(),
-                    page: t.def.page.clone(),
-                    source: t.source.clone(),
+                    page: d.and_then(|d| d.page.clone()),
+                    source: t.src.pack().to_owned(),
                     explanation: gurps_core::non_blank(t.explanation.clone())
                         .or_else(|| default_explanation.clone()),
                     default_explanation,
-                    custom_explanation: t.has_custom_explanation(),
+                    custom_explanation: !gurps_core::is_blank(&t.explanation),
                 }
             })
             .collect()
     }
 
+    fn item_totals(&self, it: &Item) -> (f64, f64) {
+        let d = resolve(&self.lib.items, &it.src);
+        let q = it.qty as f64;
+        let mut w = d.map_or(0.0, |d| d.weight) * q;
+        let mut c = d.map_or(0.0, |d| d.cost) * q;
+        for x in &it.contents {
+            let (a, b) = self.item_totals(x);
+            w += a;
+            c += b;
+        }
+        (w, c)
+    }
+
+    fn item_stats(d: &ItemDef) -> Option<String> {
+        let mut parts = Vec::new();
+        if let Some(dr) = d.armor.iter().filter_map(|l| l.dr).max() {
+            parts.push(format!("DR {dr}"));
+        }
+        if let Some(s) = &d.shield {
+            parts.push(format!("DB {}", s.db));
+        }
+        for m in &d.attack_modes {
+            let dmg = &m.damage;
+            let base = match (dmg.base.as_deref(), dmg.dice) {
+                (Some(b), _) => b.to_owned(),
+                (None, Some(n)) => format!("{n}d"),
+                _ => String::new(),
+            };
+            let add = if dmg.add == 0 {
+                String::new()
+            } else {
+                signed(dmg.add)
+            };
+            let ty = dmg.kind.clone().unwrap_or_default();
+            parts.push(
+                format!("{} {base}{add} {ty}", m.name.clone().unwrap_or_default())
+                    .trim()
+                    .to_owned(),
+            );
+        }
+        (!parts.is_empty()).then(|| parts.join("; "))
+    }
+
     fn equipment_views(&self) -> Vec<EquipmentView> {
         let mut out = Vec::new();
-        self.walk_equipment(&self.character.equipment, &mut Vec::new(), true, &mut out);
+        self.walk_items(&self.character.items, &mut Vec::new(), true, &mut out);
         out
     }
 
-    fn walk_equipment(
+    fn walk_items(
         &self,
-        list: &[Equipment],
+        list: &[Item],
         path: &mut Vec<usize>,
         parent_carried: bool,
         out: &mut Vec<EquipmentView>,
     ) {
         for (i, e) in list.iter().enumerate() {
             path.push(i);
-            let tr = self
-                .translated_kind("equipment", &e.def.id)
-                .map(str::to_owned);
-            let own = self
-                .equipment_library
-                .iter()
-                .find(|(_, d)| !e.def.id.is_empty() && d.id == e.def.id)
-                .and_then(|(_, d)| d.description.as_ref())
-                .or(e.def.description.as_ref());
-            let carried = parent_carried && e.carried;
+            let d = resolve(&self.lib.items, &e.src);
+            let sid = e.src.sid();
+            let original = d.map_or_else(|| sid.to_owned(), |d| d.name.clone());
+            let tr = self.translated_kind("equipment", sid).map(str::to_owned);
+            let carried = parent_carried && e.equipped;
+            let (tw, tc) = self.item_totals(e);
+            let default_explanation = self.default_text("equipment", &self.lib.items, &e.src);
             out.push(EquipmentView {
                 path: path.clone(),
                 depth: path.len() - 1,
-                id: e.def.id.clone(),
-                original_name: tr.as_ref().map(|_| e.def.name.clone()),
-                name: tr.unwrap_or_else(|| e.def.name.clone()),
-                quantity: e.quantity,
-                weight: e.def.weight,
-                cost: e.def.cost,
-                total_weight: e.total_weight(),
-                total_cost: e.total_cost(),
-                carried: e.carried,
+                id: sid.to_owned(),
+                original_name: tr.as_ref().map(|_| original.clone()),
+                name: tr.unwrap_or(original),
+                quantity: e.qty,
+                weight: d.map_or(0.0, |d| d.weight),
+                cost: d.map_or(0.0, |d| d.cost),
+                total_weight: tw,
+                total_cost: tc,
+                carried: e.equipped,
                 effectively_carried: carried,
-                container: e.def.container,
-                stats: e.def.stats.clone(),
-                page: e.def.page.clone(),
-                source: e.source.clone(),
+                container: d.is_some_and(|d| d.container),
+                stats: d.and_then(Self::item_stats),
+                page: d.and_then(|d| d.page.clone()),
+                source: e.src.pack().to_owned(),
                 explanation: gurps_core::non_blank(e.explanation.clone())
-                    .or_else(|| self.text_for("equipment", &e.def.id, own)),
-                default_explanation: self.text_for("equipment", &e.def.id, own),
+                    .or_else(|| default_explanation.clone()),
+                default_explanation,
                 custom_explanation: !gurps_core::is_blank(&e.explanation),
             });
-            self.walk_equipment(&e.contents, path, carried, out);
+            self.walk_items(&e.contents, path, carried, out);
             path.pop();
         }
     }
 
     pub fn equipment_library_view(&self) -> Vec<EquipmentLibEntry> {
-        self.equipment_library
-            .iter()
-            .map(|(plugin, def)| EquipmentLibEntry {
-                plugin: plugin.clone(),
-                explanation: self.text_for("equipment", &def.id, def.description.as_ref()),
-                translated_name: self
-                    .translated_kind("equipment", &def.id)
-                    .map(str::to_owned),
-                def: def.clone(),
-            })
-            .collect()
+        self.lib_view("equipment", &self.lib.items)
     }
 
     /// Adds a library item at the top level or into the container at `parent`.
@@ -1346,40 +1339,26 @@ impl AppState {
         quantity: Option<u32>,
         parent: Option<Vec<usize>>,
     ) -> Result<SheetView, String> {
-        let (plugin, def) = self
-            .equipment_library
-            .iter()
-            .find(|(_, d)| d.id == id)
-            .ok_or_else(|| format!("equipment {id} not in library"))?;
-        let mut def = def.clone();
-        def.description = None;
-        let mut e = Equipment::new(def, quantity.unwrap_or(1).max(1));
-        e.source = Some(plugin.clone());
-        let linked: Vec<Weapon> = self
-            .weapon_library
-            .iter()
-            .filter(|(_, w)| w.equipment.as_deref() == Some(id))
-            .filter(|(_, w)| !self.character.weapons.iter().any(|x| x.def.id == w.id))
-            .map(|(p, w)| Self::weapon_snapshot(p, w))
-            .collect();
+        let (pack, d) =
+            find(&self.lib.items, id).ok_or_else(|| format!("equipment {id} not in library"))?;
+        let mut e = Item::new(src_of(pack, d));
+        e.qty = quantity.unwrap_or(1).max(1);
         match parent.filter(|p| !p.is_empty()) {
-            None => self.character.equipment.push(e),
+            None => self.character.items.push(e),
             Some(p) => {
-                let c = Equipment::at_path_mut(&mut self.character.equipment, &p)
-                    .ok_or("no such container")?;
-                if !c.def.container {
-                    return Err(format!("{} is not a container", c.def.name));
+                let c = walk_mut(&mut self.character.items, &p).ok_or("no such container")?;
+                let is_container = resolve(&self.lib.items, &c.src).is_some_and(|d| d.container);
+                if !is_container {
+                    return Err(format!("{} is not a container", c.src.sid()));
                 }
                 c.contents.push(e);
             }
         }
-        self.character.weapons.extend(linked);
         Ok(self.view())
     }
 
-    fn equipment_mut(&mut self, path: &[usize]) -> Result<&mut Equipment, String> {
-        Equipment::at_path_mut(&mut self.character.equipment, path)
-            .ok_or_else(|| "no such item".into())
+    fn item_mut(&mut self, path: &[usize]) -> Result<&mut Item, String> {
+        walk_mut(&mut self.character.items, path).ok_or_else(|| "no such item".into())
     }
 
     pub fn set_equipment_quantity(
@@ -1387,7 +1366,7 @@ impl AppState {
         path: &[usize],
         quantity: u32,
     ) -> Result<SheetView, String> {
-        self.equipment_mut(path)?.quantity = quantity;
+        self.item_mut(path)?.qty = quantity.max(1);
         Ok(self.view())
     }
 
@@ -1396,7 +1375,7 @@ impl AppState {
         path: &[usize],
         carried: bool,
     ) -> Result<SheetView, String> {
-        self.equipment_mut(path)?.carried = carried;
+        self.item_mut(path)?.equipped = carried;
         Ok(self.view())
     }
 
@@ -1405,54 +1384,47 @@ impl AppState {
         path: &[usize],
         text: Option<String>,
     ) -> Result<SheetView, String> {
-        self.equipment_mut(path)?.explanation = gurps_core::non_blank(text);
+        self.item_mut(path)?.explanation = gurps_core::non_blank(text);
         Ok(self.view())
     }
 
     pub fn remove_equipment(&mut self, path: &[usize]) -> Result<SheetView, String> {
         let i = *path.last().ok_or("empty path")?;
-        let list = Equipment::parent_list_mut(&mut self.character.equipment, path)
+        let list = parent_list_mut(&mut self.character.items, path)
             .filter(|l| i < l.len())
             .ok_or("no such item")?;
         list.remove(i);
-        self.prune_weapons();
         Ok(self.view())
     }
 
-    fn weapon_snapshot(plugin: &str, d: &WeaponDef) -> Weapon {
-        let mut d = d.clone();
-        d.description = None;
-        let mut w = Weapon::new(d);
-        w.source = Some(plugin.to_owned());
-        w
-    }
-
-    /// Drops linked weapons whose equipment is no longer owned (anywhere, carried or not).
-    fn prune_weapons(&mut self) {
-        fn owned(list: &[Equipment], id: &str) -> bool {
-            list.iter()
-                .any(|e| e.def.id == id || owned(&e.contents, id))
-        }
-        let eq = &self.character.equipment;
-        self.character
-            .weapons
-            .retain(|w| w.def.equipment.as_deref().is_none_or(|id| owned(eq, id)));
-    }
-
     fn weapon_views(&self, sheet: &Sheet) -> Vec<WeaponView> {
+        let items = gurps_library::sheet::all_items(&self.character);
         sheet
             .weapons
             .iter()
             .map(|r| {
-                let w = &self.character.weapons[r.index];
-                let tr = self.translated_kind("weapon", &w.def.id).map(str::to_owned);
-                let own = self
-                    .weapon_library
-                    .iter()
-                    .find(|(_, d)| d.id == w.def.id)
-                    .and_then(|(_, d)| d.description.as_ref())
-                    .or(w.def.description.as_ref());
-                let default_explanation = self.text_for("weapon", &w.def.id, own);
+                let kind = if r.equipment.is_some() {
+                    "equipment"
+                } else {
+                    "weapon"
+                };
+                let tr = self.translated_kind(kind, &r.id).map(str::to_owned);
+                let item = r
+                    .equipment
+                    .as_deref()
+                    .and_then(|sid| items.iter().find(|i| i.src.sid() == sid));
+                let explanation = match item {
+                    Some(i) => gurps_core::non_blank(i.explanation.clone())
+                        .or_else(|| self.default_text("equipment", &self.lib.items, &i.src)),
+                    None => (!self.original_only)
+                        .then(|| {
+                            self.lib
+                                .translations
+                                .description(&self.locale, "weapon", &r.id)
+                        })
+                        .flatten()
+                        .map(str::to_owned),
+                };
                 WeaponView {
                     index: r.index,
                     id: r.id.clone(),
@@ -1476,6 +1448,9 @@ impl AppState {
                                 )
                             });
                             let mut row = a.clone();
+                            if row.skill_id.is_some() && t.is_none() {
+                                row.skill = self.skill_name(&row.skill);
+                            }
                             let original_skill =
                                 t.map(|t| std::mem::replace(&mut row.skill, t.to_owned()));
                             AttackView {
@@ -1484,75 +1459,10 @@ impl AppState {
                             }
                         })
                         .collect(),
-                    page: w.def.page.clone(),
-                    source: w.source.clone(),
-                    explanation: gurps_core::non_blank(w.explanation.clone())
-                        .or_else(|| default_explanation.clone()),
-                    default_explanation,
-                    custom_explanation: !gurps_core::is_blank(&w.explanation),
+                    explanation,
                 }
             })
             .collect()
-    }
-
-    pub fn weapon_library_view(&self) -> Vec<WeaponLibEntry> {
-        self.weapon_library
-            .iter()
-            .map(|(plugin, def)| WeaponLibEntry {
-                plugin: plugin.clone(),
-                explanation: self.text_for("weapon", &def.id, def.description.as_ref()),
-                translated_name: self.translated_kind("weapon", &def.id).map(str::to_owned),
-                equipment_name: def.equipment.as_ref().map(|e| {
-                    self.translated_kind("equipment", e)
-                        .map(str::to_owned)
-                        .or_else(|| {
-                            self.equipment_library
-                                .iter()
-                                .find(|(_, d)| &d.id == e)
-                                .map(|(_, d)| d.name.clone())
-                        })
-                        .unwrap_or_else(|| e.clone())
-                }),
-                skill_name: self.skill_name(&def.skill),
-                def: def.clone(),
-            })
-            .collect()
-    }
-
-    /// Adds a library weapon (once per id). Linked weapons show only while the item is owned.
-    pub fn add_weapon(&mut self, id: &str) -> Result<SheetView, String> {
-        if self.character.weapons.iter().any(|w| w.def.id == id) {
-            return Err(format!("weapon {id} is already on the sheet"));
-        }
-        let (plugin, def) = self
-            .weapon_library
-            .iter()
-            .find(|(_, d)| d.id == id)
-            .ok_or_else(|| format!("weapon {id} not in library"))?;
-        let w = Self::weapon_snapshot(plugin, def);
-        self.character.weapons.push(w);
-        Ok(self.view())
-    }
-
-    pub fn remove_weapon(&mut self, index: usize) -> Result<SheetView, String> {
-        if index >= self.character.weapons.len() {
-            return Err("no such weapon".into());
-        }
-        self.character.weapons.remove(index);
-        Ok(self.view())
-    }
-
-    pub fn set_weapon_explanation(
-        &mut self,
-        index: usize,
-        text: Option<String>,
-    ) -> Result<SheetView, String> {
-        self.character
-            .weapons
-            .get_mut(index)
-            .ok_or("no such weapon")?
-            .explanation = gurps_core::non_blank(text);
-        Ok(self.view())
     }
 
     fn modifier_views(&self, t: &Trait) -> Vec<ModifierView> {
@@ -1560,41 +1470,31 @@ impl AppState {
             .iter()
             .enumerate()
             .map(|(index, m)| {
-                let tr = self.translated_kind("modifier", &m.def.id);
-                let own = self
-                    .modifier_library
-                    .iter()
-                    .find(|(_, d)| d.id == m.def.id)
-                    .and_then(|(_, d)| d.description.as_ref())
-                    .or(m.def.description.as_ref());
-                let default_explanation = self.text_for("modifier", &m.def.id, own);
+                let d = resolve(&self.lib.modifiers, &m.src);
+                let sid = m.src.sid();
+                let original = d.map_or_else(|| sid.to_owned(), |d| d.name.clone());
+                let tr = self.translated_kind("modifier", sid);
+                let default_explanation =
+                    self.default_text("modifier", &self.lib.modifiers, &m.src);
                 ModifierView {
                     index,
-                    id: m.def.id.clone(),
-                    original_name: tr.map(|_| m.def.name.clone()),
-                    name: tr.map(str::to_owned).unwrap_or_else(|| m.def.name.clone()),
-                    cost_percent: m.def.cost_percent,
-                    page: m.def.page.clone(),
-                    source: m.source.clone(),
+                    id: sid.to_owned(),
+                    original_name: tr.map(|_| original.clone()),
+                    name: tr.map(str::to_owned).unwrap_or(original),
+                    cost_percent: d.map_or(0, |d| d.percent()),
+                    page: d.and_then(|d| d.page.clone()),
+                    source: m.src.pack().to_owned(),
                     explanation: gurps_core::non_blank(m.explanation.clone())
                         .or_else(|| default_explanation.clone()),
                     default_explanation,
-                    custom_explanation: m.has_custom_explanation(),
+                    custom_explanation: !gurps_core::is_blank(&m.explanation),
                 }
             })
             .collect()
     }
 
     pub fn modifier_library_view(&self) -> Vec<ModifierLibEntry> {
-        self.modifier_library
-            .iter()
-            .map(|(plugin, def)| ModifierLibEntry {
-                plugin: plugin.clone(),
-                explanation: self.text_for("modifier", &def.id, def.description.as_ref()),
-                translated_name: self.translated_kind("modifier", &def.id).map(str::to_owned),
-                def: def.clone(),
-            })
-            .collect()
+        self.lib_view("modifier", &self.lib.modifiers)
     }
 
     fn trait_mut(&mut self, index: usize) -> Result<&mut Trait, String> {
@@ -1609,15 +1509,12 @@ impl AppState {
         trait_index: usize,
         id: &str,
     ) -> Result<SheetView, String> {
-        let (plugin, def) = self
-            .modifier_library
-            .iter()
-            .find(|(_, d)| d.id == id)
-            .ok_or_else(|| format!("modifier {id} not in library"))?;
-        let mut def = def.clone();
-        def.description = None;
-        let mut m = TraitModifier::new(def);
-        m.source = Some(plugin.clone());
+        let (pack, d) =
+            find(&self.lib.modifiers, id).ok_or_else(|| format!("modifier {id} not in library"))?;
+        let m = Modifier {
+            src: src_of(pack, d),
+            explanation: None,
+        };
         self.trait_mut(trait_index)?.modifiers.push(m);
         Ok(self.view())
     }
@@ -1656,61 +1553,63 @@ impl AppState {
             .iter()
             .zip(&sheet.spells)
             .map(|(s, r)| {
-                let tr = self.translated_kind("spell", &s.def.id);
-                let own = self
-                    .spell_library
-                    .iter()
-                    .find(|(_, d)| d.id == s.def.id)
-                    .and_then(|(_, d)| d.description.as_ref())
-                    .or(s.def.description.as_ref());
-                let default_explanation = self.text_for("spell", &s.def.id, own);
+                let d = resolve(&self.lib.spells, &s.src);
+                let sid = s.src.sid();
+                let original = d.map_or_else(|| sid.to_owned(), |d| d.name.clone());
+                let tr = self.translated_kind("spell", sid);
+                let default_explanation = self.default_text("spell", &self.lib.spells, &s.src);
                 SpellView {
                     index: r.index,
-                    id: s.def.id.clone(),
-                    original_name: tr.map(|_| s.def.name.clone()),
-                    name: tr.map(str::to_owned).unwrap_or_else(|| s.def.name.clone()),
-                    college: s.def.college.clone(),
-                    attribute: s.def.attribute.key().to_string(),
-                    difficulty: s.def.difficulty.key().to_string(),
+                    id: sid.to_owned(),
+                    original_name: tr.map(|_| original.clone()),
+                    name: tr.map(str::to_owned).unwrap_or(original),
+                    college: d
+                        .map(|d| {
+                            d.colleges
+                                .iter()
+                                .map(|c| {
+                                    self.lib
+                                        .colleges
+                                        .get(c)
+                                        .cloned()
+                                        .unwrap_or_else(|| c.clone())
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    attribute: "IQ".into(),
+                    difficulty: d.map(|d| d.difficulty.clone()).unwrap_or_default(),
                     points: s.points,
                     level: r.level,
                     relative: r.relative.clone(),
                     bonus: 0,
-                    prerequisites: s.def.prerequisites.clone(),
+                    prerequisites: d
+                        .filter(|d| !d.prereqs.is_null())
+                        .map(|d| d.prereqs.to_string()),
                     explain: r.explain.clone(),
-                    page: s.def.page.clone(),
-                    source: s.source.clone(),
+                    page: d.and_then(|d| d.page.clone()),
+                    source: s.src.pack().to_owned(),
                     explanation: gurps_core::non_blank(s.explanation.clone())
                         .or_else(|| default_explanation.clone()),
                     default_explanation,
-                    custom_explanation: s.has_custom_explanation(),
+                    custom_explanation: !gurps_core::is_blank(&s.explanation),
                 }
             })
             .collect()
     }
 
     pub fn spell_library_view(&self) -> Vec<SpellLibEntry> {
-        self.spell_library
-            .iter()
-            .map(|(plugin, def)| SpellLibEntry {
-                plugin: plugin.clone(),
-                explanation: self.text_for("spell", &def.id, def.description.as_ref()),
-                translated_name: self.translated_kind("spell", &def.id).map(str::to_owned),
-                def: def.clone(),
-            })
-            .collect()
+        self.lib_view("spell", &self.lib.spells)
     }
 
     pub fn add_spell(&mut self, id: &str, points: Option<i32>) -> Result<SheetView, String> {
-        let (plugin, def) = self
-            .spell_library
-            .iter()
-            .find(|(_, d)| d.id == id)
-            .ok_or_else(|| format!("spell {id} not in library"))?;
-        let mut def = def.clone();
-        def.description = None;
-        let mut s = Spell::new(def, points.unwrap_or(1).max(0));
-        s.source = Some(plugin.clone());
+        let (pack, d) =
+            find(&self.lib.spells, id).ok_or_else(|| format!("spell {id} not in library"))?;
+        let s = Spell {
+            src: src_of(pack, d),
+            points: points.unwrap_or(1).max(0),
+            explanation: None,
+        };
         self.character.spells.push(s);
         Ok(self.view())
     }
@@ -1746,27 +1645,12 @@ impl AppState {
 
     pub fn skill_library_view(&self) -> SkillLibrary {
         SkillLibrary {
-            skills: self
-                .skill_library
+            skills: self.lib_view("skill", &self.lib.skills),
+            techniques: effective(&self.lib.techniques)
                 .iter()
-                .map(|(plugin, def)| SkillLibEntry {
-                    plugin: plugin.clone(),
-                    explanation: self.text_for("skill", &def.id, def.description.as_ref()),
-                    translated_name: self.translated_kind("skill", &def.id).map(str::to_owned),
-                    def: def.clone(),
-                })
-                .collect(),
-            techniques: self
-                .technique_library
-                .iter()
-                .map(|(plugin, def)| TechniqueLibEntry {
-                    plugin: plugin.clone(),
-                    explanation: self.text_for("technique", &def.id, def.description.as_ref()),
-                    translated_name: self
-                        .translated_kind("technique", &def.id)
-                        .map(str::to_owned),
-                    skill_name: self.skill_name(&def.skill),
-                    def: def.clone(),
+                .map(|(p, d)| TechniqueLibEntry {
+                    entry: self.lib_entry("technique", p, d),
+                    skill_name: self.skill_name(&d.parent_skill),
                 })
                 .collect(),
         }
@@ -1778,16 +1662,14 @@ impl AppState {
         specialization: Option<String>,
         points: Option<i32>,
     ) -> Result<SheetView, String> {
-        let (plugin, def) = self
-            .skill_library
-            .iter()
-            .find(|(_, d)| d.id == id)
-            .ok_or_else(|| format!("skill {id} not in library"))?;
-        let mut def = def.clone();
-        def.description = None;
-        let mut s = Skill::new(def, points.unwrap_or(1).max(0));
-        s.specialization = gurps_core::non_blank(specialization);
-        s.source = Some(plugin.clone());
+        let (pack, d) =
+            find(&self.lib.skills, id).ok_or_else(|| format!("skill {id} not in library"))?;
+        let s = Skill {
+            src: src_of(pack, d),
+            points: points.unwrap_or(1).max(0),
+            spec: gurps_core::non_blank(specialization),
+            explanation: None,
+        };
         self.character.skills.push(s);
         Ok(self.view())
     }
@@ -1809,7 +1691,7 @@ impl AppState {
         index: usize,
         specialization: Option<String>,
     ) -> Result<SheetView, String> {
-        self.skill_mut(index)?.specialization = gurps_core::non_blank(specialization);
+        self.skill_mut(index)?.spec = gurps_core::non_blank(specialization);
         Ok(self.view())
     }
 
@@ -1831,15 +1713,13 @@ impl AppState {
     }
 
     pub fn add_technique(&mut self, id: &str, points: Option<i32>) -> Result<SheetView, String> {
-        let (plugin, def) = self
-            .technique_library
-            .iter()
-            .find(|(_, d)| d.id == id)
+        let (pack, d) = find(&self.lib.techniques, id)
             .ok_or_else(|| format!("technique {id} not in library"))?;
-        let mut def = def.clone();
-        def.description = None;
-        let mut t = Technique::new(def, points.unwrap_or(0).max(0));
-        t.source = Some(plugin.clone());
+        let t = Technique {
+            src: src_of(pack, d),
+            points: points.unwrap_or(0).max(0),
+            explanation: None,
+        };
         self.character.techniques.push(t);
         Ok(self.view())
     }
@@ -1873,41 +1753,13 @@ impl AppState {
         Ok(self.view())
     }
 
-    /// Plugin explanation for a trait id: Fluent translation, else the plugin's
-    /// own text (current library entry, else the snapshot `fallback`).
-    fn explanation_for(&self, id: &str, fallback: Option<&TraitDef>) -> Option<String> {
-        let tr = (!self.original_only)
-            .then(|| self.catalog.description(&self.locale, "trait", id))
-            .flatten();
-        tr.or_else(|| {
-            self.library
-                .iter()
-                .find(|e| e.def.id == id)
-                .map(|e| &e.def)
-                .or(fallback)
-                .and_then(|d| d.explanation(self.data_locale()))
-        })
-        .map(str::to_owned)
-    }
-
-    fn plugin_explanation(&self, t: &Trait) -> Option<String> {
-        self.explanation_for(&t.def.id, Some(&t.def))
-    }
-
-    /// Library with names/explanations resolved for the current language.
+    /// Trait library with names/explanations resolved for the current language.
     pub fn library_view(&self) -> Vec<LibraryEntry> {
-        self.library
-            .iter()
-            .map(|e| LibraryEntry {
-                explanation: self.explanation_for(&e.def.id, None),
-                translated_name: self.translated(&e.def.id).map(str::to_owned),
-                ..e.clone()
-            })
-            .collect()
+        self.lib_view("trait", &self.lib.traits)
     }
 
     pub fn locale_info(&self) -> LocaleInfo {
-        let mut available = self.catalog.languages();
+        let mut available = self.lib.translations.languages();
         if !available.iter().any(|l| l == "en") {
             available.push("en".into());
         }
@@ -1927,7 +1779,7 @@ impl AppState {
         self.view()
     }
 
-    /// Sets (or with `None`/blank text, resets to plugin default) a trait's explanation.
+    /// Sets (or with `None`/blank text, resets to the catalog default) a trait's explanation.
     pub fn set_trait_explanation(
         &mut self,
         index: usize,
@@ -1972,37 +1824,6 @@ fn pct(v: i32) -> String {
     }
 }
 
-/// Строки пояснения цены черты с модификаторами (пусто без модификаторов).
-fn trait_cost_explain(t: &Trait, r: gurps_core::NegativeRounding) -> Vec<String> {
-    use gurps_core::modifier::MIN_TOTAL_PERCENT;
-    if t.modifiers.is_empty() {
-        return Vec::new();
-    }
-    let base = t.base_cost();
-    let mut out = vec![format!("база {base}")];
-    for m in &t.modifiers {
-        out.push(format!("{} {}", pct(m.def.cost_percent), m.def.name));
-    }
-    let total = t.modifier_percent();
-    if total < MIN_TOTAL_PERCENT {
-        out.push(format!(
-            "итого {}, не ниже {}",
-            pct(total),
-            pct(MIN_TOTAL_PERCENT)
-        ));
-    } else {
-        out.push(format!("итого {}", pct(total)));
-    }
-    let eff = 100 + total.max(MIN_TOTAL_PERCENT);
-    let exact = base as f64 * eff as f64 / 100.0;
-    out.push(format!(
-        "{base} × {eff}% = {} -> {}",
-        gurps_library::sheet::fmt_num(exact),
-        t.cost_with(r)
-    ));
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2044,18 +1865,18 @@ mod tests {
         assert!(s.plugin_errors.is_empty());
         s.new_character(Some("Hero".into()));
         s.set_attribute("ST", 2).unwrap();
-        let v = s.add_trait("reflexes-a", None).unwrap();
+        let v = s.add_trait("reflexes_a", None).unwrap();
         assert!(
             v.issues.iter().all(|i| i.severity != "error"),
             "{:?}",
             v.issues
         );
-        let st = v.sheet.row(Stat::ST).unwrap();
+        let st = v.sheet.row("ST").unwrap();
         assert_eq!((st.total, st.points, st.level), (12.0, 20, 2));
         assert_eq!(st.value.contributions[0].amount, 2.0);
         assert_eq!(st.label, "Сила", "подпись из перевода БД");
         // reflexes_a: +1 Per (заглушка сидов)
-        let per = v.sheet.row(Stat::Per).unwrap();
+        let per = v.sheet.row("Per").unwrap();
         assert_eq!((per.value.base, per.total), (10.0, 11.0));
         assert_eq!(per.value.contributions[0].amount, 1.0);
         assert!(
@@ -2063,7 +1884,7 @@ mod tests {
             "{:?}",
             per.explain
         );
-        assert_eq!(v.sheet.row(Stat::HP).unwrap().total, 12.0);
+        assert_eq!(v.sheet.row("HP").unwrap().total, 12.0);
         assert_eq!(v.sheet.points.total, 21);
         let v = s.remove_trait(0).unwrap();
         assert_eq!(v.sheet.points.total, 20);
@@ -2082,7 +1903,7 @@ mod tests {
         s.record("изменение ST", |s| s.set_attribute("ST", 2))
             .unwrap();
         s.record("добавление черты", |s| {
-            s.add_trait("reflexes-a", None)
+            s.add_trait("reflexes_a", None)
         })
         .unwrap();
         let h = s.history_view();
@@ -2215,10 +2036,6 @@ mod tests {
             (154, 2, 20, 132)
         );
         assert_eq!(s.view().budget, 152);
-        assert_eq!(
-            s.character.points_budget, 152,
-            "legacy field mirrors available points"
-        );
         assert!(s.add_ledger_entry(li(Other, 1, " ")).is_err());
         // edit and delete
         let v = s.update_ledger_entry(3, li(GmBonus, 2, "роль")).unwrap();
@@ -2309,17 +2126,17 @@ mod tests {
     }
 
     #[test]
-    fn legacy_budget_migrates_on_load() {
+    fn v1_files_are_rejected() {
         let Some(mut s) = state() else {
             return;
         };
-        let path = std::env::temp_dir().join(format!("gurps-legacy-{}.json", std::process::id()));
-        std::fs::write(&path, r#"{"format":"gurps-sheet","version":1,"character":{"name":"Old","points_budget":100}}"#).unwrap();
-        let v = s.load(&path.display().to_string()).unwrap();
-        assert_eq!(v.pool.entries.len(), 1);
-        assert_eq!(v.pool.entries[0].kind, gurps_core::LedgerKind::Starting);
-        assert_eq!((v.pool.starting, v.budget), (100, 100));
-        assert!(!v.history.dirty, "migration alone is not an unsaved change");
+        let path = std::env::temp_dir().join(format!("gurps-v1-{}.json", std::process::id()));
+        std::fs::write(
+            &path,
+            r#"{"format":"gurps-sheet","version":1,"character":{"name":"Old"}}"#,
+        )
+        .unwrap();
+        assert!(s.load(&path.display().to_string()).is_err());
         std::fs::remove_file(&path).unwrap();
     }
 
@@ -2329,23 +2146,23 @@ mod tests {
             return;
         };
         s.new_character(Some("Маг".into()));
-        let spell = serde_json::json!({"name": "Искра", "difficulty": "VH", "college": ["Fire"],
-            "prerequisites": "Magery 1", "description": "**жжёт**"});
+        let spell = serde_json::json!({"name": "Искра", "difficulty": "VH", "colleges": ["fire"],
+            "description": "**жжёт**"});
         let v = s.record("своё", |s| s.save_custom("spell", spell)).unwrap();
-        let id = v.custom.spells[0].id.clone();
-        assert_eq!(id, "custom-spell-1");
+        let id = v.custom.spells[0].sid.clone();
+        assert_eq!(id, "custom_spell_1");
         let lib = s.spell_library_view();
-        let e = lib.iter().find(|e| e.def.id == id).unwrap();
+        let e = lib.iter().find(|e| e.id == id).unwrap();
         assert_eq!(e.plugin, CUSTOM);
         assert_eq!(e.explanation.as_deref(), Some("**жжёт**"));
         s.add_spell(&id, Some(4)).unwrap();
         // editing renames the sheet copy too
         s.save_custom(
             "spell",
-            serde_json::json!({"id": id, "name": "Искра!", "difficulty": "H"}),
+            serde_json::json!({"sid": id, "name": "Искра!", "difficulty": "H"}),
         )
         .unwrap();
-        assert_eq!(s.character.spells[0].def.name, "Искра!");
+        assert_eq!(s.character.spells[0].src.inline().unwrap().name, "Искра!");
         assert!(s
             .save_custom("spell", serde_json::json!({"name": " "}))
             .is_err());
@@ -2354,10 +2171,10 @@ mod tests {
             .is_err());
         s.save_custom(
             "trait",
-            serde_json::json!({"name": "Везучесть в картах", "category": "advantage", "cost": 3}),
+            serde_json::json!({"name": "Везучесть в картах", "kind": "adv", "cost": {"type": "fixed", "base": 3}}),
         )
         .unwrap();
-        s.add_trait("custom-trait-1", None).unwrap();
+        s.add_trait("custom_trait_1", None).unwrap();
         assert_eq!(s.view().sheet.points.advantages, 3);
         s.save_custom(
             "skill",
@@ -2383,7 +2200,7 @@ mod tests {
             .any(|e| e.def.name == "Колода" && e.plugin == CUSTOM));
         // remove
         s.remove_custom("spell", &id).unwrap();
-        assert!(s.spell_library_view().iter().all(|e| e.def.id != id));
+        assert!(s.spell_library_view().iter().all(|e| e.id != id));
         assert!(s.remove_custom("spell", &id).is_err());
     }
 
@@ -2409,9 +2226,9 @@ mod tests {
             return;
         };
         s.new_character(None);
-        s.add_trait("temper-a", None).unwrap();
+        s.add_trait("temper_a", None).unwrap();
         // -1 × 90% = -0.9: вверх -> 0, от нуля -> -1; расчёт (rule_overrides) согласован
-        let v = s.add_trait_modifier(0, "limit-a").unwrap();
+        let v = s.add_trait_modifier(0, "limit_a").unwrap();
         assert_eq!(v.traits[0].cost, 0);
         assert_eq!(v.sheet.points.disadvantages, 0);
         let v = s.set_negative_rounding("by_magnitude").unwrap();
@@ -2449,7 +2266,7 @@ mod tests {
         let Some(mut s) = state() else {
             return;
         };
-        let v = s.add_trait("reflexes-a", None).unwrap();
+        let v = s.add_trait("reflexes_a", None).unwrap();
         let default = v.traits[0].explanation.clone();
         assert_eq!(v.traits[0].default_explanation, default);
         assert!(!v.traits[0].custom_explanation);
@@ -2487,27 +2304,27 @@ mod tests {
             return;
         };
         assert!(s.locale_info().available.contains(&"ru".to_string()));
-        let v = s.add_trait("claws-a", None).unwrap();
+        let v = s.add_trait("claws_a", None).unwrap();
         assert_ne!(v.traits[0].name, "Claws A");
         assert_eq!(v.traits[0].original_name.as_deref(), Some("Claws A"));
         let lib = s.library_view();
-        let e = lib.iter().find(|e| e.def.id == "claws-a").unwrap();
+        let e = lib.iter().find(|e| e.id == "claws_a").unwrap();
         assert!(e.translated_name.is_some());
         assert_eq!(e.def.name, "Claws A");
-        assert_eq!(v.sheet.row(Stat::ST).unwrap().label, "Сила");
+        assert_eq!(v.sheet.row("ST").unwrap().label, "Сила");
 
         let v = s.set_locale("ru".into(), true);
         assert_eq!(v.traits[0].name, "Claws A");
         assert_eq!(v.traits[0].original_name, None);
         assert_eq!(
-            v.sheet.row(Stat::ST).unwrap().label,
+            v.sheet.row("ST").unwrap().label,
             "ST",
             "без переводов - код"
         );
         assert!(s.library_view().iter().all(|e| e.translated_name.is_none()));
 
         let v = s.set_locale("en".into(), false);
-        assert_eq!(v.sheet.row(Stat::ST).unwrap().label, "Strength");
+        assert_eq!(v.sheet.row("ST").unwrap().label, "Strength");
         s.set_locale("ru".into(), false);
         // user override wins over the translation
         let v = s.set_trait_explanation(0, Some("своё".into())).unwrap();
@@ -2536,15 +2353,15 @@ mod tests {
         };
         let lib = s.equipment_library_view();
         assert!(lib.len() >= 5);
-        s.add_equipment("bag-a", None, None).unwrap();
-        s.add_equipment("sword-item-a", Some(2), Some(vec![0]))
+        s.add_equipment("bag_a", None, None).unwrap();
+        s.add_equipment("sword_item_a", Some(2), Some(vec![0]))
             .unwrap();
         assert!(
-            s.add_equipment("knuckles-a", None, Some(vec![0, 0]))
+            s.add_equipment("knuckles_a", None, Some(vec![0, 0]))
                 .is_err(),
             "sword is no container"
         );
-        let v = s.add_equipment("shield-a", None, None).unwrap();
+        let v = s.add_equipment("shield_a", None, None).unwrap();
         assert_eq!(v.equipment.len(), 3);
         assert_eq!(
             v.equipment[1].original_name.as_deref(),
@@ -2582,12 +2399,12 @@ mod tests {
         s.set_attribute("DX", 2).unwrap();
         let lib = s.skill_library_view();
         assert!(lib.skills.len() >= 5);
-        assert!(lib.techniques.iter().any(|t| t.def.id == "strike-a"));
-        s.add_skill("unarmed-a", None, Some(1)).unwrap();
-        s.add_skill("outdoor-a", Some("spec_a".into()), Some(2))
+        assert!(lib.techniques.iter().any(|t| t.entry.id == "strike_a"));
+        s.add_skill("unarmed_a", None, Some(1)).unwrap();
+        s.add_skill("outdoor_a", Some("spec_a".into()), Some(2))
             .unwrap();
-        s.add_trait("talent-a", Some(1)).unwrap();
-        let v = s.add_technique("strike-a", Some(2)).unwrap();
+        s.add_trait("talent_a", Some(1)).unwrap();
+        let v = s.add_technique("strike_a", Some(2)).unwrap();
         assert!(
             v.issues.iter().all(|i| i.severity != "error"),
             "{:?}",
@@ -2635,7 +2452,7 @@ mod tests {
         assert_eq!(s.plugin_status().modifiers, 1);
         s.set_attribute("IQ", 4).unwrap();
         s.add_trait("magery", Some(2)).unwrap();
-        let v = s.add_spell("spell-a", None).unwrap();
+        let v = s.add_spell("spell_a", None).unwrap();
         let sp = &v.spells[0];
         assert_eq!(sp.original_name.as_deref(), Some("Spell A"));
         // IQ 14, H 1 оч. = 12, +2 Магия 2 (заглушка: spell_bonus за уровень)
@@ -2649,7 +2466,7 @@ mod tests {
         assert!(!v.spells[0].custom_explanation);
 
         // magery (заглушка): 0 + 1/ур. = 2; limit_a -10%: 1.8 -> 2
-        let v = s.add_trait_modifier(0, "limit-a").unwrap();
+        let v = s.add_trait_modifier(0, "limit_a").unwrap();
         let t = &v.traits[0];
         assert_eq!((t.base_cost, t.modifier_percent, t.cost), (2, -10, 2));
         assert!(t.cost_explain.last().unwrap().ends_with("= 1.8 -> 2"));
@@ -2669,18 +2486,19 @@ mod tests {
             return;
         };
         let v = s.new_character(Some("W".into()));
-        let ids: Vec<_> = v.weapons.iter().map(|w| w.id.as_str()).collect();
+        let mut ids: Vec<_> = v.weapons.iter().map(|w| w.id.as_str()).collect();
+        ids.sort();
         assert_eq!(
             ids,
             ["bite", "kick", "punch"],
             "natural attacks on a new character"
         );
-        let punch = &v.weapons[2];
+        let punch = v.weapons.iter().find(|w| w.id == "punch").unwrap();
         assert!(punch.ready);
         assert_eq!(punch.attacks[0].row.level, Some(10), "DX 10 по умолчанию");
-        s.add_skill("sword-a", None, Some(2)).unwrap();
-        let v = s.add_equipment("sword-item-a", None, None).unwrap();
-        let sw = v.weapons.iter().find(|w| w.id == "sword-item-a").unwrap();
+        s.add_skill("sword_a", None, Some(2)).unwrap();
+        let v = s.add_equipment("sword_item_a", None, None).unwrap();
+        let sw = v.weapons.iter().find(|w| w.id == "sword_item_a").unwrap();
         assert!(sw.ready);
         let modes: Vec<_> = sw.attacks.iter().map(|a| a.row.mode.as_str()).collect();
         assert_eq!(modes.len(), 2, "{modes:?}");
@@ -2690,14 +2508,13 @@ mod tests {
             "homebrew sword_a (E) перекрывает basic: DX 10, 2 оч. = +1"
         );
         assert!(v.sheet.defenses.parry.is_some());
-        assert!(s.add_weapon("sword-item-a").is_err());
-        let i = sw.index;
-        let v = s.set_weapon_explanation(i, Some("своё".into())).unwrap();
-        assert!(v.weapons[i].custom_explanation);
+        assert_eq!(sw.equipment.as_deref(), Some("sword_item_a"));
+        let v = s
+            .set_equipment_explanation(&[0], Some("своё".into()))
+            .unwrap();
+        let sw = v.weapons.iter().find(|w| w.id == "sword_item_a").unwrap();
+        assert_eq!(sw.explanation.as_deref(), Some("своё"));
         let v = s.remove_equipment(&[0]).unwrap();
         assert_eq!(v.weapons.len(), 3, "sword row goes with the sword");
-        let v = s.remove_weapon(0).unwrap();
-        assert_eq!(v.weapons.len(), 2);
-        assert!(s.add_weapon("bite").is_ok());
     }
 }

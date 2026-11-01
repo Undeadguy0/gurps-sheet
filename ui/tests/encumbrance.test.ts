@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { computeEncumbrance, levelFor, moveFor } from '../src/encumbrance';
 import { MockBackend } from '../src/mock';
 import { EQUIPMENT_DEFS } from '../src/mockEquipment';
-import type { EquipmentItem, SheetView } from '../src/types';
+import type { EquipmentItem, SheetView } from '../src/mockTypes';
 
 const item = (id: string, quantity = 1, contents?: EquipmentItem[]): EquipmentItem => {
   const d = EQUIPMENT_DEFS.find((x) => x.id === id)!;

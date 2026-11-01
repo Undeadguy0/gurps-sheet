@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MockBackend } from '../src/mock';
 import { levelSteps, nextPoints, prevPoints, relativeLevel, techniqueLevels, nextTechniquePoints } from '../src/skills';
 import { matchesLibrary } from '../src/i18n';
-import type { SheetView, SkillLibrary } from '../src/types';
+import type { SheetView, SkillLibrary } from '../src/mockTypes';
 
 describe('skill maths (mirror of gurps-rules)', () => {
   it('cost table 1/2/4/8 then +4', () => {

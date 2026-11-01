@@ -1,6 +1,6 @@
 // Backend facade: Tauri commands when running inside the app, an in-browser
 // preview backend (mock.ts) when opened with plain `npm run dev`.
-import type { CustomKind, DamageRoll, LedgerInput, LibraryEntry, LocaleInfo, PluginStatus, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, WeaponLibEntry, SpellLibEntry, ModifierLibEntry } from './types';
+import type { CustomKind, DamageRoll, LedgerInput, LibraryEntry, LocaleInfo, PluginStatus, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, SpellLibEntry, ModifierLibEntry } from './types';
 import { MockBackend } from './mock';
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -48,10 +48,6 @@ export const api = {
   setEquipmentCarried: (path: number[], carried: boolean) => call<SheetView>('set_equipment_carried', { path, carried }),
   setEquipmentExplanation: (path: number[], text: string | null) => call<SheetView>('set_equipment_explanation', { path, text }),
   removeEquipment: (path: number[]) => call<SheetView>('remove_equipment', { path }),
-  listWeaponLibrary: () => call<WeaponLibEntry[]>('list_weapon_library'),
-  addWeapon: (id: string) => call<SheetView>('add_weapon', { id }),
-  removeWeapon: (index: number) => call<SheetView>('remove_weapon', { index }),
-  setWeaponExplanation: (index: number, text: string | null) => call<SheetView>('set_weapon_explanation', { index, text }),
   listSpellLibrary: () => call<SpellLibEntry[]>('list_spell_library'),
   addSpell: (id: string, points?: number) => call<SheetView>('add_spell', { id, points }),
   setSpellPoints: (index: number, points: number) => call<SheetView>('set_spell_points', { index, points }),

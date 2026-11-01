@@ -61,18 +61,18 @@ describe('custom definitions', () => {
   it('saves, lists in libraries with plugin custom, edits and removes (undoable)', () => {
     const m = new MockBackend();
     v(m, 'new_character', {});
-    let s = v(m, 'save_custom', { kind: 'spell', def: { name: 'Искра', difficulty: 'VH', college: ['Огонь'], description: '**жжёт**' } });
-    expect(s.custom?.spells?.[0].id).toBe('custom-spell-1');
+    let s = v(m, 'save_custom', { kind: 'spell', def: { name: 'Искра', difficulty: 'VH', colleges: ['fire'], description: '**жжёт**' } });
+    expect(s.custom?.spells?.[0].sid).toBe('custom_spell_1');
     const lib = m.invoke('list_spell_library', {}) as { id: string; plugin: string }[];
-    expect(lib.find((e) => e.id === 'custom-spell-1')?.plugin).toBe('custom');
-    s = v(m, 'add_spell', { id: 'custom-spell-1' });
+    expect(lib.find((e) => e.id === 'custom_spell_1')?.plugin).toBe('custom');
+    s = v(m, 'add_spell', { id: 'custom_spell_1' });
     expect(s.spells?.[0].difficulty).toBe('VH');
-    s = v(m, 'save_custom', { kind: 'trait', def: { name: 'Удача мастера', category: 'advantage', cost: 7, cost_per_level: 0 } });
-    expect(s.custom?.traits?.[0].id).toBe('custom-trait-1');
-    s = v(m, 'save_custom', { kind: 'spell', def: { id: 'custom-spell-1', name: 'Искра', difficulty: 'H', college: ['Огонь'] } });
+    s = v(m, 'save_custom', { kind: 'trait', def: { name: 'Удача мастера', kind: 'adv', cost: { type: 'fixed', base: 7 } } });
+    expect(s.custom?.traits?.[0].sid).toBe('custom_trait_1');
+    s = v(m, 'save_custom', { kind: 'spell', def: { sid: 'custom_spell_1', name: 'Искра', difficulty: 'H', colleges: ['fire'] } });
     expect(s.spells?.[0].difficulty).toBe('H');
     expect(() => m.invoke('save_custom', { kind: 'spell', def: { name: ' ' } })).toThrow();
-    s = v(m, 'remove_custom', { kind: 'trait', id: 'custom-trait-1' });
+    s = v(m, 'remove_custom', { kind: 'trait', id: 'custom_trait_1' });
     expect(s.custom?.traits).toHaveLength(0);
     expect(v(m, 'undo').custom?.traits).toHaveLength(1);
     expect(() => m.invoke('export_custom_plugin', {})).toThrow(/Tauri/);

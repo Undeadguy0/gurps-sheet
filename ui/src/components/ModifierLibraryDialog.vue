@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { modPercent } from '../labels';
 import LibraryExplanation from './LibraryExplanation.vue';
 import { computed, nextTick, onMounted, ref } from 'vue';
 import type { ModifierLibEntry, TraitView } from '../types';
@@ -13,11 +14,11 @@ const query = ref('');
 const kind = ref<'' | 'enh' | 'lim'>('');
 const previewId = ref<string | null>(null);
 const preview = computed(() => props.library.find((e) => e.id === previewId.value) ?? null);
-const items = computed(() => props.library.filter((e) => (!kind.value || (kind.value === 'enh') === e.cost_percent > 0) && matchesLibrary(e, query.value)));
+const items = computed(() => props.library.filter((e) => (!kind.value || (kind.value === 'enh') === modPercent(e) > 0) && matchesLibrary(e, query.value)));
 const search = ref<HTMLInputElement | null>(null);
 onMounted(() => nextTick(() => search.value?.focus()));
 const pct = (v: number) => `${v > 0 ? '+' : ''}${v}%`;
-const after = (e: ModifierLibEntry) => modifiedCost(props.target.base_cost, props.target.modifier_percent + e.cost_percent);
+const after = (e: ModifierLibEntry) => modifiedCost(props.target.base_cost, props.target.modifier_percent + modPercent(e));
 </script>
 
 <template>
@@ -38,7 +39,7 @@ const after = (e: ModifierLibEntry) => modifiedCost(props.target.base_cost, prop
           <li v-for="e in items" :key="e.id" class="library-list__item library-list__item--skill" role="option" :aria-selected="preview?.id === e.id"
             :title="excerpt(e.explanation) || undefined" :class="{ 'is-preview': preview?.id === e.id }" @click="previewId = e.id" @dblclick="emit('add', e.id)">
             <span class="library-list__name">{{ e.translated_name ?? e.name }}<span v-if="e.translated_name" class="muted original-name"> ({{ e.name }})</span></span>
-            <span class="num">{{ pct(e.cost_percent) }}</span>
+            <span class="num">{{ pct(modPercent(e)) }}</span>
             <span class="muted">{{ e.page }}</span>
           </li>
         </ul>
@@ -47,7 +48,7 @@ const after = (e: ModifierLibEntry) => modifiedCost(props.target.base_cost, prop
           <header class="library-preview__head">
             <h3 class="library-preview__title">{{ preview.translated_name ?? preview.name }}<small v-if="preview.translated_name" class="muted original-name"> ({{ preview.name }})</small></h3>
             <p class="library-preview__meta muted">
-              {{ preview.cost_percent > 0 ? 'Усиление' : 'Ограничение' }} · <span class="num">{{ pct(preview.cost_percent) }}</span><template v-if="preview.page"> · стр. {{ preview.page }}</template>
+              {{ modPercent(preview) > 0 ? 'Усиление' : 'Ограничение' }} · <span class="num">{{ pct(modPercent(preview)) }}</span><template v-if="preview.page"> · стр. {{ preview.page }}</template>
             </p>
           </header>
           <LibraryExplanation :text="preview.explanation" />

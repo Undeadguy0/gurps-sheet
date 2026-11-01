@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import LibraryExplanation from './LibraryExplanation.vue';
 import { computed, nextTick, onMounted, ref } from 'vue';
-import type { LibraryEntry, PluginStatus, TraitCategory } from '../types';
+import type { LibraryEntry, PluginStatus, TraitKind } from '../types';
 import { api, inTauri } from '../api';
-import { CATEGORY_LABEL, featureText } from '../labels';
+import { CATEGORY_LABEL, costText as traitCost, featureText } from '../labels';
 import { excerpt } from '../markdown';
 import { matchesLibrary } from '../i18n';
 
@@ -20,7 +20,7 @@ const statusText = computed(() => {
 });
 
 const query = ref('');
-const cat = ref<TraitCategory | ''>('');
+const cat = ref<TraitKind | ''>('');
 const selected = ref<Set<string>>(new Set());
 // Keep only the id so the preview follows library refreshes (e.g. language switch).
 const previewId = ref<string | null>(null);
@@ -28,14 +28,14 @@ const preview = computed(() => props.library.find((e) => e.id === previewId.valu
 const search = ref<HTMLInputElement | null>(null);
 onMounted(() => nextTick(() => search.value?.focus()));
 
-const items = computed(() => props.library.filter((e) => (!cat.value || e.category === cat.value) && matchesLibrary(e, query.value)));
+const items = computed(() => props.library.filter((e) => (!cat.value || e.kind === cat.value) && matchesLibrary(e, query.value)));
 
 function toggle(id: string) {
   const s = new Set(selected.value);
   if (s.has(id)) s.delete(id); else s.add(id);
   selected.value = s;
 }
-const costText = (e: LibraryEntry) => e.cost_per_level ? `${e.cost ? e.cost + ' + ' : ''}${e.cost_per_level}/ур.` : String(e.cost);
+const costText = (e: LibraryEntry) => traitCost(e.cost);
 function reset() { query.value = ''; cat.value = ''; }
 </script>
 
@@ -49,7 +49,7 @@ function reset() { query.value = ''; cat.value = ''; }
       </header>
       <div class="chip-row" role="group" aria-label="Тип">
         <button type="button" class="chip" :class="{ 'is-active': cat === '' }" @click="cat = ''">Все</button>
-        <button v-for="(l, k) in CATEGORY_LABEL" :key="k" type="button" class="chip" :class="{ 'is-active': cat === k }" @click="cat = k as TraitCategory">{{ l }}</button>
+        <button v-for="(l, k) in CATEGORY_LABEL" :key="k" type="button" class="chip" :class="{ 'is-active': cat === k }" @click="cat = k as TraitKind">{{ l }}</button>
       </div>
       <div class="library-dialog__body">
         <ul v-if="items.length" class="library-list" role="listbox" aria-multiselectable="true">
@@ -57,7 +57,7 @@ function reset() { query.value = ''; cat.value = ''; }
             :class="{ 'is-preview': preview?.id === e.id }" @click="previewId = e.id">
             <input type="checkbox" :checked="selected.has(e.id)" :aria-label="`Выбрать ${e.name}`" @click.stop="toggle(e.id)" />
             <span class="library-list__name">{{ e.translated_name ?? e.name }}<span v-if="e.translated_name" class="muted original-name"> ({{ e.name }})</span><span v-if="e.plugin === 'custom'" class="badge badge--custom">своё</span></span>
-            <span class="muted">{{ CATEGORY_LABEL[e.category] }}</span>
+            <span class="muted">{{ CATEGORY_LABEL[e.kind] }}</span>
             <span class="num">{{ costText(e) }}</span>
             <span class="muted">{{ e.page }}</span>
           </li>
@@ -70,11 +70,11 @@ function reset() { query.value = ''; cat.value = ''; }
           <header class="library-preview__head">
             <h3 class="library-preview__title">{{ preview.translated_name ?? preview.name }}<small v-if="preview.translated_name" class="muted original-name"> ({{ preview.name }})</small></h3>
             <p class="library-preview__meta muted">
-              {{ CATEGORY_LABEL[preview.category] }} · <span class="num">{{ costText(preview) }}</span> оч.<template v-if="preview.page"> · стр. {{ preview.page }}</template>
+              {{ CATEGORY_LABEL[preview.kind] }} · <span class="num">{{ costText(preview) }}</span> оч.<template v-if="preview.page"> · стр. {{ preview.page }}</template>
             </p>
           </header>
           <LibraryExplanation :text="preview.explanation" />
-          <section v-if="preview.features.length" class="library-preview__section" aria-labelledby="lib-fx-title">
+          <section v-if="preview.features?.length" class="library-preview__section" aria-labelledby="lib-fx-title">
             <h4 id="lib-fx-title" class="library-preview__label">Эффекты на листе</h4>
             <ul class="library-preview__effects">
               <li v-for="(f, i) in preview.features" :key="i">{{ featureText(f) }}</li>

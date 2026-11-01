@@ -30,13 +30,26 @@
 - fca5a13, 39b6cd6, 8da7fbf: `gurps_library::calc` — лист -> документ (каталог или inline), `rule_overrides`,
   лимиты недостатков/причуд из `ref_rule` (`validate`), `Engine` (синхронный расчёт для приложения).
 - b405f92: SheetView.calc / calc_error / calc_issues рядом со старым `sheet`; TS-тип `Computed`.
+- Модель персонажа v2: черты/навыки/приёмы/заклинания/предметы/модификаторы — `Src` = ссылка
+  `{pack, sid}` на каталог или `{inline: <определение>}` для своего содержимого; атрибуты — коды БД
+  (`ST`…`Speed`, `Move`), виды/сложности/типы урона — коды `ref_*` вместо enum. Определения
+  (`gurps_core::defs`: TraitDef, SkillDef, TechniqueDef, SpellDef, ModifierDef, ItemDef c `armor`,
+  `shield`, `attack_modes`) повторяют проекцию каталога (`gurps_library::project`), поэтому inline-
+  предмет несёт своё оружие и щит. Своё («Своё» в UI) — `character.custom`, на лист копируется inline.
+  Оружие — производное: режимы атак предметов + природные атаки из расчёта; список оружия,
+  библиотека оружия и команды add/remove_weapon удалены.
+- gurps-io v2: `version: 2`, v1 не читается (`UnsupportedVersion`). Перевод v1 -> v2 — только
+  в коде: `gurps_library::convert::from_doc` (импорт sheet-bridge -> документ -> `Character`),
+  используется golden-тестами; пользовательской команды нет (импорт пишет в общую БД).
+- Удалены `db_adapter` и старые типы каталога gurps-core (skill/spell/equipment/weapon/damage,
+  Stat, TraitCategory, Feature, points_budget/migrate). `Library` — списки `(pack, def)` всех
+  паков, `effective` (последний пак выигрывает), переводы из БД.
 
 ## Осталось
 
 1. gurps-calc: explain-строки (навыки, урон, атаки, защиты, стоимость черт) — сейчас только структурные данные;
-   inline-предметы без оружия/щита, inline-заклинания — школа как slug, у inline нет пререквизитов.
+   у своих (inline) определений из UI нет пререквизитов и эффектов (features) — только стоимость.
 2. UI с `sheet` на `calc` (подписи атрибутов — переводы БД), удалить старый путь.
-3. Модель персонажа `(pack, sid)` + inline, gurps-io v2 (старый JSON не читается).
-4. Удалить `gurps-rules`, `db_adapter`, `legacy-plugins`, `gurps-plugins`, `plugins/` (ftl — только переводы каталога);
+3. Удалить `gurps-rules`, `db_adapter`, `legacy-plugins`, `gurps-plugins`, `plugins/` (ftl — только переводы каталога);
    golden.rs/spells_modifiers.rs gurps-cli — покрыты golden_db, удалить вместе с gurps-rules.
-5. `warrior_unarmed_pending`: сиды punch/kick (mod 0) и связь техника -> атака (Kicking).
+4. `warrior_unarmed_pending`: сиды punch/kick (mod 0) и связь техника -> атака (Kicking).

@@ -41,14 +41,11 @@ export interface Sheet {
   defenses?: Defenses;
 }
 
-export interface AttackDef {
-  mode: string; damage: string; damage_type: string; reach?: string; parry?: number | null;
-  skill?: string | null; skill_modifier?: number; technique?: string | null; defaults?: SkillDefault[];
-  skill_damage_bonus?: { min_relative: number; per_die: number } | null;
-}
-export interface WeaponDef {
-  id: string; name: string; equipment?: string | null; skill: string; attacks: AttackDef[];
-  page?: string | null; description?: LocalizedText | null;
+/** Attack mode of an item (gurps_core::AttackMode). */
+export interface AttackMode {
+  sid: string; name?: string | null; natural?: boolean; skill?: string | null;
+  damage: { base?: string | null; dice?: number | null; mod?: number; type?: string | null };
+  reach?: number[]; parry?: number | null; skill_modifier?: number | null; technique?: string | null;
 }
 export interface AttackRow {
   mode: string; skill: string; skill_id?: string | null; via_technique: boolean; level?: number | null;
@@ -66,11 +63,9 @@ export interface Defenses {
 export interface AttackView extends AttackRow { original_skill?: string | null }
 export interface WeaponView {
   index: number; id: string; name: string; original_name?: string | null; equipment?: string | null;
-  available: boolean; ready: boolean; attacks: AttackView[]; page?: string | null; source?: string | null;
-  explanation?: string | null; default_explanation?: string | null; custom_explanation: boolean;
-}
-export interface WeaponLibEntry extends WeaponDef {
-  plugin: string; explanation?: string | null; translated_name?: string | null; equipment_name?: string | null; skill_name: string;
+  available: boolean; ready: boolean; attacks: AttackView[];
+  /** Item's explanation (edited on the item) or the natural attack's text. */
+  explanation?: string | null;
 }
 
 export interface EncumbranceLevel { level: number; name: string; max_weight: number; move_value: number; dodge: number }
@@ -80,15 +75,15 @@ export interface Encumbrance {
   overloaded: boolean; table: EncumbranceLevel[]; explain: string[];
 }
 
-export interface EquipmentDef {
-  id: string; name: string; weight: number; cost: number; container?: boolean; stats?: string | null;
-  page?: string | null; description?: LocalizedText | null;
+/** Library common fields: own sid, pack code, texts for the UI language. */
+interface LibMeta { plugin: string; id: string; explanation?: string | null; translated_name?: string | null }
+
+export interface ItemDef {
+  sid: string; name: string; weight: number; cost: number; container?: boolean;
+  armor?: { loc: string; dr?: number | null }[]; shield?: { db: number; block_skill?: string | null } | null;
+  attack_modes?: AttackMode[]; page?: string | null; description?: LocalizedText | null;
 }
-/** Character's item (mock backend + tests); mirrors gurps_core::Equipment with the def flattened. */
-export interface EquipmentItem extends EquipmentDef {
-  quantity: number; carried?: boolean; contents?: EquipmentItem[]; source?: string | null; explanation?: string | null;
-}
-export interface EquipmentLibEntry extends EquipmentDef { plugin: string; explanation?: string | null; translated_name?: string | null }
+export type EquipmentLibEntry = ItemDef & LibMeta;
 export interface EquipmentView {
   path: number[]; depth: number; id: string; name: string; original_name?: string | null;
   quantity: number; weight: number; cost: number; total_weight: number; total_cost: number;
@@ -96,29 +91,19 @@ export interface EquipmentView {
   page?: string | null; source?: string | null; explanation?: string | null; default_explanation?: string | null; custom_explanation: boolean;
 }
 
-export type TraitCategory = 'advantage' | 'perk' | 'disadvantage' | 'quirk';
+/** Trait kind code (ref_trait_kind). */
+export type TraitKind = 'adv' | 'disadv' | 'perk' | 'quirk';
 
-export type Feature =
-  | { type: 'attribute_bonus'; target: string; amount: number; per_level?: boolean }
-  | { type: 'lifting_st_bonus'; amount: number; per_level?: boolean }
-  | { type: 'striking_st_bonus'; amount: number; per_level?: boolean }
-  | { type: 'skill_bonus'; skills: string[]; amount: number; per_level?: boolean }
-  | { type: 'defense_bonus'; amount: number; defenses?: string[]; per_level?: boolean }
-  | { type: 'spell_bonus'; amount: number; colleges?: string[]; per_level?: boolean };
-
+export interface TraitCost { type: string; base: number; per_level?: number | null; max_level?: number | null; min_level?: number | null }
 export interface TraitDef {
-  id: string; name: string; category: TraitCategory; cost: number; cost_per_level: number;
-  max_levels?: number | null; min_levels?: number | null; page?: string | null; features: Feature[];
-  /** Plugin Markdown explanation: plain string or a locale table ({ ru, en }). */
+  sid: string; name: string; kind: TraitKind; cost: TraitCost; features?: unknown[]; prereqs?: unknown;
+  page?: string | null;
+  /** Markdown explanation: plain string or a locale table ({ ru, en }). */
   description?: LocalizedText | null;
 }
 export type LocalizedText = string | Record<string, string>;
-/** `explanation` is the plugin text resolved for the UI locale. */
-export interface LibraryEntry extends TraitDef {
-  plugin: string; explanation?: string | null;
-  /** Name in the UI language; null when showing originals or untranslated. `name` is the original. */
-  translated_name?: string | null;
-}
+/** `translated_name` is the name in the UI language (null when untranslated); `name` is the original. */
+export type LibraryEntry = TraitDef & LibMeta;
 export interface LocaleInfo { available: string[]; locale: string; original_only: boolean }
 
 export interface TraitView {
@@ -127,8 +112,8 @@ export interface TraitView {
   name: string;
   /** Original plugin name when `name` is a translation. */
   original_name?: string | null;
-  category: TraitCategory; levels: number;
-  leveled: boolean; min_level: number; cost: number; page?: string | null; source?: string | null;
+  kind: TraitKind; level: number;
+  leveled: boolean; min_level: number; max_level?: number | null; cost: number; page?: string | null; source?: string | null;
   /** Effective explanation (user text, else plugin text), Markdown. */
   explanation?: string | null;
   /** Plugin text, used by "reset to default". */
@@ -138,18 +123,18 @@ export interface TraitView {
   base_cost: number; modifier_percent: number; modifiers: ModifierView[]; cost_explain: string[];
 }
 
-export interface ModifierDef { id: string; name: string; cost_percent: number; page?: string | null; description?: LocalizedText | null }
-export interface ModifierLibEntry extends ModifierDef { plugin: string; explanation?: string | null; translated_name?: string | null }
+export interface ModifierDef { sid: string; name: string; type: string; value_kind: string; amount: number; page?: string | null; description?: LocalizedText | null }
+export type ModifierLibEntry = ModifierDef & LibMeta;
 export interface ModifierView {
   index: number; id: string; name: string; original_name?: string | null; cost_percent: number; page?: string | null; source?: string | null;
   explanation?: string | null; default_explanation?: string | null; custom_explanation: boolean;
 }
 
 export interface SpellDef {
-  id: string; name: string; attribute?: string; difficulty?: Difficulty; college?: string[]; prerequisites?: string | null;
+  sid: string; name: string; difficulty: Difficulty; colleges: string[]; prereqs?: unknown;
   page?: string | null; description?: LocalizedText | null;
 }
-export interface SpellLibEntry extends SpellDef { plugin: string; explanation?: string | null; translated_name?: string | null }
+export type SpellLibEntry = SpellDef & LibMeta;
 export interface SpellView {
   index: number; id: string; name: string; original_name?: string | null; college: string[]; attribute: string; difficulty: Difficulty;
   points: number; level?: number | null; relative?: string | null; bonus: number; prerequisites?: string | null; explain: string[];
@@ -163,19 +148,17 @@ export interface RulesOptions { negative_rounding: NegativeRounding }
 export interface Issue { severity: 'error' | 'warning'; message: string }
 
 export type Difficulty = 'E' | 'A' | 'H' | 'VH';
-export type SkillDefault = { attribute: string; modifier: number } | { skill: string; modifier: number };
+export interface SkillDefault { attribute?: string | null; skill?: string | null; mod: number }
 export interface SkillDef {
-  id: string; name: string; attribute: string; difficulty: Difficulty; defaults?: SkillDefault[];
-  specialization_required?: boolean; specializations?: string[]; page?: string | null; description?: LocalizedText | null;
+  sid: string; name: string; attribute: string; difficulty: Difficulty; defaults?: SkillDefault[];
+  spec_required?: boolean; specializations?: string[]; page?: string | null; description?: LocalizedText | null;
 }
 export interface TechniqueDef {
-  id: string; name: string; skill: string; difficulty: Difficulty; modifier: number; max: number;
+  sid: string; name: string; parent_skill: string; difficulty: Difficulty; default_mod: number; max_mod?: number | null;
   page?: string | null; description?: LocalizedText | null;
 }
-export interface SkillLibEntry extends SkillDef { plugin: string; explanation?: string | null; translated_name?: string | null }
-export interface TechniqueLibEntry extends TechniqueDef {
-  plugin: string; explanation?: string | null; translated_name?: string | null; skill_name: string;
-}
+export type SkillLibEntry = SkillDef & LibMeta;
+export type TechniqueLibEntry = TechniqueDef & LibMeta & { skill_name: string };
 export interface SkillLibrary { skills: SkillLibEntry[]; techniques: TechniqueLibEntry[] }
 
 interface ExplainedView {
@@ -218,5 +201,5 @@ export interface PoolView {
   disadvantages: number; quirks: number; quirk_points: number;
 }
 export type CustomKind = 'trait' | 'skill' | 'spell' | 'equipment';
-export interface CustomContent { traits?: TraitDef[]; skills?: SkillDef[]; spells?: SpellDef[]; equipment?: EquipmentDef[] }
+export interface CustomContent { traits?: TraitDef[]; skills?: SkillDef[]; spells?: SpellDef[]; items?: ItemDef[] }
 

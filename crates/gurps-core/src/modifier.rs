@@ -1,52 +1,6 @@
-//! Trait modifiers: enhancements (+%) and limitations (-%) (B101-B102, page unverified).
+//! Trait cost modifiers: percentage math and rounding options.
 
-use crate::{is_blank, LocalizedText};
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ModifierDef {
-    pub id: String,
-    pub name: String,
-    /// Percentage of the trait's cost: positive = enhancement, negative = limitation.
-    pub cost_percent: i32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub page: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<LocalizedText>,
-}
-
-impl ModifierDef {
-    pub fn explanation(&self, locale: &str) -> Option<&str> {
-        self.description.as_ref().and_then(|d| d.get(locale))
-    }
-    pub fn is_enhancement(&self) -> bool {
-        self.cost_percent > 0
-    }
-}
-
-/// A modifier applied to a character's trait.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TraitModifier {
-    #[serde(flatten)]
-    pub def: ModifierDef,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,
-    #[serde(default, skip_serializing_if = "is_blank")]
-    pub explanation: Option<String>,
-}
-
-impl TraitModifier {
-    pub fn new(def: ModifierDef) -> Self {
-        Self {
-            def,
-            source: None,
-            explanation: None,
-        }
-    }
-    pub fn has_custom_explanation(&self) -> bool {
-        !is_blank(&self.explanation)
-    }
-}
 
 /// Lowest total modifier (limitations cannot reduce a cost by more than 80%).
 pub const MIN_TOTAL_PERCENT: i32 = -80;

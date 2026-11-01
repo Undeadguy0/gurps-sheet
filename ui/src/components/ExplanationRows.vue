@@ -8,6 +8,8 @@ import ExplanationEditor from './ExplanationEditor.vue';
 defineProps<{
   open: boolean; colspan: number; label: string;
   text?: string | null; defaultText?: string | null; custom: boolean;
+  /** Show the text without the editor (e.g. weapons: edited on the item). */
+  readonly?: boolean;
 }>();
 const emit = defineEmits<{ save: [string | null] }>();
 </script>
@@ -16,7 +18,8 @@ const emit = defineEmits<{ save: [string | null] }>();
   <tr v-if="open" class="explanation-row">
     <td :colspan="colspan">
       <slot />
-      <ExplanationEditor :text="text" :default-text="defaultText" :custom="custom" :label="label" @save="(t) => emit('save', t)" />
+      <div v-if="readonly && text" class="md" v-html="renderMarkdown(text)"></div>
+      <ExplanationEditor v-else-if="!readonly" :text="text" :default-text="defaultText" :custom="custom" :label="label" @save="(t) => emit('save', t)" />
     </td>
   </tr>
   <tr v-else-if="text" class="explanation-row explanation-row--print-only">

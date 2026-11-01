@@ -1,6 +1,6 @@
 // TS mirror of gurps_rules::combat and gurps_core::damage (browser mock + tests).
 // The Rust crates are the source of truth; explanation lines match them word for word.
-import type { ArmorRow, AttackRow, Defense, Defenses, WeaponDef, WeaponRow } from './types';
+import type { ArmorRow, AttackRow, Defense, Defenses, WeaponDef, WeaponRow } from './mockTypes';
 
 export interface Dice { dice: number; adds: number }
 const d = (dice: number, adds: number): Dice => ({ dice, adds });

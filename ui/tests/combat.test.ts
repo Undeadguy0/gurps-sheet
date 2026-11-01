@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { basicDamage, computeDefenses, computeWeapons, diceStr, parseDamage, parseDb, parseDr, type CombatCtx } from '../src/combat';
 import { MockBackend } from '../src/mock';
 import { WEAPON_DEFS } from '../src/mockWeapons';
-import type { SheetView, WeaponView } from '../src/types';
+import type { SheetView, WeaponView } from '../src/mockTypes';
 
 const W = (id: string) => WEAPON_DEFS.find((w) => w.id === id)!;
 const dmg = (v: SheetView, id: string, mode: string) => {

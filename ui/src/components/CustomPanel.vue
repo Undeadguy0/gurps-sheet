@@ -2,26 +2,27 @@
 // «Своё»: user-defined spells, traits, skills and equipment stored in the
 // character file. One shared form; fields depend on the kind.
 import { computed, ref } from 'vue';
-import type { CustomContent, CustomKind, Difficulty, TraitCategory } from '../types';
+import type { CustomContent, CustomKind, Difficulty, TraitCost, TraitKind } from '../types';
 import { renderMarkdown } from '../markdown';
+import { costText } from '../labels';
 
 const props = defineProps<{ custom: CustomContent; canExport: boolean }>();
 const emit = defineEmits<{ save: [CustomKind, Record<string, unknown>]; remove: [CustomKind, string]; export: [] }>();
 
 const KIND_LABEL: Record<CustomKind, string> = { spell: 'Заклинание', trait: 'Черта', skill: 'Навык', equipment: 'Снаряжение' };
-const CATEGORY_LABEL: Record<TraitCategory, string> = { advantage: 'Преимущество', perk: 'Перк', disadvantage: 'Недостаток', quirk: 'Причуда' };
+const CATEGORY_LABEL: Record<TraitKind, string> = { adv: 'Преимущество', perk: 'Перк', disadv: 'Недостаток', quirk: 'Причуда' };
 const ATTRS = ['ST', 'DX', 'IQ', 'HT', 'Will', 'Per'];
 
 type Row = { kind: CustomKind; id: string; name: string; def: Record<string, unknown> };
 const rows = computed<Row[]>(() => [
-  ...(props.custom.spells ?? []).map((d) => ({ kind: 'spell' as const, id: d.id, name: d.name, def: d as unknown as Record<string, unknown> })),
-  ...(props.custom.traits ?? []).map((d) => ({ kind: 'trait' as const, id: d.id, name: d.name, def: d as unknown as Record<string, unknown> })),
-  ...(props.custom.skills ?? []).map((d) => ({ kind: 'skill' as const, id: d.id, name: d.name, def: d as unknown as Record<string, unknown> })),
-  ...(props.custom.equipment ?? []).map((d) => ({ kind: 'equipment' as const, id: d.id, name: d.name, def: d as unknown as Record<string, unknown> })),
+  ...(props.custom.spells ?? []).map((d) => ({ kind: 'spell' as const, id: d.sid, name: d.name, def: d as unknown as Record<string, unknown> })),
+  ...(props.custom.traits ?? []).map((d) => ({ kind: 'trait' as const, id: d.sid, name: d.name, def: d as unknown as Record<string, unknown> })),
+  ...(props.custom.skills ?? []).map((d) => ({ kind: 'skill' as const, id: d.sid, name: d.name, def: d as unknown as Record<string, unknown> })),
+  ...(props.custom.items ?? []).map((d) => ({ kind: 'equipment' as const, id: d.sid, name: d.name, def: d as unknown as Record<string, unknown> })),
 ]);
 
 const blank = () => ({ id: '', name: '', college: '', difficulty: 'H' as Difficulty, attribute: 'IQ', prerequisites: '', description: '',
-  category: 'advantage' as TraitCategory, cost: 0, cost_per_level: 0, max_levels: null as number | null, weight: 0, money: 0 });
+  category: 'adv' as TraitKind, cost: 0, cost_per_level: 0, max_levels: null as number | null, weight: 0, money: 0 });
 const kind = ref<CustomKind | null>(null);
 const f = ref(blank());
 const preview = ref(false);
@@ -29,31 +30,32 @@ function openNew(k: CustomKind) { kind.value = k; f.value = blank(); if (k === '
 const text = (v: unknown) => (typeof v === 'string' ? v : v && typeof v === 'object' ? (v as Record<string, string>).ru ?? Object.values(v)[0] ?? '' : '');
 function openEdit(r: Row) {
   const d = r.def; const b = blank();
-  f.value = { ...b, id: r.id, name: r.name, description: text(d.description), prerequisites: String(d.prerequisites ?? ''),
-    college: ((d.college as string[]) ?? []).join(', '), difficulty: (d.difficulty as Difficulty) ?? b.difficulty, attribute: String(d.attribute ?? 'IQ'),
-    category: (d.category as TraitCategory) ?? b.category, cost: r.kind === 'equipment' ? b.cost : Number(d.cost ?? 0),
-    cost_per_level: Number(d.cost_per_level ?? 0), max_levels: (d.max_levels as number) ?? null, weight: Number(d.weight ?? 0),
+  const c = (r.kind === 'trait' ? d.cost : {}) as { base?: number; per_level?: number | null; max_level?: number | null };
+  f.value = { ...b, id: r.id, name: r.name, description: text(d.description), prerequisites: '',
+    college: ((d.colleges as string[]) ?? []).join(', '), difficulty: (d.difficulty as Difficulty) ?? b.difficulty, attribute: String(d.attribute ?? 'IQ'),
+    category: (d.kind as TraitKind) ?? b.category, cost: Number(c.base ?? 0),
+    cost_per_level: Number(c.per_level ?? 0), max_levels: c.max_level ?? null, weight: Number(d.weight ?? 0),
     money: r.kind === 'equipment' ? Number(d.cost ?? 0) : 0 };
   kind.value = r.kind; preview.value = false;
 }
 const nameError = computed(() => (!f.value.name.trim() ? 'Нужно название' : ''));
 function submit() {
   if (!kind.value || nameError.value) return;
-  const v = f.value; const base: Record<string, unknown> = { id: v.id, name: v.name.trim(), description: v.description.trim() || null };
+  const v = f.value; const base: Record<string, unknown> = { sid: v.id, name: v.name.trim(), description: v.description.trim() || null };
   const def: Record<string, unknown> =
-    kind.value === 'spell' ? { ...base, attribute: 'IQ', difficulty: v.difficulty, prerequisites: v.prerequisites.trim() || null,
-      college: v.college.split(',').map((s) => s.trim()).filter(Boolean) }
+    kind.value === 'spell' ? { ...base, difficulty: v.difficulty, colleges: v.college.split(',').map((s) => s.trim()).filter(Boolean) }
     : kind.value === 'skill' ? { ...base, attribute: v.attribute, difficulty: v.difficulty }
-    : kind.value === 'trait' ? { ...base, category: v.category, cost: v.cost, cost_per_level: v.cost_per_level, max_levels: v.cost_per_level ? v.max_levels : null, features: [] }
+    : kind.value === 'trait' ? { ...base, kind: v.category, features: [],
+        cost: v.cost_per_level ? { type: 'base_plus_level', base: v.cost, per_level: v.cost_per_level, max_level: v.max_levels } : { type: 'fixed', base: v.cost } }
     : { ...base, weight: v.weight, cost: v.money };
   emit('save', kind.value, def);
   kind.value = null;
 }
 const summary = (r: Row) => {
   const d = r.def;
-  if (r.kind === 'spell') return `${((d.college as string[]) ?? []).join(', ') || 'без школы'} · IQ/${d.difficulty}`;
+  if (r.kind === 'spell') return `${((d.colleges as string[]) ?? []).join(', ') || 'без школы'} · IQ/${d.difficulty}`;
   if (r.kind === 'skill') return `${d.attribute}/${d.difficulty}`;
-  if (r.kind === 'trait') return `${CATEGORY_LABEL[d.category as TraitCategory]} · ${d.cost}${d.cost_per_level ? ` + ${d.cost_per_level}/ур.` : ''}`;
+  if (r.kind === 'trait') return `${CATEGORY_LABEL[d.kind as TraitKind]} · ${costText(d.cost as TraitCost)}`;
   return `${d.weight} фнт · $${d.cost}`;
 };
 </script>
@@ -91,11 +93,10 @@ const summary = (r: Row) => {
         <h2 id="custom-dlg-title" class="panel__title">{{ f.id ? 'Правка' : 'Новое' }}: {{ KIND_LABEL[kind].toLowerCase() }}</h2>
         <label>Название <input v-model="f.name" class="field" type="text" data-test="custom-name" /></label>
         <template v-if="kind === 'spell'">
-          <label>Школа (через запятую) <input v-model="f.college" class="field" type="text" placeholder="Огонь" /></label>
+          <label>Школы, коды через запятую <input v-model="f.college" class="field" type="text" placeholder="fire" /></label>
           <label>Сложность
             <select v-model="f.difficulty" class="field field--select"><option value="H">Трудная (IQ/H)</option><option value="VH">Очень трудная (IQ/VH)</option></select>
           </label>
-          <label>Предварительные условия <input v-model="f.prerequisites" class="field" type="text" /></label>
         </template>
         <template v-else-if="kind === 'skill'">
           <div class="custom-row">

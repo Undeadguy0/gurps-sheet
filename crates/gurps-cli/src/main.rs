@@ -20,13 +20,14 @@ const USAGE: &str = "usage:\n  gurps calc <file.json>\n  gurps roll <target> [--
 /// Лист и проверки персонажа через БД.
 fn compute(path: &str, cfg: &DbConfig) -> Result<(Sheet, Vec<Issue>), String> {
     let ch = gurps_io::load(path).map_err(|e| e.to_string())?;
+    let lib = gurps_library::Library::load_db(cfg)?;
     let eng = Engine::connect(cfg)?;
     let calc = eng.compute(&ch);
     let sheet = match &calc {
-        Ok(c) => gurps_library::sheet::build(&ch, c, &|_, _| None),
+        Ok(c) => gurps_library::sheet::build(&ch, &lib, c, &|_, _| None),
         Err(_) => Sheet::default(),
     };
-    let issues = gurps_library::sheet::issues(&ch, &calc, &sheet);
+    let issues = gurps_library::sheet::issues(&ch, &lib, &calc, &sheet);
     Ok((sheet, issues))
 }
 
@@ -128,8 +129,8 @@ mod tests {
             return;
         };
         let mut ch = gurps_core::Character::new("CLI".to_string());
-        ch.attributes.st = 3;
-        ch.attributes.dx = 1;
+        ch.set_attribute("ST", 3);
+        ch.set_attribute("DX", 1);
         let p = std::env::temp_dir().join(format!("gurps-cli-{}.json", std::process::id()));
         gurps_io::save(&p, &ch).unwrap();
         let path = p.display().to_string();
@@ -142,6 +143,10 @@ mod tests {
         let (v, ok) = run(&s(&["validate", &path]), &srv.cfg).unwrap();
         assert!(ok, "{v}");
         std::fs::remove_file(p).unwrap();
+        // Пример v2: все ссылки находятся в каталоге.
+        let hero = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/hero.json");
+        let (v, _) = run(&s(&["validate", hero]), &srv.cfg).unwrap();
+        assert!(!v.to_string().contains("нет в каталоге"), "{v}");
     }
 
     #[test]

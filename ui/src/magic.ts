@@ -1,6 +1,6 @@
 // Spell levels and trait-modifier costs. Mirror of crates/gurps-rules/src/spells.rs,
 // crates/gurps-rules/src/modifiers.rs and gurps_core::modifier (source of truth).
-import type { Difficulty, NegativeRounding, SpellDef } from './types';
+import type { Difficulty, NegativeRounding, SpellDef } from './mockTypes';
 import { enPts, relativeLevel, signedInt } from './skills';
 
 /** Limitations cannot reduce a cost by more than 80%. */

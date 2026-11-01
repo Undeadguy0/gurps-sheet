@@ -3,7 +3,7 @@ import { engineRu } from '../src/engineRu';
 import { computeSpells, modifiedCost, traitCostExplain } from '../src/magic';
 import { MockBackend } from '../src/mock';
 import { SPELL_DEFS } from '../src/mockMagic';
-import type { ModifierLibEntry, SheetView, SpellLibEntry } from '../src/types';
+import type { ModifierLibEntry, SheetView, SpellLibEntry } from '../src/mockTypes';
 
 // Own expectations (no GM data for spells/modifiers); mirrors crates/gurps-cli/tests/spells_modifiers.rs.
 describe('trait modifiers', () => {

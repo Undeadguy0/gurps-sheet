@@ -1,6 +1,6 @@
 // Skill/technique level maths. Mirror of crates/gurps-rules/src/skills.rs (source of truth),
 // used by the browser preview backend and for UI hints (cost of the next level).
-import type { Difficulty, SkillDef, TechniqueDef } from './types';
+import type { Difficulty, SkillDef, TechniqueDef } from './mockTypes';
 
 export const DIFF_OFFSET: Record<Difficulty, number> = { E: 0, A: -1, H: -2, VH: -3 };
 export const DIFF_LABEL: Record<string, string> = { E: 'Лёгкий', A: 'Средний', H: 'Трудный', VH: 'Очень трудный' };

@@ -7,7 +7,6 @@ import { excerpt } from '../markdown';
 import ExplanationRows from './ExplanationRows.vue';
 
 const props = defineProps<{ weapons: WeaponView[] }>();
-const emit = defineEmits<{ add: []; remove: [number]; setExplanation: [number, string | null] }>();
 
 /** One table row per attack mode; the weapon name and actions sit on its first row. */
 interface Row { key: string; w: WeaponView; a: AttackView; first: boolean; span: number }
@@ -32,7 +31,6 @@ const columns = [
   col.accessor((r) => r.a.damage, { id: 'damage', header: 'Урон' }),
   col.accessor((r) => r.a.reach, { id: 'reach', header: 'Досяг.', meta: { num: true } }),
   col.accessor((r) => r.a.parry ?? null, { id: 'parry', header: 'Парир.', meta: { num: true } }),
-  col.display({ id: 'actions', header: '' }),
 ];
 const table = useVueTable({ get data() { return rows.value; }, columns, getRowId: (r) => r.key, getCoreRowModel: getCoreRowModel() });
 const tip = (r: Row) => [r.a.explain.map(tx).join('\n'), excerpt(r.w.explanation)].filter(Boolean).join('\n\n') || undefined;
@@ -45,11 +43,9 @@ const parryText = (a: AttackView) => (!a.can_parry ? 'нет' : a.parry == null 
       <h2 id="weapons-title" class="panel__title">Оружие ближнего боя</h2>
       <span class="panel__spacer"></span>
       <input v-model="filter" class="field field--filter" placeholder="Фильтр" aria-label="Фильтр оружия" />
-      <button class="btn" type="button" title="Библиотека оружия" @click="emit('add')">+ Добавить</button>
     </header>
     <div v-if="!weapons.length" class="empty-state">
-      <p>Оружия нет. Оружие из снаряжения появляется само; удар и пинок есть у нового персонажа.</p>
-      <button class="btn btn--primary" type="button" @click="emit('add')">Открыть библиотеку оружия</button>
+      <p>Оружия нет. Атаки берутся из предметов снаряжения и естественных атак (удар, пинок).</p>
     </div>
     <table v-else class="data-table weapons-table">
       <thead>
@@ -71,7 +67,7 @@ const parryText = (a: AttackView) => (!a.can_parry ? 'нет' : a.parry == null 
                   {{ row.original.w.name }}<span v-if="row.original.w.original_name" class="muted original-name"> ({{ row.original.w.original_name }})</span>
                   <span v-if="row.original.w.equipment && !row.original.w.available" class="skill-tag muted" title="Предмета нет в снаряжении">нет предмета</span>
                   <span v-else-if="row.original.w.equipment && !row.original.w.ready" class="skill-tag muted" title="Предмет не при себе">не при себе</span>
-                  <span v-if="row.original.w.explanation" class="explanation-mark" :class="{ 'is-custom': row.original.w.custom_explanation }" aria-hidden="true">ⓘ</span>
+                  <span v-if="row.original.w.explanation" class="explanation-mark" aria-hidden="true">ⓘ</span>
                 </template>
               </template>
               <template v-else-if="cell.column.id === 'mode'">{{ mode(row.original.a.mode) }}</template>
@@ -84,20 +80,16 @@ const parryText = (a: AttackView) => (!a.can_parry ? 'нет' : a.parry == null 
                 <span class="muted num"> ({{ row.original.a.damage_expr }})</span>
               </template>
               <template v-else-if="cell.column.id === 'parry'">{{ parryText(row.original.a) }}</template>
-              <template v-else-if="cell.column.id === 'actions'">
-                <button v-if="row.original.first" class="btn btn--icon btn--danger" type="button" :aria-label="`Удалить ${row.original.w.name}`" @click="emit('remove', row.original.w.index)">×</button>
-              </template>
               <span v-else><FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" /></span>
             </td>
           </tr>
           <ExplanationRows v-if="row.original.first" :open="expanded.has(row.original.w.index)" :colspan="row.getVisibleCells().length" :label="row.original.w.name"
-            :text="row.original.w.explanation" :default-text="row.original.w.default_explanation" :custom="row.original.w.custom_explanation"
-            @save="(t) => emit('setExplanation', row.original.w.index, t)">
+            :text="row.original.w.explanation" :custom="false" readonly>
               <div v-for="(a, i) in row.original.w.attacks" :key="i">
                 <strong>{{ mode(a.mode) }}:</strong>
                 <ul class="skill-details__explain num"><li v-for="(l, j) in a.explain" :key="j">{{ tx(l) }}</li></ul>
               </div>
-              <p class="muted"><template v-if="row.original.w.page">стр. {{ row.original.w.page }}</template><template v-if="row.original.w.source"> · плагин {{ row.original.w.source }}</template></p>
+              <p v-if="row.original.w.equipment" class="muted">Пояснение редактируется у предмета в снаряжении.</p>
           </ExplanationRows>
         </template>
       </tbody>

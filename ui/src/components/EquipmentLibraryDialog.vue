@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { itemStats } from '../labels';
 import LibraryExplanation from './LibraryExplanation.vue';
 import { computed, nextTick, onMounted, ref } from 'vue';
 import type { EquipmentLibEntry } from '../types';
@@ -42,7 +43,7 @@ const add = (e: EquipmentLibEntry) => emit('add', e.id, Math.max(1, Math.floor(q
           <header class="library-preview__head">
             <h3 class="library-preview__title">{{ preview.translated_name ?? preview.name }}<small v-if="preview.translated_name" class="muted original-name"> ({{ preview.name }})</small></h3>
             <p class="library-preview__meta muted">
-              {{ lb(preview.weight) }} · {{ money(preview.cost) }}<template v-if="preview.stats"> · {{ preview.stats }}</template>
+              {{ lb(preview.weight) }} · {{ money(preview.cost) }}<template v-if="itemStats(preview)"> · {{ itemStats(preview) }}</template>
               <template v-if="preview.container"> · контейнер</template><template v-if="preview.page"> · стр. {{ preview.page }}</template>
             </p>
           </header>

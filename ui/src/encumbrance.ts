@@ -1,6 +1,6 @@
 // TS mirror of gurps_rules::encumbrance (used by the browser mock and tests).
 // The Rust crate is the source of truth.
-import type { Encumbrance, EquipmentItem } from './types';
+import type { Encumbrance, EquipmentItem } from './mockTypes';
 
 export const BL_MULTIPLES = [1, 2, 3, 6, 10];
 export const MOVE_MULTIPLIERS = [1, 0.8, 0.6, 0.4, 0.2];

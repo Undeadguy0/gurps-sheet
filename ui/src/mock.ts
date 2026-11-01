@@ -1,12 +1,13 @@
 // Browser-preview backend. Used ONLY when the UI runs outside Tauri (plain Vite dev),
 // so designers can work on the UI without the Rust app. The source of truth for all
 // rules is the Rust crate `gurps-rules`; this is a simplified mirror of it.
+import { customIn, out } from './mockAdapt';
 import { normalize as normalizeLedger, totals as ledgerTotals } from './pool';
 import type {
   LibraryEntry, LocaleInfo, LocalizedText, RollResult, DamageRoll, LedgerEntry, LedgerInput, CustomContent, CustomKind, SheetView, StatRow, TraitDef, TraitView, Value, Outcome,
   SkillDef, SkillLibrary, SkillView, TechniqueDef, TechniqueView, EquipmentItem, EquipmentLibEntry, EquipmentView,
   WeaponDef, WeaponLibEntry, WeaponView, ModifierDef, ModifierLibEntry, NegativeRounding, ModifierView, SpellDef, SpellLibEntry, SpellView,
-} from './types';
+} from './mockTypes';
 import { WEAPON_CATALOG_RU, WEAPON_DEFS } from './mockWeapons';
 import { basicDamage, computeDefenses, computeWeapons, diceStr, type CombatCtx, type Owned } from './combat';
 import { EQUIPMENT_CATALOG_RU, EQUIPMENT_DEFS } from './mockEquipment';
@@ -173,6 +174,11 @@ export class MockBackend {
   }
 
   invoke(cmd: string, a: Record<string, unknown>): unknown {
+    if (cmd === 'save_custom') a = { ...a, def: customIn(a.kind as string, a.def as Record<string, unknown>) };
+    return out(cmd, this.invokeLegacy(cmd, a));
+  }
+
+  private invokeLegacy(cmd: string, a: Record<string, unknown>): unknown {
     if (!this.saved) this.saved = this.key(this.snap());
     if (cmd === 'undo' || cmd === 'redo') {
       const [from, to] = cmd === 'undo' ? [this.undoStack, this.redoStack] : [this.redoStack, this.undoStack];
@@ -466,7 +472,7 @@ export class MockBackend {
         const d = { ...(a.def as Record<string, unknown>) };
         if (!String(d.name ?? '').trim()) throw new Error('a custom entry needs a name');
         const all = [...(this.custom.traits ?? []), ...(this.custom.skills ?? []), ...(this.custom.spells ?? []), ...(this.custom.equipment ?? [])].map((x) => x.id);
-        if (!String(d.id ?? '').trim()) { let n = 1; while (all.includes(`custom-${kind}-${n}`)) n++; d.id = `custom-${kind}-${n}`; }
+        if (!String(d.id ?? '').trim()) { let n = 1; while (all.includes(`custom_${kind}_${n}`)) n++; d.id = `custom_${kind}_${n}`; }
         if (kind === 'trait') d.features ??= [];
         const list = this.customList<{ id: string }>(kind); const i = list.findIndex((x) => x.id === d.id);
         if (i >= 0) list[i] = d as { id: string }; else list.push(d as { id: string });

@@ -85,8 +85,8 @@ describe('browser preview backend', () => {
     expect(v.traits[0].name).toBe('Lifting ST 2');
   });
   it('featureText is readable', () => {
-    expect(featureText({ type: 'attribute_bonus', target: 'ST', amount: 1, per_level: true })).toBe('ST — Сила: +1 за уровень');
-    expect(featureText({ type: 'lifting_st_bonus', amount: 2 })).toContain('базовый груз): +2');
-    expect(featureText({ type: 'striking_st_bonus', amount: -1, per_level: true })).toContain('-1 за уровень');
+    expect(featureText({ kind: 'attribute_bonus', attribute: 'ST', amount: 1, per_level: true })).toBe('Атрибут (ST — Сила): +1 за уровень');
+    expect(featureText({ kind: 'skill_bonus', skill: 'outdoor_a', amount: 1 })).toBe('Навык (outdoor_a): +1');
+    expect(featureText({ kind: 'damage_bonus', attack_mode: 'punch', damage_type: 'cut' })).toBe('Урон (punch): cut');
   });
 });

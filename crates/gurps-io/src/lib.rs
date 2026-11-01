@@ -1,12 +1,14 @@
-//! Character file format: `{ "format": "gurps-sheet", "version": 1, "character": {...} }`.
-#![cfg_attr(test, allow(clippy::field_reassign_with_default))]
+//! Character file format: `{ "format": "gurps-sheet", "version": 2, "character": {...} }`.
+//!
+//! Version 2 stores catalog references `(pack, sid)` plus inline definitions for own
+//! content. Version 1 (definition snapshots) is not read: such files are rejected.
 
 use gurps_core::Character;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 pub const FORMAT: &str = "gurps-sheet";
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 #[derive(Debug, thiserror::Error)]
 pub enum IoError {
@@ -16,7 +18,7 @@ pub enum IoError {
     Json(#[from] serde_json::Error),
     #[error("not a gurps-sheet file (format = {0:?})")]
     WrongFormat(String),
-    #[error("unsupported file version {found} (max supported {VERSION})")]
+    #[error("unsupported file version {found} (supported: {VERSION})")]
     UnsupportedVersion { found: u32 },
 }
 
@@ -44,13 +46,19 @@ pub fn to_string(ch: &Character) -> Result<String, IoError> {
 }
 
 pub fn from_str(s: &str) -> Result<Character, IoError> {
+    #[derive(Deserialize)]
+    struct Header {
+        format: String,
+        version: u32,
+    }
+    let h: Header = serde_json::from_str(s)?;
+    if h.format != FORMAT {
+        return Err(IoError::WrongFormat(h.format));
+    }
+    if h.version != VERSION {
+        return Err(IoError::UnsupportedVersion { found: h.version });
+    }
     let f: CharacterFile = serde_json::from_str(s)?;
-    if f.format != FORMAT {
-        return Err(IoError::WrongFormat(f.format));
-    }
-    if f.version == 0 || f.version > VERSION {
-        return Err(IoError::UnsupportedVersion { found: f.version });
-    }
     Ok(f.character)
 }
 
@@ -85,7 +93,49 @@ pub fn save(path: impl AsRef<Path>, ch: &Character) -> Result<(), IoError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gurps_core::{Equipment, EquipmentDef, Feature, Stat, Trait, TraitCategory, TraitDef};
+    use gurps_core::{Item, Src, Trait, TraitCost, TraitDef};
+
+    fn sample() -> Character {
+        let mut c = Character::new("Test");
+        c.set_attribute("ST", 2);
+        c.traits.push(Trait {
+            src: Src::catalog("basic", "combat_reflexes"),
+            level: None,
+            modifiers: vec![],
+            explanation: Some("mine".into()),
+        });
+        c.traits.push(Trait {
+            src: Src::Inline {
+                inline: TraitDef {
+                    sid: "lucky_hat".into(),
+                    name: "Lucky Hat".into(),
+                    kind: "perk".into(),
+                    cost: TraitCost {
+                        kind: "fixed".into(),
+                        base: 1,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            },
+            level: None,
+            modifiers: vec![],
+            explanation: None,
+        });
+        let mut bag = Item::new(Src::catalog("basic", "backpack_small"));
+        bag.contents
+            .push(Item::new(Src::catalog("basic", "rope_10_yards")));
+        c.items.push(bag);
+        c
+    }
+
+    #[test]
+    fn roundtrip() {
+        let c = sample();
+        let s = to_string(&c).unwrap();
+        assert!(s.contains("\"version\": 2"));
+        assert_eq!(from_str(&s).unwrap(), c);
+    }
 
     #[test]
     fn atomic_save_replaces_and_leaves_no_temp() {
@@ -96,173 +146,35 @@ mod tests {
         save(&p, &sample()).unwrap();
         assert_eq!(load(&p).unwrap().name, "Test");
         assert!(!dir.join("c.gurps.json.tmp").exists());
-        // failure (missing directory) is an error, not a panic, and the old file is untouched
         assert!(save(dir.join("nope/c.json"), &sample()).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    fn sample() -> Character {
-        let mut ch = Character::new("Test");
-        ch.attributes.st = 2;
-        ch.attributes.basic_speed_quarters = 1;
-        ch.traits.push(Trait::new(
-            TraitDef {
-                id: "inc".into(),
-                name: "Increased ST (example)".into(),
-                category: TraitCategory::Advantage,
-                cost: 0,
-                cost_per_level: 10,
-                max_levels: None,
-                min_levels: None,
-                page: Some("example".into()),
-                features: vec![Feature::AttributeBonus {
-                    target: Stat::ST,
-                    amount: 1.0,
-                    per_level: true,
-                }],
-                description: None,
-            },
-            1,
-        ));
-        ch.equipment.push(Equipment::new(
-            EquipmentDef {
-                name: "Rope".into(),
-                weight: 1.5,
-                cost: 5.0,
-                ..Default::default()
-            },
-            1,
-        ));
-        ch
-    }
-
     #[test]
-    fn roundtrip() {
-        let ch = sample();
-        let s = to_string(&ch).unwrap();
-        assert!(s.contains("\"version\": 1"));
-        assert_eq!(from_str(&s).unwrap(), ch);
-    }
-
-    #[test]
-    fn file_roundtrip() {
-        let p = std::env::temp_dir().join(format!("gurps-io-{}.json", std::process::id()));
-        save(&p, &sample()).unwrap();
-        assert_eq!(load(&p).unwrap(), sample());
-        std::fs::remove_file(p).unwrap();
-    }
-
-    #[test]
-    fn rejects_bad_header() {
-        let s = r#"{"format":"other","version":1,"character":{}}"#;
-        assert!(matches!(from_str(s), Err(IoError::WrongFormat(_))));
-        let s = r#"{"format":"gurps-sheet","version":99,"character":{}}"#;
+    fn rejects_bad_header_and_v1() {
         assert!(matches!(
-            from_str(s),
-            Err(IoError::UnsupportedVersion { found: 99 })
+            from_str(r#"{"format":"x","version":2,"character":{}}"#),
+            Err(IoError::WrongFormat(_))
+        ));
+        assert!(matches!(
+            from_str(r#"{"format":"gurps-sheet","version":1,"character":{"points_budget":100}}"#),
+            Err(IoError::UnsupportedVersion { found: 1 })
         ));
     }
 
     #[test]
     fn missing_fields_default() {
-        let s = r#"{"format":"gurps-sheet","version":1,"character":{"name":"X"}}"#;
-        let ch = from_str(s).unwrap();
-        assert_eq!(ch.points_budget, 150);
-        assert_eq!(ch.attributes.st, 0);
+        let c =
+            from_str(r#"{"format":"gurps-sheet","version":2,"character":{"name":"N"}}"#).unwrap();
+        assert_eq!(c.name, "N");
+        assert_eq!(c.available_points(), 150);
+        assert!(c.traits.is_empty());
     }
 
     #[test]
-    fn hero_fixture_loads() {
+    fn hero_example_loads() {
         let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/hero.json");
-        let ch = load(p).unwrap();
-        assert_eq!(ch.attributes.st, 2);
-        assert!(!ch.traits.is_empty());
-        // fixture is canonical: re-serialising yields identical content
-        let again = from_str(&to_string(&ch).unwrap()).unwrap();
-        assert_eq!(again, ch);
-    }
-
-    #[test]
-    fn explanation_roundtrip_and_skip_when_empty() {
-        let mut ch = sample();
-        let s = to_string(&ch).unwrap();
-        assert!(!s.contains("explanation"), "empty field is skipped");
-        assert!(!s.contains("description"), "missing plugin text is skipped");
-        ch.traits[0].def.description = Some("plugin **text**".into());
-        ch.traits[0].explanation = Some("# Mine\nline 2\n".into());
-        ch.equipment[0].explanation = Some("rope notes".into());
-        let s = to_string(&ch).unwrap();
-        let back = from_str(&s).unwrap();
-        assert_eq!(back, ch);
-        assert_eq!(back.traits[0].explanation("ru"), Some("# Mine\nline 2\n"));
-        ch.traits[0].explanation = Some("   ".into());
-        ch.equipment[0].explanation = None;
-        assert!(!to_string(&ch).unwrap().contains("\"explanation\""));
-    }
-
-    #[test]
-    fn old_files_without_explanation_load() {
-        for f in [
-            "hero",
-            "test-chars/warrior",
-            "test-chars/mage",
-            "test-chars/rogue",
-        ] {
-            let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../examples/{f}.json"));
-            let ch = load(&p).unwrap();
-            assert!(ch.traits.iter().all(|t| t.explanation.is_none()));
-        }
-    }
-
-    #[test]
-    fn skills_roundtrip_and_old_files() {
-        use gurps_core::{
-            Difficulty, Skill, SkillDef, SkillDefault, Stat, Technique, TechniqueDef,
-        };
-        let mut ch = sample();
-        assert!(
-            !to_string(&ch).unwrap().contains("\"skills\""),
-            "empty list skipped"
-        );
-        let mut s = Skill::new(
-            SkillDef {
-                id: "survival".into(),
-                name: "Survival".into(),
-                attribute: Stat::Per,
-                difficulty: Difficulty::Average,
-                defaults: vec![SkillDefault::Attribute {
-                    attribute: Stat::Per,
-                    modifier: -5,
-                }],
-                specialization_required: true,
-                specializations: vec!["Woodlands".into()],
-                page: Some("B223".into()),
-                description: None,
-            },
-            2,
-        );
-        s.specialization = Some("Woodlands".into());
-        s.explanation = Some("my **notes**".into());
-        ch.skills.push(s);
-        ch.techniques.push(Technique::new(
-            TechniqueDef {
-                id: "kicking".into(),
-                name: "Kicking".into(),
-                skill: "brawling".into(),
-                difficulty: Difficulty::Hard,
-                modifier: -2,
-                max: 0,
-                page: None,
-                description: None,
-            },
-            2,
-        ));
-        let txt = to_string(&ch).unwrap();
-        assert!(txt.contains("\"difficulty\": \"H\""));
-        assert_eq!(from_str(&txt).unwrap(), ch);
-        // files written before skills existed still load with empty lists
-        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/hero.json");
-        let old = load(p).unwrap();
-        assert!(old.skills.is_empty() && old.techniques.is_empty());
+        let c = load(p).unwrap();
+        assert!(!c.traits.is_empty());
     }
 }

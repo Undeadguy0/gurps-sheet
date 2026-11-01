@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { api, inTauri } from './api';
-import type { LibraryEntry, LocaleInfo, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, WeaponLibEntry, SpellLibEntry, ModifierLibEntry, LedgerInput, CustomKind } from './types';
+import type { LibraryEntry, LocaleInfo, RollResult, SheetView, SkillLibrary, EquipmentLibEntry, SpellLibEntry, ModifierLibEntry, LedgerInput, CustomKind } from './types';
 import { loadLocalePref, saveLocalePref } from './i18n';
 import AppHeader from './components/AppHeader.vue';
 import NavRail, { type Section } from './components/NavRail.vue';
@@ -15,7 +15,6 @@ import SkillLibraryDialog from './components/SkillLibraryDialog.vue';
 import ProvenancePanel from './components/ProvenancePanel.vue';
 import WeaponsPanel from './components/WeaponsPanel.vue';
 import DefensesPanel from './components/DefensesPanel.vue';
-import WeaponLibraryDialog from './components/WeaponLibraryDialog.vue';
 import SpellsPanel from './components/SpellsPanel.vue';
 import SpellLibraryDialog from './components/SpellLibraryDialog.vue';
 import NotesPanel from './components/NotesPanel.vue';
@@ -47,8 +46,6 @@ const section = ref('sheet');
 const libraryOpen = ref(false);
 const skillLibraryOpen = ref(false);
 const equipmentLibrary = ref<EquipmentLibEntry[]>([]);
-const weaponLibrary = ref<WeaponLibEntry[]>([]);
-const weaponLibraryOpen = ref(false);
 /** null = closed; [] = top level; path = into that container. */
 const equipmentTarget = ref<number[] | null>(null);
 const skillLibrary = ref<SkillLibrary>({ skills: [], techniques: [] });
@@ -131,8 +128,8 @@ watchEffect(() => {
 async function setLocale(locale: string, originalOnly: boolean) {
   await run(api.setLocale(locale, originalOnly), false);
   saveLocalePref({ locale, originalOnly });
-  [locales.value, library.value, skillLibrary.value, equipmentLibrary.value, weaponLibrary.value, spellLibrary.value, modifierLibrary.value] = await Promise.all([
-    api.getLocales(), api.listLibrary(), api.listSkillLibrary(), api.listEquipmentLibrary(), api.listWeaponLibrary(), api.listSpellLibrary(), api.listModifierLibrary()]);
+  [locales.value, library.value, skillLibrary.value, equipmentLibrary.value, spellLibrary.value, modifierLibrary.value] = await Promise.all([
+    api.getLocales(), api.listLibrary(), api.listSkillLibrary(), api.listEquipmentLibrary(), api.listSpellLibrary(), api.listModifierLibrary()]);
 }
 async function reloadLibrary() {
   [library.value, locales.value, view.value] = await Promise.all([api.listLibrary(), api.getLocales(), api.getSheet()]);
@@ -156,10 +153,6 @@ const setEquipmentQuantity = (p: number[], q: number) => run(api.setEquipmentQua
 const setEquipmentCarried = (p: number[], c: boolean) => run(api.setEquipmentCarried(p, c));
 const removeEquipment = (p: number[]) => run(api.removeEquipment(p));
 const setEquipmentExplanation = (p: number[], t: string | null) => run(api.setEquipmentExplanation(p, t));
-async function openWeaponLibrary() { weaponLibrary.value = await api.listWeaponLibrary(); weaponLibraryOpen.value = true; }
-async function addWeapon(id: string) { await run(api.addWeapon(id)); weaponLibraryOpen.value = false; }
-const removeWeapon = (i: number) => run(api.removeWeapon(i));
-const setWeaponExplanation = (i: number, t: string | null) => run(api.setWeaponExplanation(i, t));
 const setRounding = (m: string) => run(api.setNegativeRounding(m));
 async function openSpellLibrary() { spellLibrary.value = await api.listSpellLibrary(); spellLibraryOpen.value = true; }
 async function addSpell(id: string) { await run(api.addSpell(id, 1)); spellLibraryOpen.value = false; }
@@ -186,7 +179,7 @@ function onKey(e: KeyboardEvent) {
     if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
     if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); return; }
   }
-  if (e.key === 'Escape') { libraryOpen.value = false; skillLibraryOpen.value = false; weaponLibraryOpen.value = false; spellLibraryOpen.value = false; modifierTarget.value = null; equipmentTarget.value = null; explainKey.value = null; helpOpen.value = false; return; }
+  if (e.key === 'Escape') { libraryOpen.value = false; skillLibraryOpen.value = false; spellLibraryOpen.value = false; modifierTarget.value = null; equipmentTarget.value = null; explainKey.value = null; helpOpen.value = false; return; }
   if (e.altKey && /^[0-9]$/.test(e.key)) { section.value = sections[(+e.key + 9) % 10].id; e.preventDefault(); return; }
   if (typing) return;
   if (e.key === '?') helpOpen.value = !helpOpen.value;
@@ -240,8 +233,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
           @add="openEquipmentLibrary" @set-quantity="setEquipmentQuantity" @set-carried="setEquipmentCarried" @remove="removeEquipment"
           @set-explanation="setEquipmentExplanation" />
         <DefensesPanel v-if="section === 'sheet' || section === 'combat'" class="sheet-grid__left" :defenses="view.sheet.defenses" />
-        <WeaponsPanel v-if="section === 'sheet' || section === 'combat'" class="sheet-grid__full" :weapons="view.weapons ?? []"
-          @add="openWeaponLibrary" @remove="removeWeapon" @set-explanation="setWeaponExplanation" />
+        <WeaponsPanel v-if="section === 'sheet' || section === 'combat'" class="sheet-grid__full" :weapons="view.weapons ?? []" />
         <NotesPanel v-if="section === 'sheet'" class="sheet-grid__full" :notes="view.notes ?? ''" @save="setNotes" />
         <PointsPanel v-if="section === 'sheet' && view.pool" class="sheet-grid__full print-only" :pool="view.pool" :skills="view.skills" />
       </div>
@@ -266,7 +258,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
     <SpellLibraryDialog v-if="spellLibraryOpen" :library="spellLibrary" @close="spellLibraryOpen = false" @add="addSpell" />
     <ModifierLibraryDialog v-if="modifierTargetTrait" :library="modifierLibrary" :target="modifierTargetTrait" @close="modifierTarget = null" @add="addModifier" />
     <EquipmentLibraryDialog v-if="equipmentTarget" :library="equipmentLibrary" :target="equipmentTargetName" @close="equipmentTarget = null" @add="addEquipment" />
-    <WeaponLibraryDialog v-if="weaponLibraryOpen" :library="weaponLibrary" :owned="(view.weapons ?? []).map((w) => w.id)" @close="weaponLibraryOpen = false" @add="addWeapon" />
 
     <div v-if="helpOpen" class="modal-backdrop" @click.self="helpOpen = false">
       <div class="modal help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">

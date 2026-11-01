@@ -2,8 +2,9 @@
 //! все числа - из [`Calc`]; строки пояснений собираются здесь (приложение) из
 //! структурных данных расчёта (`AttrRow`, `SkillLevel`, `Encumbrance`, `Defenses`).
 //! Подписи атрибутов и уровней нагрузки - переводы из БД (`label(kind, code)`).
-use crate::calc::{sid, Calc, Issue};
-use gurps_core::{Character, Feature, Stat};
+use crate::calc::{Calc, Issue};
+use crate::{resolve, Library};
+use gurps_core::{Character, Item, TraitDef};
 use gurps_db::gurps_calc::{self, skills::SkillLevel};
 use serde::Serialize;
 
@@ -179,10 +180,40 @@ pub struct Sheet {
     pub spells: Vec<SkillRow>,
 }
 
+/// Ключи строк листа по порядку (коды БД, кроме `BasicSpeed`/`BasicMove`).
+pub const ORDER: [&str; 10] = [
+    "ST", "DX", "IQ", "HT", "HP", "Will", "Per", "FP", "BasicSpeed", "BasicMove",
+];
+
+/// Ключ строки листа -> код атрибута БД (`BasicSpeed` -> `Speed`).
+pub fn attr_code(key: &str) -> &str {
+    match key {
+        "BasicSpeed" => "Speed",
+        "BasicMove" => "Move",
+        k => k,
+    }
+}
+
+/// Код атрибута БД -> ключ строки листа.
+pub fn row_key(code: &str) -> &str {
+    match code {
+        "Speed" => "BasicSpeed",
+        "Move" => "BasicMove",
+        k => k,
+    }
+}
+
+/// Имя черты с уровнем («Lifting ST 3»).
+pub fn trait_name(d: &TraitDef, level: Option<i32>) -> String {
+    match level {
+        Some(l) if d.is_leveled() => format!("{} {l}", d.name),
+        _ => d.name.clone(),
+    }
+}
+
 impl Sheet {
-    /// Строка атрибута по ключу листа (`ST`, `Speed`, `Move`, `BasicLift`...).
-    pub fn row(&self, stat: Stat) -> Option<&StatRow> {
-        let k = stat.key();
+    /// Строка атрибута по ключу листа (`ST`, `BasicSpeed`, `BasicMove`, `BasicLift`...).
+    pub fn row(&self, k: &str) -> Option<&StatRow> {
         self.attributes
             .iter()
             .chain(&self.secondary)
@@ -207,34 +238,26 @@ fn signed(v: f64) -> String {
     }
 }
 
-/// Код атрибута БД -> `Stat` листа.
-fn stat_of(code: &str) -> Option<Stat> {
-    match code {
-        "Speed" => Some(Stat::BasicSpeed),
-        "Move" => Some(Stat::BasicMove),
-        c => Stat::parse(c),
-    }
-}
-
 /// Бонусы черт к атрибуту (для разбивки вклада; сумма - из расчёта).
-fn trait_bonuses(ch: &Character, stat: Stat) -> Vec<(String, f64)> {
+fn trait_bonuses(ch: &Character, lib: &Library, code: &str) -> Vec<(String, f64)> {
     let mut out = Vec::new();
     for t in &ch.traits {
-        let lv = t.levels.max(1) as f64;
-        for f in &t.def.features {
-            if let Feature::AttributeBonus {
-                target,
-                amount,
-                per_level,
-            } = f
+        let Some(d) = resolve(&lib.traits, &t.src) else {
+            continue;
+        };
+        let lv = t.level.unwrap_or(1) as f64;
+        for f in &d.features {
+            if f.get("kind").and_then(|x| x.as_str()) != Some("attribute_bonus")
+                || f.get("attribute").and_then(|x| x.as_str()) != Some(code)
             {
-                if *target == stat {
-                    out.push((
-                        t.display_name(),
-                        if *per_level { amount * lv } else { *amount },
-                    ));
-                }
+                continue;
             }
+            let amount = f.get("amount").and_then(|x| x.as_f64()).unwrap_or(0.0);
+            let per_level = f.get("per_level").and_then(|x| x.as_bool()).unwrap_or(false);
+            out.push((
+                trait_name(d, t.level),
+                if per_level { amount * lv } else { amount },
+            ));
         }
     }
     out
@@ -242,10 +265,11 @@ fn trait_bonuses(ch: &Character, stat: Stat) -> Vec<(String, f64)> {
 
 fn stat_row(
     ch: &Character,
+    lib: &Library,
     r: &gurps_calc::attributes::AttrRow,
     label: &dyn Fn(&str, &str) -> Option<String>,
 ) -> StatRow {
-    let key = stat_of(&r.code).map_or(r.code.clone(), |s| s.key().to_string());
+    let key = row_key(&r.code).to_string();
     let mut contributions = Vec::new();
     let mut explain = vec![format!("база {}", fmt_num(r.base))];
     if r.levels != 0 {
@@ -258,9 +282,7 @@ fn stat_row(
         explain.push(format!("{} куплено ({} оч.)", signed(amount), r.points));
     }
     if r.bonus != 0.0 {
-        let named = stat_of(&r.code)
-            .map(|s| trait_bonuses(ch, s))
-            .unwrap_or_default();
+        let named = trait_bonuses(ch, lib, &r.code);
         let named_sum: f64 = named.iter().map(|(_, a)| a).sum();
         for (n, a) in &named {
             contributions.push(Contribution {
@@ -359,13 +381,32 @@ fn take<'a>(
     list.get(i)
 }
 
-pub fn build(ch: &Character, c: &Calc, label: &dyn Fn(&str, &str) -> Option<String>) -> Sheet {
+fn walk<'a>(list: &'a [Item], out: &mut Vec<&'a Item>) {
+    for i in list {
+        out.push(i);
+        walk(&i.contents, out);
+    }
+}
+
+/// Все предметы листа (с содержимым контейнеров), по порядку.
+pub fn all_items(ch: &Character) -> Vec<&Item> {
+    let mut v = Vec::new();
+    walk(&ch.items, &mut v);
+    v
+}
+
+pub fn build(
+    ch: &Character,
+    lib: &Library,
+    c: &Calc,
+    label: &dyn Fn(&str, &str) -> Option<String>,
+) -> Sheet {
     let out = &c.computed;
     let a = &out.attributes;
     let mut attributes = Vec::new();
     let mut secondary = Vec::new();
     for r in &a.rows {
-        let row = stat_row(ch, r, label);
+        let row = stat_row(ch, lib, r, label);
         if r.kind == "basic" {
             attributes.push(row);
         } else {
@@ -373,19 +414,13 @@ pub fn build(ch: &Character, c: &Calc, label: &dyn Fn(&str, &str) -> Option<Stri
         }
     }
     // Порядок листа: ST, DX, IQ, HT; HP, Will, Per, FP, Speed, Move; прочие - в конце.
-    let order = |r: &StatRow| {
-        Stat::PRIMARY
-            .iter()
-            .chain(Stat::SECONDARY.iter())
-            .position(|s| s.key() == r.key)
-            .unwrap_or(usize::MAX)
-    };
+    let order = |r: &StatRow| ORDER.iter().position(|k| *k == r.key).unwrap_or(usize::MAX);
     attributes.sort_by_key(order);
     secondary.sort_by_key(order);
     let bl = a.basic_lift.unwrap_or(0.0);
     let lift_st = a.lifting_st.unwrap_or(0.0);
     let basic_lift = StatRow {
-        key: Stat::BasicLift.key().into(),
+        key: "BasicLift".into(),
         label: label("attribute", "BasicLift").unwrap_or_else(|| "Basic Lift".into()),
         level: 0,
         step: 1.0,
@@ -541,59 +576,78 @@ pub fn build(ch: &Character, c: &Calc, label: &dyn Fn(&str, &str) -> Option<Stri
         armor,
     };
 
-    let weapons = ch
-        .weapons
-        .iter()
-        .enumerate()
-        .map(|(index, w)| {
-            // Предмет -> атаки предмета; без предмета - естественная атака (sid режима).
-            let item = w.def.equipment.as_deref().map(sid);
-            let own = sid(&w.def.id);
-            let attacks: Vec<AttackRow> = out
-                .attacks
+    let attack_row = |x: &gurps_calc::attacks::Attack| {
+        let mut explain = Vec::new();
+        if let (Some(s), Some(l)) = (&x.skill, x.level) {
+            explain.push(format!("{s}: {l}"));
+        }
+        AttackRow {
+            mode: x.name.clone().unwrap_or_else(|| x.sid.clone()),
+            skill: x.skill.clone().unwrap_or_default(),
+            skill_id: x.skill.clone(),
+            via_technique: false,
+            level: x.level.map(|v| v as i32),
+            damage_expr: x.damage_text.clone().unwrap_or_default(),
+            damage: x.damage_text.clone().unwrap_or_default(),
+            damage_type: x.damage_type.clone().unwrap_or_default(),
+            reach: x
+                .reach
                 .iter()
-                .filter(|x| match &item {
-                    Some(i) => x.item.as_deref() == Some(i.as_str()),
-                    None => x.item.is_none() && x.sid == own,
-                })
-                .map(|x| {
-                    let mut explain = Vec::new();
-                    if let (Some(s), Some(l)) = (&x.skill, x.level) {
-                        explain.push(format!("{s}: {l}"));
-                    }
-                    AttackRow {
-                        mode: x.name.clone().unwrap_or_else(|| x.sid.clone()),
-                        skill: x.skill.clone().unwrap_or_default(),
-                        skill_id: x.skill.clone(),
-                        via_technique: false,
-                        level: x.level.map(|v| v as i32),
-                        damage_expr: x.damage_text.clone().unwrap_or_default(),
-                        damage: x.damage_text.clone().unwrap_or_default(),
-                        damage_type: x.damage_type.clone().unwrap_or_default(),
-                        reach: x
-                            .reach
-                            .iter()
-                            .map(i64::to_string)
-                            .collect::<Vec<_>>()
-                            .join(","),
-                        parry: x.parry.map(|v| v as i32),
-                        can_parry: x.parry.is_some(),
-                        parry_modifier: 0,
-                        explain,
-                    }
-                })
-                .collect();
-            WeaponRow {
-                index,
-                id: w.def.id.clone(),
-                name: w.def.name.clone(),
-                equipment: w.def.equipment.clone(),
-                available: !attacks.is_empty(),
-                ready: !attacks.is_empty(),
-                attacks,
-            }
-        })
-        .collect();
+                .map(i64::to_string)
+                .collect::<Vec<_>>()
+                .join(","),
+            parry: x.parry.map(|v| v as i32),
+            can_parry: x.parry.is_some(),
+            parry_modifier: 0,
+            explain,
+        }
+    };
+    // Оружие: предметы с режимами атаки (атаки — из расчёта, только у надетых) и естественные атаки.
+    let mut weapons: Vec<WeaponRow> = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for it in all_items(ch) {
+        let Some(d) = resolve(&lib.items, &it.src) else {
+            continue;
+        };
+        if d.attack_modes.is_empty() || !seen.insert(d.sid.clone()) {
+            continue;
+        }
+        let attacks: Vec<AttackRow> = out
+            .attacks
+            .iter()
+            .filter(|x| x.item.as_deref() == Some(d.sid.as_str()))
+            .map(attack_row)
+            .collect();
+        weapons.push(WeaponRow {
+            index: weapons.len(),
+            id: d.sid.clone(),
+            name: d.name.clone(),
+            equipment: Some(d.sid.clone()),
+            available: !attacks.is_empty(),
+            ready: !attacks.is_empty(),
+            attacks,
+        });
+    }
+    for x in out.attacks.iter().filter(|x| x.item.is_none()) {
+        if !seen.insert(format!("natural/{}", x.sid)) {
+            continue;
+        }
+        let attacks: Vec<AttackRow> = out
+            .attacks
+            .iter()
+            .filter(|y| y.item.is_none() && y.sid == x.sid)
+            .map(attack_row)
+            .collect();
+        weapons.push(WeaponRow {
+            index: weapons.len(),
+            id: x.sid.clone(),
+            name: x.name.clone().unwrap_or_else(|| x.sid.clone()),
+            equipment: None,
+            available: true,
+            ready: true,
+            attacks,
+        });
+    }
 
     let mut used = vec![false; out.skills.len()];
     let skills = ch
@@ -601,13 +655,9 @@ pub fn build(ch: &Character, c: &Calc, label: &dyn Fn(&str, &str) -> Option<Stri
         .iter()
         .enumerate()
         .map(|(i, s)| {
-            let l = take(
-                &out.skills,
-                &mut used,
-                &sid(&s.def.id),
-                s.specialization.as_deref(),
-            );
-            skill_row(i, l, s.def.attribute.key())
+            let l = take(&out.skills, &mut used, s.src.sid(), s.spec.as_deref());
+            let attr = resolve(&lib.skills, &s.src).map_or("", |d| d.attribute.as_str());
+            skill_row(i, l, attr)
         })
         .collect();
     let mut used = vec![false; out.techniques.len()];
@@ -616,8 +666,9 @@ pub fn build(ch: &Character, c: &Calc, label: &dyn Fn(&str, &str) -> Option<Stri
         .iter()
         .enumerate()
         .map(|(i, t)| {
-            let l = take(&out.techniques, &mut used, &sid(&t.def.id), None);
-            skill_row(i, l, &t.def.skill)
+            let l = take(&out.techniques, &mut used, t.src.sid(), None);
+            let parent = resolve(&lib.techniques, &t.src).map_or("", |d| d.parent_skill.as_str());
+            skill_row(i, l, parent)
         })
         .collect();
     let mut used = vec![false; out.spells.len()];
@@ -626,8 +677,8 @@ pub fn build(ch: &Character, c: &Calc, label: &dyn Fn(&str, &str) -> Option<Stri
         .iter()
         .enumerate()
         .map(|(i, s)| {
-            let l = take(&out.spells, &mut used, &sid(&s.def.id), None);
-            skill_row(i, l, s.def.attribute.key())
+            let l = take(&out.spells, &mut used, s.src.sid(), None);
+            skill_row(i, l, "IQ")
         })
         .collect();
 
@@ -648,7 +699,12 @@ pub fn build(ch: &Character, c: &Calc, label: &dyn Fn(&str, &str) -> Option<Stri
 }
 
 /// Проверки листа: правила-числа из БД (`calc::validate`) + проверки приложения.
-pub fn issues(ch: &Character, calc: &Result<Calc, String>, sheet: &Sheet) -> Vec<Issue> {
+pub fn issues(
+    ch: &Character,
+    lib: &Library,
+    calc: &Result<Calc, String>,
+    sheet: &Sheet,
+) -> Vec<Issue> {
     let mut out = Vec::new();
     let warn = |out: &mut Vec<Issue>, message: String| {
         out.push(Issue {
@@ -681,28 +737,41 @@ pub fn issues(ch: &Character, calc: &Result<Calc, String>, sheet: &Sheet) -> Vec
             ),
         );
     }
+    let missing = |out: &mut Vec<Issue>, what: &str, pack: &str, sid: &str| {
+        warn(out, format!("{what} {pack}/{sid}: нет в каталоге"));
+    };
     for t in &ch.traits {
-        if t.def.is_leveled() && t.levels < t.def.min_level() {
+        let Some(d) = resolve(&lib.traits, &t.src) else {
+            missing(&mut out, "черта", t.src.pack(), t.src.sid());
+            continue;
+        };
+        let lv = t.level.unwrap_or(0);
+        if d.is_leveled() && lv < d.min_level() as i32 {
             err(
                 &mut out,
                 format!(
                     "черта «{}»: нужно не меньше {} уровней",
-                    t.def.name,
-                    t.def.min_level()
+                    d.name,
+                    d.min_level()
                 ),
             );
         }
-        if let Some(max) = t.def.max_levels {
-            if t.levels > max {
-                err(
-                    &mut out,
-                    format!("черта «{}»: больше {max} уровней", t.def.name),
-                );
+        if let Some(max) = d.cost.max_level {
+            if lv > max as i32 {
+                err(&mut out, format!("черта «{}»: больше {max} уровней", d.name));
             }
         }
     }
     for s in &ch.skills {
-        let name = s.display_name();
+        let d = resolve(&lib.skills, &s.src);
+        if d.is_none() {
+            missing(&mut out, "навык", s.src.pack(), s.src.sid());
+        }
+        let base = d.map_or_else(|| s.src.sid().to_string(), |d| d.name.clone());
+        let name = match s.spec.as_deref().filter(|x| !x.trim().is_empty()) {
+            Some(sp) => format!("{base} ({sp})"),
+            None => base,
+        };
         if s.points < 0 {
             err(&mut out, format!("навык «{name}»: отрицательные очки"));
         } else if !(s.points <= 2 || s.points % 4 == 0) {
@@ -714,22 +783,33 @@ pub fn issues(ch: &Character, calc: &Result<Calc, String>, sheet: &Sheet) -> Vec
                 ),
             );
         }
-        if s.def.specialization_required && gurps_core::is_blank(&s.specialization) {
+        if d.is_some_and(|d| d.spec_required) && gurps_core::is_blank(&s.spec) {
             warn(&mut out, format!("навык «{name}»: нужна специализация"));
         }
     }
     for t in &ch.techniques {
+        let Some(d) = resolve(&lib.techniques, &t.src) else {
+            missing(&mut out, "приём", t.src.pack(), t.src.sid());
+            continue;
+        };
         if t.points < 0 {
-            err(
-                &mut out,
-                format!("приём «{}»: отрицательные очки", t.def.name),
-            );
+            err(&mut out, format!("приём «{}»: отрицательные очки", d.name));
         }
-        if !ch.skills.iter().any(|s| s.def.id == t.def.skill) {
+        if !ch.skills.iter().any(|s| s.src.sid() == d.parent_skill) {
             warn(
                 &mut out,
-                format!("приём «{}»: нужен навык {}", t.def.name, t.def.skill),
+                format!("приём «{}»: нужен навык {}", d.name, d.parent_skill),
             );
+        }
+    }
+    for s in &ch.spells {
+        if resolve(&lib.spells, &s.src).is_none() {
+            missing(&mut out, "заклинание", s.src.pack(), s.src.sid());
+        }
+    }
+    for i in all_items(ch) {
+        if resolve(&lib.items, &i.src).is_none() {
+            missing(&mut out, "предмет", i.src.pack(), i.src.sid());
         }
     }
     out
