@@ -1,60 +1,89 @@
 # GURPS Sheet
 
-Open-source GURPS 4e character editor: Rust core + Tauri v2 + Vue 3.
-Редактор листа персонажа GURPS 4e с открытым исходным кодом: ядро на Rust, оболочка Tauri v2, интерфейс Vue 3.
+Редактор листа персонажа GURPS 4e: ядро на Rust, десктоп-оболочка Tauri v2, интерфейс Vue 3.
+Open-source GURPS 4e character editor: Rust core + Tauri v2 + Vue 3 (English summary below).
 
+> GURPS — торговая марка Steve Jackson Games. Проект неофициальный; каталог содержит
+> названия, стоимость, ссылки на страницы и краткие пояснения своими словами, без текста правил.
 > GURPS is a trademark of Steve Jackson Games. This project is unofficial and ships
 > no rules text — the catalog contains names, point costs, page references and short
 > explanations written in our own words.
-> GURPS — торговая марка Steve Jackson Games. Проект неофициальный; каталог содержит
-> названия, стоимость, ссылки на страницы и краткие пояснения своими словами, без текста правил.
 
-## Русский
+<!-- Скриншоты: положить в docs/screenshots/ (лист в теме «Инструмент», режим «За столом»,
+     печать в теме «Бумажный лист») и вставить сюда. -->
 
-**Состав:** `crates/gurps-core` (модель персонажа: ссылки `(pack, sid)` на каталог и встроенные
-определения своего содержимого), `gurps-library` (каталог из общей БД SurrealDB, расчёт
-`gurps-calc`, лист), `gurps-dice` (броски 3d6), `gurps-io` (JSON-формат, версия 2; версия 1 не
-читается), `gurps-cli` (CLI с JSON-выводом), `src-tauri` (приложение), `ui` (Vue 3 + TanStack Table).
-Каталог и правила — в репозитории mcp-сервер (`Data/database`).
+## Возможности
 
-Темы: «Инструмент» (по умолчанию), «Стол мастера», «Бумажный лист» (и для печати/PDF).
-Генерируются из `ui/src/styles/tokens.json` в `ui/src/styles/themes.css` (`npm run gen:themes`).
+- **Лист персонажа:** атрибуты и вторичные характеристики, черты (преимущества, недостатки,
+  перки, причуды) с модификаторами, навыки и приёмы, заклинания, снаряжение с нагрузкой,
+  оружие (режимы атак предметов и природные атаки), активные защиты.
+- **Откуда взялось число:** каждое производное значение — `база + вклады`, интерфейс
+  показывает разбор (например, ST 13 = 10 база + 2 купленных + 1 от черты) и пояснения расчёта.
+- **Учёт очков:** пул очков с журналом начислений и трат, лимиты недостатков и причуд,
+  настраиваемое округление отрицательной стоимости черт.
+- **«Своё»:** собственные черты, навыки, заклинания и предметы прямо в листе (хранятся
+  встроенными определениями в файле персонажа).
+- **Пояснения в Markdown:** у записей каталога есть пояснения; их можно заменить своими прямо
+  в листе. Markdown выводится безопасно (HTML экранируется, ссылки только http(s)/mailto).
+  Заметки персонажа — тоже Markdown.
+- **История:** undo/redo на 200 шагов с названиями действий.
+- **Режим «За столом»:** трекеры HP/FP, быстрые броски 3d6 и урона, журнал бросков.
+- **Темы:** «Инструмент», «Стол мастера», «Бумажный лист» (она же для печати/PDF);
+  генерируются из дизайн-токенов `ui/src/styles/tokens.json` (`npm run gen:themes`).
+- **Языки:** переводы названий и пояснений берутся из каталога БД; в шапке — выбор языка и
+  режим «Только оригинал», названия показываются как «Перевод (Оригинал)», поиск ищет по обоим.
+- **Файл персонажа:** JSON `version: 2`, атомарное сохранение (временный файл + rename).
+  Записи ссылаются на каталог как `{pack, sid}` либо несут встроенное определение
+  `{inline: {...}}`; файлы версии 1 не читаются.
+- **CLI** `gurps` с JSON-выводом: расчёт, проверка и броски.
 
-**Пояснения.** У черт (а в схеме данных — и у навыков, заклинаний, снаряжения, оружия,
-модификаторов) есть необязательное многострочное пояснение в Markdown. Текст из каталога можно
-заменить своим прямо в листе (▸ у строки → «Изменить», предпросмотр, «Сбросить»);
-своё пояснение сохраняется в JSON персонажа в поле `explanation` (пустое не записывается).
-Markdown выводится безопасно: HTML экранируется, ссылки только http(s)/mailto.
+## Стек
 
-**Языки.** Переводы названий и пояснений — в каталоге БД (поля `tr`/`_tr` записей). В шапке:
-выбор языка и «Только оригинал»; названия показываются как «Перевод (Оригинал)», поиск в
-библиотеке ищет по обоим.
+- **Rust** (edition 2021): workspace из крейтов ядра, CLI и приложения Tauri v2.
+- **Каталог и расчёт:** общая БД **SurrealDB** и крейты `gurps-db`, `gurps-calc`,
+  `sheet-bridge` из соседнего репозитория `mcp-сервер` (см. «Зависимость от mcp-сервер»).
+- **UI:** Vue 3 + TypeScript, Vite, TanStack Table, тесты на Vitest.
+- **Шрифты** лежат в `ui/public/fonts` (SIL Open Font License 1.1).
 
-## English
+## Структура
 
-**Explanations.** Traits (and, in the data schema, skills, spells, equipment, weapons, modifiers)
-have an optional multi-line Markdown `description` in the catalog. Users can override it per
-entry in the sheet; the override is stored as `explanation` in the character JSON (omitted
-when empty). Rendering is sanitised (HTML escaped).
+```text
+crates/
+  gurps-core/      модель персонажа: ссылки (pack, sid) и встроенные определения, журнал очков
+  gurps-io/        JSON-формат файла персонажа (версия 2), атомарная запись
+  gurps-dice/      броски 3d6 и урона для приложения
+  gurps-library/   каталог из SurrealDB, проекция в типы листа, расчёт через gurps-calc
+  gurps-cli/       CLI `gurps` (calc / validate / roll), JSON-вывод
+src-tauri/         приложение Tauri v2: состояние, история, команды для UI
+ui/                интерфейс Vue 3; src/mock*.ts — встроенный демо-бэкенд для браузера
+  scripts/         генерация тем из токенов, обёртка над Tauri CLI
+  tests/           тесты Vitest
+examples/          пример персонажа hero.json и тестовые персонажи (test-chars/)
+docs/              планы этапов 3–4 и тестовые данные
+scripts/           gen-engine-lines.py — эталонные строки пояснений расчёта для тестов UI
+```
 
-**Languages.** Translations of names and descriptions come from the database catalog. The header
-has a language switcher and an "original only" mode; names show as "Translation (Original)" and
-library search matches both.
+## Зависимость от mcp-сервер
 
-**Character file.** JSON `version: 2`: entries reference the catalog as `{pack, sid}` or carry an
-inline definition (`{inline: {...}}`) for the user's own content; version 1 files are rejected.
+Каталог (паки, переводы, константы правил `ref_*`) и расчёт живут в отдельном репозитории
+`mcp-сервер` (схема БД — `Data/database`). Workspace подключает его крейты path-зависимостями:
 
+```toml
+gurps-db = { path = "../../ПРОЕКТЫ/mcp-сервер/crates/gurps-db" }
+sheet-bridge = { path = "../../ПРОЕКТЫ/mcp-сервер/tools/sheet-bridge" }
+```
 
-Each derived value is `base + contributions`, so the UI can show *where a number came from*
-(e.g. ST 13 = base 10 + 2 purchased + 1 from a trait). Themes are CSS custom properties
-generated from design tokens; switch via the header selector (stored in `localStorage`).
+Поэтому Rust-часть собирается только при наличии этого checkout'а по указанному
+относительному пути. Решение и альтернативы (git-зависимость после публикации `mcp-сервер`,
+`[patch]` для локальной разработки) описаны в [`docs/plan-stage3.md`](docs/plan-stage3.md).
+UI в браузере (`npm run dev`) от этого не зависит — он работает на демо-бэкенде.
 
-## Prerequisites / Требования
+## Сборка и запуск
 
-**Windows 10/11**
-- WebView2 Runtime — уже установлен в Windows 10/11 / preinstalled on Windows 10/11 (otherwise: Evergreen Bootstrapper from Microsoft).
-- Microsoft C++ Build Tools (Visual Studio Build Tools, workload «Desktop development with C++» / «Разработка классических приложений на C++»).
-- Rust via rustup (`rustup default stable-msvc`), Node.js 20+ with npm.
+### Требования
+
+- Rust stable (rustup), Node.js 20+ с npm.
+- Для десктоп-приложения — системные зависимости Tauri v2.
 
 **Arch Linux**
 ```sh
@@ -63,39 +92,100 @@ sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl \
 rustup default stable
 ```
 
-Tauri CLI: либо `cd ui && npm install && npm run tauri dev` (CLI из devDependencies), либо `cargo install tauri-cli --version "^2" --locked` и `cargo tauri dev`. Обе команды работают из корня, из `src-tauri/` и (npm) из `ui/` — `beforeDevCommand` имеет явный `cwd: "../ui"`.
-Either use `npm run tauri dev` from `ui/` (CLI from devDependencies) or install the cargo CLI and run `cargo tauri dev` from the repo root or `src-tauri/`; the frontend command always runs in `ui/` thanks to an explicit `cwd`.
+**Debian/Ubuntu:** `libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`.
 
-## Run / Запуск
+**Windows 10/11:** WebView2 Runtime (уже есть в Windows 10/11), Microsoft C++ Build Tools
+(workload «Desktop development with C++»), Rust через rustup (`rustup default stable-msvc`).
 
-Requirements / Требуется: Rust stable, Node.js LTS; for the desktop app the Tauri Linux deps
-(`libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`) and
-`cargo install tauri-cli --version "^2"`.
+### Только интерфейс в браузере (без БД и без Rust)
 
 ```sh
-cargo test                                    # all Rust tests
-cargo clippy --all-targets -- -D warnings
-cargo run -p gurps-cli -- calc examples/hero.json
-cargo run -p gurps-cli -- roll 12 --mod -2
-cargo run -p gurps-cli -- validate examples/hero.json
-# Nushell: cargo run -q -p gurps-cli -- calc examples/hero.json | from json | get points
-
-cd ui && npm i && npm run dev                 # browser preview (built-in demo backend)
-cd ui && npm run build && npm test            # type check + build + UI tests
-
-cargo tauri dev                               # desktop app: repo root or src-tauri/ (needs `cargo install tauri-cli --version "^2" --locked`)
-cd ui && npm run tauri dev                    # same, via bundled @tauri-apps/cli (no cargo install needed)
+cd ui && npm install && npm run dev      # демо-бэкенд из ui/src/mock*.ts
+cd ui && npm run build && npm test       # проверка типов + сборка + тесты UI
 ```
 
-**Hyprland / Wayland:** if the window is blank or crashes, run
-`WEBKIT_DISABLE_DMABUF_RENDERER=1 cargo tauri dev`.
-Если окно пустое или падает под Hyprland — запускайте с `WEBKIT_DISABLE_DMABUF_RENDERER=1`.
+### Приложение и CLI
 
-The catalog and the calculation come from the shared SurrealDB (mcp-сервер); the CLI and the app
-read the connection settings from the environment (`SURREALDB_HOST`, `SURREALDB_NAMESPACE`, `SURREALDB_NAME`, `SURREALDB_USER`, `SURREALDB_PASSWORD`). `examples/hero.json` is a v2 character
-whose references match the seed catalog.
+Нужны checkout `mcp-сервер` (см. выше) и доступная SurrealDB с каталогом. Параметры
+подключения читаются из окружения: `SURREALDB_HOST`, `SURREALDB_NAMESPACE`, `SURREALDB_NAME`,
+`SURREALDB_USER`, `SURREALDB_PASSWORD`.
 
-## License
+```sh
+cd ui && npm install && npm run tauri dev   # десктоп-приложение через @tauri-apps/cli из devDependencies
+cargo tauri dev                              # то же через cargo-CLI (cargo install tauri-cli --version "^2" --locked)
 
-Dual-licensed under MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`).
-Bundled fonts (`ui/public/fonts`) are under the SIL Open Font License 1.1.
+cargo run -p gurps-cli -- calc examples/hero.json
+cargo run -p gurps-cli -- validate examples/hero.json
+cargo run -p gurps-cli -- roll 12 --mod -2
+```
+
+`beforeDevCommand` в `tauri.conf.json` имеет явный `cwd: "../ui"`, поэтому `cargo tauri dev`
+работает и из корня, и из `src-tauri/`. Относительные имена файлов сохраняются в
+`Documents/GURPS Sheet`.
+
+**Hyprland / Wayland:** если окно пустое или падает — `WEBKIT_DISABLE_DMABUF_RENDERER=1 cargo tauri dev`.
+
+### Тесты
+
+```sh
+cargo test                                   # все Rust-тесты
+cargo clippy --all-targets -- -D warnings
+cd ui && npm test                            # тесты UI (Vitest)
+```
+
+Тесты, которым нужна БД (`gurps-library/tests`, состояние приложения, CLI), поднимают временную
+SurrealDB в памяти через `testkit` из `gurps-db` (`surreal start memory` + `surrealkit sync/seed`
+по сидам `mcp-сервер`), поэтому нужны бинарники `surreal` и `surrealkit` в `PATH`. Без них такие
+тесты пропускаются.
+
+## Статус и планы
+
+Версия 0.1.0, в активной разработке. Основная ветка разработки — `feat/db-storage`
+(перенос хранения каталога на SurrealDB и расчёта на `gurps-calc`, этапы 3–4).
+
+Осталось по [`docs/plan-stage4.md`](docs/plan-stage4.md):
+
+- строки пояснений расчёта (навыки, урон, атаки, защиты, стоимость черт) в `gurps-calc` —
+  сейчас там только структурные данные;
+- у своих (inline) определений из UI пока есть только стоимость, без пререквизитов и эффектов;
+- безоружные атаки: сиды punch/kick и связь «приём → атака» (тест `warrior_unarmed_pending`
+  помечен `#[ignore]`);
+- после публикации `mcp-сервер` — заменить path-зависимости на git-зависимости.
+
+## Как это сделано
+
+- **Поэтапные планы** в [`docs/`](docs/): `plan-stage3.md` (решение о слое хранения с
+  плюсами, минусами и альтернативами), `plan-stage4.md` (план переноса расчёта со статусом
+  «сделано/осталось» и ссылками на коммиты); коммиты подписаны по этапам.
+- **Golden-тесты на эталонных персонажах:** `examples/test-chars/` — воин, маг, разбойник;
+  ожидания взяты из данных Мастера ([`docs/test-data-stage2-3.md`](docs/test-data-stage2-3.md)),
+  `gurps-library/tests/golden_db.rs` проверяет расчёт по БД против этих ожиданий.
+- **Тесты на всех уровнях:** unit-тесты крейтов, тесты состояния приложения на временной БД,
+  тесты CLI и 10 наборов тестов UI (Vitest), включая TS-зеркало расчёта и разбор Markdown.
+- **Генерация вместо ручной синхронизации:** темы — из дизайн-токенов (`ui/scripts/gen-themes.mjs`),
+  эталонные строки пояснений для тестов UI — `scripts/gen-engine-lines.py`.
+
+CI пока не настроен.
+
+## English
+
+**What it is.** A desktop GURPS 4e character sheet editor. Every derived value is
+`base + contributions`, so the UI shows *where a number came from*. Features: attributes,
+traits with modifiers, skills and techniques, spells, equipment and encumbrance, weapons and
+active defences, point pool ledger with limits, custom content stored inline, Markdown
+explanations and notes (sanitised), 200-step undo/redo, a play mode (HP/FP trackers, 3d6 and
+damage rolls), three themes (one for print/PDF) generated from design tokens, catalog
+translations, and a JSON CLI.
+
+**Build.** `cd ui && npm i && npm run dev` runs the UI in a browser on a built-in demo backend.
+The Rust workspace depends on crates from the sibling `mcp-сервер` repository via path
+dependencies and reads the catalog from SurrealDB (`SURREALDB_*` env vars); with those in place,
+use `cd ui && npm run tauri dev` or `cargo tauri dev`, and `cargo test`.
+
+**Character file.** JSON `version: 2`: entries reference the catalog as `{pack, sid}` or carry an
+inline definition (`{inline: {...}}`); version 1 files are rejected.
+
+## Лицензия / License
+
+MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`). Шрифты в `ui/public/fonts` — SIL Open Font
+License 1.1.
