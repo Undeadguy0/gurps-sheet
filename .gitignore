@@ -10,3 +10,5 @@ src-tauri/gen/
 # Character files saved during development (atomic-save temps too)
 *.gurps.json
 *.gurps.json.tmp
+# Local [patch] overrides for gurps-mcp
+.cargo/config.toml

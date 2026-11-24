@@ -41,7 +41,7 @@ Open-source GURPS 4e character editor: Rust core + Tauri v2 + Vue 3 (English sum
 
 - **Rust** (edition 2021): workspace из крейтов ядра, CLI и приложения Tauri v2.
 - **Каталог и расчёт:** общая БД **SurrealDB** и крейты `gurps-db`, `gurps-calc`,
-  `sheet-bridge` из соседнего репозитория `mcp-сервер` (см. «Зависимость от mcp-сервер»).
+  `sheet-bridge` из репозитория [gurps-mcp](https://github.com/Undeadguy0/gurps-mcp) (см. «Зависимость от gurps-mcp»).
 - **UI:** Vue 3 + TypeScript, Vite, TanStack Table, тесты на Vitest.
 - **Шрифты** лежат в `ui/public/fonts` (SIL Open Font License 1.1).
 
@@ -63,20 +63,31 @@ docs/              планы этапов 3–4 и тестовые данны�
 scripts/           gen-engine-lines.py — эталонные строки пояснений расчёта для тестов UI
 ```
 
-## Зависимость от mcp-сервер
+## Зависимость от gurps-mcp
 
-Каталог (паки, переводы, константы правил `ref_*`) и расчёт живут в отдельном репозитории
-`mcp-сервер` (схема БД — `Data/database`). Workspace подключает его крейты path-зависимостями:
+Каталог (паки, переводы, константы правил `ref_*`), слой БД и расчёт живут в отдельном репозитории
+[gurps-mcp](https://github.com/Undeadguy0/gurps-mcp) (MCP-сервер и схема SurrealDB в
+`Data/database`). Workspace подключает его крейты git-зависимостями, поэтому проект собирается
+из обычного `git clone` без дополнительных шагов:
 
 ```toml
-gurps-db = { path = "../../ПРОЕКТЫ/mcp-сервер/crates/gurps-db" }
-sheet-bridge = { path = "../../ПРОЕКТЫ/mcp-сервер/tools/sheet-bridge" }
+gurps-db = { git = "https://github.com/Undeadguy0/gurps-mcp", branch = "main" }
+sheet-bridge = { git = "https://github.com/Undeadguy0/gurps-mcp", branch = "main" }
 ```
 
-Поэтому Rust-часть собирается только при наличии этого checkout'а по указанному
-относительному пути. Решение и альтернативы (git-зависимость после публикации `mcp-сервер`,
-`[patch]` для локальной разработки) описаны в [`docs/plan-stage3.md`](docs/plan-stage3.md).
-UI в браузере (`npm run dev`) от этого не зависит — он работает на демо-бэкенде.
+Точная ревизия закреплена в `Cargo.lock`; обновить до свежего `main` —
+`cargo update -p gurps-db -p sheet-bridge`.
+
+**Одновременная правка обоих репозиториев.** Чтобы собирать лист поверх локального checkout'а
+gurps-mcp, создайте `.cargo/config.toml` (он в `.gitignore`):
+
+```toml
+[patch."https://github.com/Undeadguy0/gurps-mcp"]
+gurps-db = { path = "../gurps-mcp/crates/gurps-db" }
+sheet-bridge = { path = "../gurps-mcp/tools/sheet-bridge" }
+```
+
+UI в браузере (`npm run dev`) от этой зависимости не зависит — он работает на демо-бэкенде.
 
 ## Сборка и запуск
 
@@ -106,7 +117,7 @@ cd ui && npm run build && npm test       # проверка типов + сбо�
 
 ### Приложение и CLI
 
-Нужны checkout `mcp-сервер` (см. выше) и доступная SurrealDB с каталогом. Параметры
+Нужна доступная SurrealDB с каталогом. Параметры
 подключения читаются из окружения: `SURREALDB_HOST`, `SURREALDB_NAMESPACE`, `SURREALDB_NAME`,
 `SURREALDB_USER`, `SURREALDB_PASSWORD`.
 
@@ -135,7 +146,7 @@ cd ui && npm test                            # тесты UI (Vitest)
 
 Тесты, которым нужна БД (`gurps-library/tests`, состояние приложения, CLI), поднимают временную
 SurrealDB в памяти через `testkit` из `gurps-db` (`surreal start memory` + `surrealkit sync/seed`
-по сидам `mcp-сервер`), поэтому нужны бинарники `surreal` и `surrealkit` в `PATH`. Без них такие
+по сидам gurps-mcp из git-checkout'а в кэше Cargo), поэтому нужны бинарники `surreal` и `surrealkit` в `PATH`. Без них такие
 тесты пропускаются.
 
 ## Статус и планы
@@ -150,7 +161,6 @@ SurrealDB в памяти через `testkit` из `gurps-db` (`surreal start m
 - у своих (inline) определений из UI пока есть только стоимость, без пререквизитов и эффектов;
 - безоружные атаки: сиды punch/kick и связь «приём → атака» (тест `warrior_unarmed_pending`
   помечен `#[ignore]`);
-- после публикации `mcp-сервер` — заменить path-зависимости на git-зависимости.
 
 ## Как это сделано
 
@@ -178,8 +188,8 @@ damage rolls), three themes (one for print/PDF) generated from design tokens, ca
 translations, and a JSON CLI.
 
 **Build.** `cd ui && npm i && npm run dev` runs the UI in a browser on a built-in demo backend.
-The Rust workspace depends on crates from the sibling `mcp-сервер` repository via path
-dependencies and reads the catalog from SurrealDB (`SURREALDB_*` env vars); with those in place,
+The Rust workspace pulls `gurps-db` and `sheet-bridge` from
+[gurps-mcp](https://github.com/Undeadguy0/gurps-mcp) as git dependencies and reads the catalog from SurrealDB (`SURREALDB_*` env vars); with those in place,
 use `cd ui && npm run tauri dev` or `cargo tauri dev`, and `cargo test`.
 
 **Character file.** JSON `version: 2`: entries reference the catalog as `{pack, sid}` or carry an

@@ -19,6 +19,7 @@ gurps-core = { path = "crates/gurps-core" }
 gurps-dice = { path = "crates/gurps-dice" }
 gurps-io = { path = "crates/gurps-io" }
 gurps-library = { path = "crates/gurps-library" }
-# Общий слой БД и проекция каталога — из репозитория mcp-сервер (см. docs/plan-stage3.md).
-gurps-db = { path = "../../ПРОЕКТЫ/mcp-сервер/crates/gurps-db" }
-sheet-bridge = { path = "../../ПРОЕКТЫ/mcp-сервер/tools/sheet-bridge" }
+# Общий слой БД и проекция каталога — из репозитория gurps-mcp (см. README, раздел «Зависимость от gurps-mcp»).
+# Локальная разработка поверх соседнего checkout'а — через [patch] в .cargo/config.toml (не коммитится).
+gurps-db = { git = "https://github.com/Undeadguy0/gurps-mcp", branch = "main" }
+sheet-bridge = { git = "https://github.com/Undeadguy0/gurps-mcp", branch = "main" }
