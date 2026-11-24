@@ -197,5 +197,5 @@ inline definition (`{inline: {...}}`); version 1 files are rejected.
 
 ## Лицензия / License
 
-MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`). Шрифты в `ui/public/fonts` — SIL Open Font
+[GNU General Public License v3.0](LICENSE) (`GPL-3.0-only`). Шрифты в `ui/public/fonts` — SIL Open Font
 License 1.1.
