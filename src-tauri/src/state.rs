@@ -2303,7 +2303,7 @@ mod tests {
         let Some(mut s) = state() else {
             return;
         };
-        assert!(s.locale_info().available.contains(&"ru".to_string()));
+        assert!(s.locale_info().available.iter().any(|l| l == "ru"));
         let v = s.add_trait("claws_a", None).unwrap();
         assert_ne!(v.traits[0].name, "Claws A");
         assert_eq!(v.traits[0].original_name.as_deref(), Some("Claws A"));
